@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { MaintenanceSettingsDTO } from "@whatsunivida/types";
+import type { MaintenanceSettingsDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
 
 interface BusinessSettings {
   inactivityTimeoutMinutes?: number;
@@ -36,6 +37,9 @@ export function SecuritySettingsPanel() {
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
 
+  const hoursValid = hours >= MIN_HOURS && hours <= MAX_HOURS;
+  const savedHours = data?.inactivityTimeoutMinutes ? Number((data.inactivityTimeoutMinutes / 60).toFixed(2)) : undefined;
+
   return (
     <div className="shadow-soft max-w-xl space-y-6 rounded-card border border-border bg-surface p-6">
       <div>
@@ -62,11 +66,20 @@ export function SecuritySettingsPanel() {
 
       <button
         onClick={() => saveMutation.mutate()}
-        disabled={saveMutation.isPending || !(hours >= MIN_HOURS && hours <= MAX_HOURS)}
+        disabled={saveMutation.isPending || !hoursValid}
         className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60"
       >
         Salvar configuração
       </button>
+      {savedHours !== undefined && (
+        <UnsavedChangesBar
+          dirty={hours !== savedHours}
+          saving={saveMutation.isPending}
+          canSave={hoursValid}
+          onSave={() => saveMutation.mutate()}
+          onDiscard={() => setHours(savedHours)}
+        />
+      )}
 
       <MaintenanceModeSection />
     </div>
@@ -155,6 +168,14 @@ function MaintenanceModeSection() {
       >
         Salvar mensagem
       </button>
+      {data && (
+        <UnsavedChangesBar
+          dirty={message !== (data.message ?? "")}
+          saving={saveMessageMutation.isPending}
+          onSave={() => saveMessageMutation.mutate()}
+          onDiscard={() => setMessage(data.message ?? "")}
+        />
+      )}
     </div>
   );
 }

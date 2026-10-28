@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, X } from "lucide-react";
 import { api } from "../../lib/api";
 
 interface AgentOption {
@@ -9,6 +9,7 @@ interface AgentOption {
   presence: "ONLINE" | "AWAY" | "OFFLINE";
   photoUrl: string | null;
   whatsappConnectionName: string | null;
+  pauseReasonName: string | null;
 }
 
 function AgentAvatar({ agent }: { agent: AgentOption }) {
@@ -23,6 +24,13 @@ function AgentAvatar({ agent }: { agent: AgentOption }) {
 
 const PRESENCE_DOT: Record<string, string> = { ONLINE: "bg-green-500", AWAY: "bg-yellow-500", OFFLINE: "bg-gray-400" };
 const PRESENCE_LABEL: Record<string, string> = { ONLINE: "Online", AWAY: "Ausente", OFFLINE: "Offline" };
+
+// AWAY from a manual pause always carries a reason (see PauseReason) — showing it
+// here instead of the generic "Ausente" tells the transferring agent exactly why,
+// not just that the target isn't online.
+function presenceLabel(agent: Pick<AgentOption, "presence" | "pauseReasonName">) {
+  return agent.presence === "AWAY" && agent.pauseReasonName ? `Pausado — ${agent.pauseReasonName}` : PRESENCE_LABEL[agent.presence];
+}
 
 export function TransferModal({
   onClose,
@@ -98,7 +106,7 @@ export function TransferModal({
                 <span className={`h-2 w-2 shrink-0 rounded-full ${PRESENCE_DOT[selectedAgent.presence]}`} />
                 <span className="flex-1 truncate">{selectedAgent.displayName}</span>
                 <span className="shrink-0 text-xs text-muted">
-                  {PRESENCE_LABEL[selectedAgent.presence]}
+                  {presenceLabel(selectedAgent)}
                   {selectedAgent.whatsappConnectionName ? ` · ${selectedAgent.whatsappConnectionName}` : ""}
                 </span>
               </>
@@ -120,15 +128,18 @@ export function TransferModal({
                     setConfirmingOffline(false);
                     setDropdownOpen(false);
                   }}
-                  className={`focus-ring flex w-full items-center gap-3 rounded-card px-2.5 py-2 text-left hover:bg-surface-alt ${selected === agent.id ? "bg-primary/5" : ""}`}
+                  className={`focus-ring flex w-full items-center gap-3 rounded-card border px-2.5 py-2 text-left ${
+                    selected === agent.id ? "border-primary bg-primary/10" : "border-transparent hover:bg-surface-alt"
+                  }`}
                 >
                   <AgentAvatar agent={agent} />
                   <span className={`h-2 w-2 shrink-0 rounded-full ${PRESENCE_DOT[agent.presence]}`} />
-                  <span className="flex-1 truncate text-sm">{agent.displayName}</span>
+                  <span className={`flex-1 truncate text-sm ${selected === agent.id ? "font-semibold text-primary" : ""}`}>{agent.displayName}</span>
                   <span className="shrink-0 text-xs text-muted">
-                    {PRESENCE_LABEL[agent.presence]}
+                    {presenceLabel(agent)}
                     {agent.whatsappConnectionName ? ` · ${agent.whatsappConnectionName}` : ""}
                   </span>
+                  {selected === agent.id && <Check className="h-4 w-4 shrink-0 text-primary" />}
                 </button>
               ))}
             </div>
@@ -146,7 +157,7 @@ export function TransferModal({
         />
 
         {confirmingOffline && selectedAgent && (
-          <div className="mt-3 flex items-start gap-2 rounded-card bg-secondary/30 px-3 py-2 text-sm text-secondary-fg">
+          <div className="mt-3 flex items-start gap-2 rounded-card bg-secondary/30 px-3 py-2 text-sm text-text">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               <strong>{selectedAgent.displayName}</strong> está offline agora. Se não fizer login em até 2 horas, o

@@ -44,5 +44,26 @@ export function gradientId(prefix: string, color: string): string {
 /** Soft elevation shared by every chart card — the "profundidade" the flat cards were missing. */
 export const CHART_CARD_SHADOW = "shadow-[0_1px_2px_rgba(0,0,0,0.06),0_12px_28px_-8px_rgba(0,0,0,0.18)]";
 
+/**
+ * Recharts' <Tooltip> renders with hardcoded light colors by default (white
+ * background, dark text) — in dark mode that comes out as a jarring white
+ * box instead of following the theme. Spread onto every <Tooltip> in the
+ * Dashboard's chart cards so it reads the same CSS vars as the rest of the
+ * app (and any custom branding palette) in both themes. See PROMPT: "ao
+ * passar o mouse em cima dos gráficos, no tema escuro não está aparecendo
+ * corretamente as informações".
+ */
+export const CHART_TOOLTIP_PROPS = {
+  contentStyle: {
+    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "8px",
+    color: "var(--color-text)",
+    fontSize: "12px",
+  },
+  itemStyle: { color: "var(--color-text)" },
+  labelStyle: { color: "var(--color-muted)" },
+};
+
 /** CSS filter applied to the whole plotted area so bars/slices/lines look like they're floating above the card, matching the reference screenshot. */
 export const CHART_DEPTH_FILTER = "drop-shadow(0 10px 14px rgba(0,0,0,0.16))";

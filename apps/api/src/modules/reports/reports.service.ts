@@ -1,6 +1,19 @@
+import fs from "node:fs";
+import { NO_RETURN_CLOSE_REASON } from "../conversations/conversations.service";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
+import { imageSize } from "image-size";
 import { prisma } from "../../lib/prisma";
+import { conversationSpanMs, firstResponseDiffs, firstResponseMs, SCHEDULE_SELECT, spanDiffs } from "../../lib/conversation-timings";
+import { cachedHolidayLookup } from "../../lib/business-time";
+import { getSatisfactionByAgent } from "../satisfaction/satisfaction.service";
+
+/** Same identity used across the app's other exports (PowerPoint) — see PROMPT: "o layout de exportação dos relatórios". */
+export interface ReportBranding {
+  companyName: string;
+  primaryColor: string;
+  logoPath: string | null;
+}
 
 export interface ReportParams {
   from: Date;
@@ -24,11 +37,18 @@ const STATUS_LABEL: Record<string, string> = {
   TRANSFERRED: "Transferida",
   CLOSED: "Encerrada",
   ABANDONED: "Abandonada",
+  FLOW_ABANDONED: "Abandonado no fluxo",
   HANDLED_EXTERNALLY: "Atendido pelo celular",
 };
 
-function minutes(ms: number | null): number | string {
-  return ms === null ? "-" : Math.round(ms / 60000);
+/** "1h 41min", "45min" — read at a glance instead of working out what 101 minutes is. */
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return "-";
+  const total = Math.round(ms / 60000);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (!hours) return `${mins}min`;
+  return mins ? `${hours}h ${mins}min` : `${hours}h`;
 }
 
 // Formats in the browser's local time, not the server's (this API runs in a
@@ -47,60 +67,68 @@ export async function getAttendanceReport({ from, to, agentId, connectionIds, tz
   const conversations = await prisma.conversation.findMany({
     where: {
       createdAt: { gte: from, lte: to },
+      // WhatsApp groups never count: they are not customer conversations.
+      status: { not: "GROUP" as const },
       assignedAgentId: agentId,
       ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}),
     },
     include: {
       contact: true,
       assignedAgent: true,
-      whatsappConnection: true,
+      // The schedule too: the times count only the Horário de expediente.
+      whatsappConnection: { include: { workSchedule: true } },
+      metaConnection: { include: { workSchedule: true } },
       messages: { select: { direction: true } },
       transfers: true,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return conversations.map((c) => {
+  const isHoliday = cachedHolidayLookup();
+  return Promise.all(conversations.map(async (c) => {
     const received = c.messages.filter((m) => m.direction === "INBOUND").length;
     const sent = c.messages.filter((m) => m.direction === "OUTBOUND").length;
-    const acceptMs = c.acceptedAt ? c.acceptedAt.getTime() - c.enteredQueueAt.getTime() : null;
-    const firstResponseMs = c.acceptedAt && c.firstResponseAt ? c.firstResponseAt.getTime() - c.acceptedAt.getTime() : null;
-    const totalMs = c.closedAt ? c.closedAt.getTime() - c.enteredQueueAt.getTime() : null;
+    const acceptMs = await conversationSpanMs(c, c.enteredQueueAt, c.acceptedAt, isHoliday);
+    const firstResponse = await firstResponseMs(c, isHoliday);
+    const totalMs = await conversationSpanMs(c, c.enteredQueueAt, c.closedAt, isHoliday);
 
     return {
       Data: formatDateTime(c.createdAt, tzOffsetMinutes),
-      Conexão: c.whatsappConnection.name,
-      Cliente: c.contact.name ?? c.contact.phone,
-      Telefone: c.contact.phone,
+      Conexão: c.whatsappConnection?.name ?? c.metaConnection?.name ?? "-",
+      Cliente: c.contact.name ?? c.contact.phone ?? c.contact.externalUserId ?? "-",
+      Telefone: c.contact.phone ?? "-",
       Atendente: c.assignedAgent?.displayName ?? "-",
       "Entrada na fila": formatDateTime(c.enteredQueueAt, tzOffsetMinutes),
       Aceite: formatDateTime(c.acceptedAt, tzOffsetMinutes),
-      "Até aceite (min)": minutes(acceptMs),
-      "Até 1ª resposta (min)": minutes(firstResponseMs),
+      "Até aceite": formatDuration(acceptMs),
+      "Até 1ª resposta": formatDuration(firstResponse),
       Encerramento: formatDateTime(c.closedAt, tzOffsetMinutes),
-      "Duração total (min)": minutes(totalMs),
+      "Motivo do encerramento": c.closeReason === NO_RETURN_CLOSE_REASON ? "Sem retorno do cliente" : "-",
+      "Duração total": formatDuration(totalMs),
       "Mensagens recebidas": received,
       "Mensagens enviadas": sent,
       Transferências: c.transfers.length,
       Status: STATUS_LABEL[c.status] ?? c.status,
     };
-  });
+  }));
 }
 
 export async function getPerAgentReport({ from, to, connectionIds }: ReportParams) {
   const connectionFilter = connectionIds === undefined ? undefined : { in: connectionIds };
   const agents = await prisma.user.findMany({ where: { role: "AGENT" }, orderBy: { displayName: "asc" } });
+  const satisfaction = await getSatisfactionByAgent({ from, to, connectionIds });
 
   return Promise.all(
     agents.map(async (agent) => {
       const conversations = await prisma.conversation.findMany({
         where: { assignedAgentId: agent.id, createdAt: { gte: from, lte: to }, ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}) },
+        include: SCHEDULE_SELECT,
       });
       const messagesSent = await prisma.message.count({
         where: {
           senderAgentId: agent.id,
           createdAt: { gte: from, lte: to },
-          ...(connectionFilter ? { conversation: { whatsappConnectionId: connectionFilter } } : {}),
+          conversation: { status: { not: "GROUP" as const }, ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}) },
         },
       });
       const transfersReceived = await prisma.conversationTransfer.count({
@@ -110,23 +138,25 @@ export async function getPerAgentReport({ from, to, connectionIds }: ReportParam
         where: { fromAgentId: agent.id, createdAt: { gte: from, lte: to }, ...(connectionFilter ? { conversation: { whatsappConnectionId: connectionFilter } } : {}) },
       });
 
-      const acceptDiffs = conversations.filter((c) => c.acceptedAt).map((c) => c.acceptedAt!.getTime() - c.enteredQueueAt.getTime());
-      const firstResponseDiffs = conversations
-        .filter((c) => c.acceptedAt && c.firstResponseAt)
-        .map((c) => c.firstResponseAt!.getTime() - c.acceptedAt!.getTime());
-      const handlingDiffs = conversations.filter((c) => c.acceptedAt && c.closedAt).map((c) => c.closedAt!.getTime() - c.acceptedAt!.getTime());
+      const acceptDiffs = await spanDiffs(conversations, (c) => [c.enteredQueueAt, c.acceptedAt]);
+      const handlingDiffs = await spanDiffs(conversations, (c) => [c.acceptedAt, c.closedAt]);
+      const firstResponses = await firstResponseDiffs(conversations);
 
-      const avg = (arr: number[]): number | string => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length / 60000) : "-");
+      const avg = (arr: number[]): string => formatDuration(arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
 
       return {
         Atendente: agent.displayName,
         Conversas: conversations.length,
+        "Sem retorno do cliente": conversations.filter((c) => c.status === "CLOSED" && c.closeReason === NO_RETURN_CLOSE_REASON).length,
         "Mensagens enviadas": messagesSent,
-        "Tempo médio até aceite (min)": avg(acceptDiffs),
-        "Tempo médio até 1ª resposta (min)": avg(firstResponseDiffs),
-        "Tempo médio de atendimento (min)": avg(handlingDiffs),
+        "Tempo médio até aceite": avg(acceptDiffs),
+        "Tempo médio até 1ª resposta": avg(firstResponses),
+        "Tempo médio de atendimento": avg(handlingDiffs),
         "Transferências recebidas": transfersReceived,
         "Transferências realizadas": transfersMade,
+        "Avaliações recebidas": satisfaction.get(agent.id)?.answered ?? 0,
+        "Pesquisas não respondidas": satisfaction.get(agent.id)?.unanswered ?? 0,
+        "NPS (0 a 100)": satisfaction.get(agent.id)?.nps ?? "-",
       };
     })
   );
@@ -135,6 +165,7 @@ export async function getPerAgentReport({ from, to, connectionIds }: ReportParam
 export async function getMessagesReport({ from, to, agentId, connectionIds }: ReportParams) {
   const connectionFilter = connectionIds === undefined ? undefined : { in: connectionIds };
   const conversationFilter = {
+    status: { not: "GROUP" as const },
     ...(agentId ? { assignedAgentId: agentId } : {}),
     ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}),
   };
@@ -157,11 +188,12 @@ export function toCsv(rows: Record<string, unknown>[]): string {
 }
 
 /** Spreadsheet export — see PROMPT: "Relatórios poder extrair em ... xlsx." */
-export async function toXlsx(rows: Record<string, unknown>[], sheetName: string): Promise<Buffer> {
+export async function toXlsx(rows: Record<string, unknown>[], sheetName: string, branding?: ReportBranding): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "WhatsUnivida";
+  workbook.creator = branding?.companyName ?? "WhatsAtendende";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(sheetName.slice(0, 31)); // Excel's own sheet-name length limit
+  const headerFill = `FF${(branding?.primaryColor ?? "#0097B4").replace("#", "").toUpperCase()}`;
 
   if (rows.length > 0) {
     const headers = Object.keys(rows[0]);
@@ -178,7 +210,7 @@ export async function toXlsx(rows: Record<string, unknown>[], sheetName: string)
     });
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0097B4" } };
+    headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerFill } };
     rows.forEach((row) => sheet.addRow(row));
     sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
   }
@@ -188,7 +220,7 @@ export async function toXlsx(rows: Record<string, unknown>[], sheetName: string)
 }
 
 /** PDF export — see PROMPT: "Relatórios poder extrair em PDF". A plain, readable tabular layout — no external headless-browser dependency. */
-export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMinutes = 0): Promise<Buffer> {
+export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMinutes = 0, branding?: ReportBranding): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape" });
     const chunks: Buffer[] = [];
@@ -196,8 +228,29 @@ export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMi
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
+    const headerColor = branding?.primaryColor ?? "#0097B4";
+
+    // Logo in the top-right corner, sized to a fixed height but kept at its
+    // own aspect ratio (imageSize reads the real dimensions) — same fix as
+    // the PowerPoint export's cover slide, so a wide/non-square logo never
+    // comes out stretched here either.
+    if (branding?.logoPath && fs.existsSync(branding.logoPath)) {
+      try {
+        const buffer = fs.readFileSync(branding.logoPath);
+        const { width, height } = imageSize(buffer);
+        if (width && height) {
+          const logoH = 28;
+          const logoW = width * (logoH / height);
+          const pageRight = doc.page.width - doc.page.margins.right;
+          doc.image(buffer, pageRight - logoW, 30, { width: logoW, height: logoH });
+        }
+      } catch {
+        // A corrupt/unreadable logo shouldn't block the report itself.
+      }
+    }
+
     doc.fontSize(16).fillColor("#14202b").text(title);
-    doc.fontSize(9).fillColor("#64748b").text(`Gerado em ${formatDateTime(new Date(), tzOffsetMinutes)}`);
+    doc.fontSize(9).fillColor("#64748b").text(`Gerado em ${formatDateTime(new Date(), tzOffsetMinutes)}${branding?.companyName ? ` · ${branding.companyName}` : ""}`);
     doc.moveDown();
 
     if (rows.length === 0) {
@@ -243,7 +296,7 @@ export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMi
     const drawRow = (values: string[], opts: { header?: boolean; shaded?: boolean }) => {
       const height = rowHeightFor(values, Boolean(opts.header));
       if (opts.header) {
-        doc.rect(doc.page.margins.left, y, pageWidth, height).fill("#0097B4");
+        doc.rect(doc.page.margins.left, y, pageWidth, height).fill(headerColor);
       } else if (opts.shaded) {
         doc.rect(doc.page.margins.left, y, pageWidth, height).fill("#f4f7f9");
       }

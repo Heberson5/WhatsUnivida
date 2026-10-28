@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { Role } from "@prisma/client";
-import { PERMISSION_DEFINITIONS, type Permission, type PermissionMap } from "@whatsunivida/types";
+import { PERMISSION_DEFINITIONS, type Permission, type PermissionMap } from "@whatsatendende/types";
 import { prisma } from "./prisma";
 import { Errors } from "./http-error";
 
@@ -9,6 +9,11 @@ const DEFINITION_BY_KEY = new Map(PERMISSION_DEFINITIONS.map((d) => [d.key, d]))
 function defaultAllowed(role: Role, permission: Permission): boolean {
   if (role === "ADMIN") return true;
   return DEFINITION_BY_KEY.get(permission)?.defaultAllowed[role] ?? false;
+}
+
+/** A permission is only ever offered to the roles in its editableRoles (e.g. media in Respostas: Gestor, never Atendente). */
+function isOffered(role: Role, permission: Permission): boolean {
+  return role === "ADMIN" || (DEFINITION_BY_KEY.get(permission)?.editableRoles.includes(role) ?? false);
 }
 
 /**
@@ -20,6 +25,7 @@ function defaultAllowed(role: Role, permission: Permission): boolean {
  */
 export async function isPermissionAllowed(role: Role, permission: Permission): Promise<boolean> {
   if (role === "ADMIN") return true;
+  if (!isOffered(role, permission)) return false;
   const row = await prisma.rolePermission.findUnique({ where: { role_permission: { role, permission } } });
   return row ? row.allowed : defaultAllowed(role, permission);
 }
@@ -43,7 +49,7 @@ export async function getPermissionMatrix(): Promise<Record<Role, PermissionMap>
   for (const role of roles) {
     const map = {} as PermissionMap;
     for (const def of PERMISSION_DEFINITIONS) {
-      map[def.key] = role === "ADMIN" ? true : (overrides.get(`${role}:${def.key}`) ?? defaultAllowed(role, def.key));
+      map[def.key] = role === "ADMIN" ? true : isOffered(role, def.key) && (overrides.get(`${role}:${def.key}`) ?? defaultAllowed(role, def.key));
     }
     matrix[role] = map;
   }
@@ -64,7 +70,7 @@ export interface PermissionPatchEntry {
 
 /** Persists a batch of edits. ADMIN entries are silently ignored — its permissions are never stored, only ever hardcoded true. */
 export async function savePermissionPatch(entries: PermissionPatchEntry[]): Promise<void> {
-  const editable = entries.filter((e) => e.role !== "ADMIN" && DEFINITION_BY_KEY.has(e.permission));
+  const editable = entries.filter((e) => e.role !== "ADMIN" && DEFINITION_BY_KEY.has(e.permission) && isOffered(e.role, e.permission));
   await prisma.$transaction(
     editable.map((e) =>
       prisma.rolePermission.upsert({

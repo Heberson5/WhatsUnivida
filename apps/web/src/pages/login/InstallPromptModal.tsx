@@ -21,6 +21,12 @@ function isAndroid(): boolean {
   return /android/i.test(navigator.userAgent);
 }
 
+// Served from a named Docker volume (infrastructure/docker/nginx.conf's
+// /downloads/ location), not bundled into this build — 404s until an admin
+// uploads the file once (see infrastructure/vps/README.md), independent of
+// how/when this app itself gets redeployed.
+const APK_DOWNLOAD_URL = "/downloads/whatsatendende.apk";
+
 /**
  * Shown on the login screen (before any credentials are entered) inviting
  * the visitor to install the app first — see PROMPT: "ao acessar pelo
@@ -65,7 +71,7 @@ export function InstallPromptModal() {
   const manualInstructions = isIosManual
     ? 'Toque no ícone de Compartilhar (⬆️) na barra do navegador e depois em "Adicionar à Tela de Início".'
     : isAndroid()
-      ? 'Toque no menu (⋮) do navegador e escolha "Instalar aplicativo" ou "Adicionar à tela inicial".'
+      ? 'Toque no menu (⋮) do navegador e escolha "Instalar aplicativo" ou "Adicionar à tela inicial" — ou baixe o instalador diretamente abaixo.'
       : "Clique no ícone de instalar (⊕) na barra de endereço, ou no menu do navegador escolha \"Instalar app\".";
 
   return (
@@ -85,6 +91,15 @@ export function InstallPromptModal() {
           aplicativo de verdade.
         </p>
         {!canPromptInstall && <p className="mt-2 rounded-card bg-surface-alt px-3 py-2 text-xs text-muted">{manualInstructions}</p>}
+        {!canPromptInstall && isAndroid() && (
+          <a
+            href={APK_DOWNLOAD_URL}
+            download
+            className="focus-ring mt-2 flex items-center justify-center gap-1.5 rounded-card border border-primary/30 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+          >
+            <Download className="h-4 w-4" /> Baixar aplicativo (.apk)
+          </a>
+        )}
         <div className="mt-5 flex gap-2">
           <button type="button" onClick={dismiss} className="focus-ring flex-1 rounded-card border border-border py-2 text-sm">
             Agora não

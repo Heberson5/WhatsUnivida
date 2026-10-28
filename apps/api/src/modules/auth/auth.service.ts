@@ -5,15 +5,24 @@ import { Errors } from "../../lib/http-error";
 import { writeAudit } from "../../lib/audit";
 import { sendTemplatedMail } from "../../lib/mail";
 import { clearPendingTransferDeadlines } from "../conversations/conversations.service";
-import { getMaintenanceSettings } from "../settings/settings.service";
+import { getBusinessSettings, getMaintenanceSettings } from "../settings/settings.service";
 import { resolveAccessDecision, resolveLocalNow } from "../../lib/access-schedule";
 import { findApplicableHoliday } from "../holidays/holidays.service";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "./jwt";
 import { env } from "../../config/env";
 import { realtimeEvents } from "../../realtime/realtime";
-import type { AccessSchedule } from "@whatsunivida/types";
+import { queueMayMove } from "../../lib/presence-status";
+import type { AccessSchedule } from "@whatsatendende/types";
 
 const REFRESH_TOKEN_DAYS = 7;
+
+/**
+ * How long past the inactivity limit (Configurações › Sessão) the server waits before ending an idle session
+ * itself. The browser ends it right on the limit (see the web app's useIdleLogout) and reports activity at
+ * most every 30 seconds, so the server's own record lags by up to that much; it only has to step in when the
+ * browser couldn't — a tab frozen while the computer slept, a browser that stopped running the page.
+ */
+const IDLE_GRACE_MS = 2 * 60 * 1000;
 
 // Never a real bcrypt hash of any real password — used only to make the
 // "user not found" path do roughly the same amount of CPU work as the
@@ -68,7 +77,11 @@ async function assertWithinAccessWindow(
 }
 
 export async function login(email: string, password: string, ip: string | null, tzOffsetMinutes = 0) {
-  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() }, include: { whatsappConnection: true } });
+  // An e-mail repeats only across inactive users: the active one logs in; with none, the latest inactive gets "Usuario inativo".
+  const include = { whatsappConnection: true, pauseReason: true } as const;
+  const user =
+    (await prisma.user.findFirst({ where: { email: email.toLowerCase(), status: "ACTIVE" }, include })) ??
+    (await prisma.user.findFirst({ where: { email: email.toLowerCase() }, include, orderBy: { createdAt: "desc" } }));
   if (!user) {
     // Do the same bcrypt work a real lookup would, so a non-existent e-mail
     // doesn't respond measurably faster than a wrong password for a real
@@ -139,13 +152,51 @@ export async function login(email: string, password: string, ip: string | null, 
     realtimeEvents.userForceLoggedOut(user.id, "NEW_LOGIN");
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastAccessAt: new Date(), presence: "ONLINE" } });
+  // A pause carries over a new login (the computer restarted during lunch): it ends only with Retomar.
+  await prisma.user.update({ where: { id: user.id }, data: { lastAccessAt: new Date(), ...(user.presence === "AWAY" ? {} : { presence: "ONLINE" }) } });
   await writeAudit({ userId: user.id, action: "LOGIN_SUCCESS", entity: "User", entityId: user.id, ipAddress: ip });
   // Logging in proves this agent is back — cancels the 2h auto-revert
   // countdown on any conversation transferred to them while offline.
   await clearPendingTransferDeadlines(user.id);
 
   return { accessToken, refreshToken, user };
+}
+
+/** Sessions whose last activity is before this are idle past the limit (null: no limit configured). */
+async function idleCutoff(now = new Date()): Promise<Date | null> {
+  const minutes = Number((await getBusinessSettings()).inactivityTimeoutMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return new Date(now.getTime() - minutes * 60_000 - IDLE_GRACE_MS);
+}
+
+/** The browser saw the person use the system (POST /auth/activity). */
+export async function recordSessionActivity(sessionId: string) {
+  await prisma.refreshToken.updateMany({ where: { id: sessionId, revokedAt: null }, data: { lastActivityAt: new Date() } });
+}
+
+async function endIdleSession(session: { id: string; userId: string }) {
+  const ended = await prisma.refreshToken.updateMany({ where: { id: session.id, revokedAt: null }, data: { revokedAt: new Date() } });
+  if (ended.count === 0) return; // logged out (or ended) in the meantime
+  await prisma.user.update({ where: { id: session.userId }, data: { presence: "OFFLINE", pauseReasonId: null, pausedAt: null } }).catch(() => undefined);
+  await queueMayMove(session.userId);
+  await writeAudit({ userId: session.userId, action: "LOGOUT_INACTIVITY", entity: "User", entityId: session.userId });
+  realtimeEvents.userForceLoggedOut(session.userId, "INACTIVITY");
+}
+
+/**
+ * Ends every session left without use past the inactivity limit — see PROMPT: "deixei conectado de um dia
+ * para o outro e não fez logoff automaticamente". Run every minute by server.ts; revoking the session makes
+ * the very next request (and the next silent refresh) fail, whatever state the browser tab is in.
+ */
+export async function endIdleSessions(now = new Date()): Promise<number> {
+  const cutoff = await idleCutoff(now);
+  if (!cutoff) return 0;
+  const idle = await prisma.refreshToken.findMany({
+    where: { revokedAt: null, expiresAt: { gt: now }, lastActivityAt: { lt: cutoff } },
+    select: { id: true, userId: true },
+  });
+  for (const session of idle) await endIdleSession(session);
+  return idle.length;
 }
 
 export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: string | null = null) {
@@ -162,7 +213,14 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
     throw Errors.unauthorized("Sessao expirada, faca login novamente");
   }
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { whatsappConnection: true } });
+  // Background requests keep refreshing an open tab forever; only real use (lastActivityAt) keeps it alive.
+  const cutoff = await idleCutoff();
+  if (cutoff && stored.lastActivityAt < cutoff) {
+    await endIdleSession(stored);
+    throw Errors.unauthorized("Sessão encerrada por inatividade. Faça login novamente.");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { whatsappConnection: true, pauseReason: true } });
   if (!user || user.status === "INACTIVE") throw Errors.unauthorized("Sessao invalida");
 
   // Same reasoning as login()'s own check — a session must not outlive the
@@ -189,6 +247,8 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
       userId: user.id,
       tokenHash: hashToken(newRefreshToken),
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
+      // A refresh is the browser renewing its token, not the person using the system.
+      lastActivityAt: stored.lastActivityAt,
     },
   });
 
@@ -203,12 +263,13 @@ export async function logout(refreshToken: string | undefined, userId: string, i
       data: { revokedAt: new Date() },
     });
   }
-  await prisma.user.update({ where: { id: userId }, data: { presence: "OFFLINE" } }).catch(() => undefined);
+  await prisma.user.update({ where: { id: userId }, data: { presence: "OFFLINE", pauseReasonId: null, pausedAt: null } }).catch(() => undefined);
+  await queueMayMove(userId);
   await writeAudit({ userId, action: "LOGOUT", entity: "User", entityId: userId, ipAddress: ip });
 }
 
 export async function requestPasswordReset(email: string): Promise<{ token: string; emailSent: boolean } | null> {
-  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  const user = await prisma.user.findFirst({ where: { email: email.toLowerCase(), status: "ACTIVE" } });
   // Always behave the same way regardless of whether the user exists, to
   // avoid leaking which e-mails are registered (both in the response body
   // and, approximately, in timing — see the dummy work on the not-found path).

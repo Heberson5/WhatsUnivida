@@ -6,7 +6,7 @@ import path from "node:path";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { __getProviderForTests } from "../src/modules/whatsapp/whatsapp.service";
-import type { MockWhatsAppProvider } from "@whatsunivida/whatsapp";
+import type { MockWhatsAppProvider } from "@whatsatendende/whatsapp";
 import { resetDatabase, createTestUser, createWaitingConversation, TEST_PASSWORD } from "./helpers";
 import { env } from "../src/config/env";
 

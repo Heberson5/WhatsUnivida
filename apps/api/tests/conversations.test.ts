@@ -52,6 +52,23 @@ describe("conversation queue and acceptance", () => {
     expect(assignments).toHaveLength(1);
   });
 
+  it("refuses to let a paused (AWAY) agent accept a new conversation, leaving it unassigned for someone else", async () => {
+    await createTestUser({ email: "joao@test.dev", role: "AGENT", displayName: "Joao", whatsappConnectionId: connectionId });
+    const joaoToken = await loginAs("joao@test.dev");
+    // login always sets presence ONLINE (proof of life) — pause happens as
+    // its own step afterwards, same as the real pause-button flow.
+    await prisma.user.updateMany({ where: { email: "joao@test.dev" }, data: { presence: "AWAY" } });
+    const { conversation } = await createWaitingConversation("5511999990099", connectionId);
+
+    const res = await request(app).post(`/api/conversations/${conversation.id}/accept`).set("Authorization", `Bearer ${joaoToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/pausado/i);
+
+    const persisted = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(persisted.status).toBe("WAITING");
+    expect(persisted.assignedAgentId).toBeNull();
+  });
+
   it("orders the queue by most recent message, not by when it first entered the queue", async () => {
     await createTestUser({ email: "joao@test.dev", role: "AGENT", displayName: "Joao", whatsappConnectionId: connectionId });
     const token = await loginAs("joao@test.dev");
@@ -202,7 +219,7 @@ describe("conversation queue and acceptance", () => {
 
     const reverted = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
     expect(reverted.status).toBe("IN_PROGRESS");
-    expect(reverted.assignedAgentId).toBe((await prisma.user.findUniqueOrThrow({ where: { email: "joao@test.dev" } })).id);
+    expect(reverted.assignedAgentId).toBe((await prisma.user.findFirstOrThrow({ where: { email: "joao@test.dev" } })).id);
     expect(reverted.pendingTransferDeadline).toBeNull();
   });
 

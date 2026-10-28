@@ -88,4 +88,20 @@ describe("presence tracking — reflects whether the browser is actually still c
 
     expect(await getPresence(user.id)).toBe("ONLINE");
   });
+
+  it("uma pausa continua depois de fechar o sistema (almoço) e ao voltar — só termina no Retomar", async () => {
+    const reason = await prisma.pauseReason.create({ data: { name: "Almoço" } });
+    const user = await createTestUser({ email: "pausa@test.dev", role: "AGENT", presence: "OFFLINE" });
+    await registerConnection(user.id, "socket-1");
+    await prisma.user.update({ where: { id: user.id }, data: { presence: "AWAY", pauseReasonId: reason.id, pausedAt: new Date() } });
+
+    registerDisconnection(user.id, "socket-1", GRACE_MS); // closed the laptop
+    await wait(WAIT_MS);
+    const away = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(away.presence).toBe("AWAY");
+    expect(away.pauseReasonId).toBe(reason.id);
+
+    await registerConnection(user.id, "socket-2"); // back from lunch
+    expect(await getPresence(user.id)).toBe("AWAY");
+  });
 });

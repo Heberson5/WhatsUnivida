@@ -14,13 +14,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: whatsunivida
-          POSTGRES_PASSWORD: whatsunivida
-          POSTGRES_DB: whatsunivida_test
+          POSTGRES_USER: whatsatendende
+          POSTGRES_PASSWORD: whatsatendende
+          POSTGRES_DB: whatsatendende_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U whatsunivida"
+          --health-cmd "pg_isready -U whatsatendende"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -48,7 +48,7 @@ jobs:
         run: npx prisma migrate deploy
         working-directory: apps/api
         env:
-          DATABASE_URL: postgresql://whatsunivida:whatsunivida@localhost:5432/whatsunivida_test
+          DATABASE_URL: postgresql://whatsatendende:whatsatendende@localhost:5432/whatsatendende_test
 
       - name: Lint (api)
         run: npm run lint -w apps/api

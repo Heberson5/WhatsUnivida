@@ -79,3 +79,56 @@ describe("settings.service — SMTP password is never stored in plain text", () 
     expect(masked.hasPassword).toBe(true);
   });
 });
+
+describe("settings.service — Meta (Instagram/Messenger) app secrets are never stored in plain text", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("encrypts appSecret/pageAccessToken/igAccessToken before writing SystemSetting", async () => {
+    await settingsService.updateMetaSettings({ appId: "123456", appSecret: "app-secret-value", pageAccessToken: "page-token-value", igAccessToken: "ig-token-value" });
+
+    const row = await prisma.systemSetting.findUniqueOrThrow({ where: { key: "meta" } });
+    const stored = row.value as { appSecret: string; pageAccessToken: string; igAccessToken: string };
+    expect(stored.appSecret).toMatch(/^enc:v1:/);
+    expect(stored.pageAccessToken).toMatch(/^enc:v1:/);
+    expect(stored.igAccessToken).toMatch(/^enc:v1:/);
+
+    const settings = await settingsService.getMetaSettings();
+    expect(settings.appSecret).toBe("app-secret-value");
+    expect(settings.pageAccessToken).toBe("page-token-value");
+    expect(settings.igAccessToken).toBe("ig-token-value");
+  });
+
+  it("re-saving one field (e.g. appId) without resending a secret keeps the existing secret, not blank", async () => {
+    await settingsService.updateMetaSettings({ appId: "111", pageAccessToken: "keep-me" });
+    await settingsService.updateMetaSettings({ appId: "222" });
+    const settings = await settingsService.getMetaSettings();
+    expect(settings.appId).toBe("222");
+    expect(settings.pageAccessToken).toBe("keep-me");
+  });
+
+  it("never echoes any secret back in the masked settings, only hasX booleans", async () => {
+    await settingsService.updateMetaSettings({ appSecret: "x", pageAccessToken: "y", igAccessToken: "z" });
+    const masked = await settingsService.getMetaSettingsMasked();
+    expect(masked).not.toHaveProperty("appSecret");
+    expect(masked).not.toHaveProperty("pageAccessToken");
+    expect(masked).not.toHaveProperty("igAccessToken");
+    expect(masked.hasAppSecret).toBe(true);
+    expect(masked.hasPageAccessToken).toBe(true);
+    expect(masked.hasIgAccessToken).toBe(true);
+  });
+
+  it("keeps every MetaConnection's status in sync with whether its channel has an access token configured", async () => {
+    const messenger = await prisma.metaConnection.create({ data: { channel: "MESSENGER", name: "Página", externalPageId: "p1", status: "DISCONNECTED" } });
+    const instagram = await prisma.metaConnection.create({ data: { channel: "INSTAGRAM", name: "Perfil", externalPageId: "i1", status: "DISCONNECTED" } });
+
+    await settingsService.updateMetaSettings({ pageAccessToken: "token" });
+    expect((await prisma.metaConnection.findUniqueOrThrow({ where: { id: messenger.id } })).status).toBe("CONNECTED");
+    expect((await prisma.metaConnection.findUniqueOrThrow({ where: { id: instagram.id } })).status).toBe("DISCONNECTED");
+  });
+});

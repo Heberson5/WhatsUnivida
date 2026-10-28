@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+
+// Starting a conversation now asks WhatsApp whether the number exists — answered "yes" here, these tests are about other things.
+vi.mock("../src/modules/whatsapp/whatsapp.service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/modules/whatsapp/whatsapp.service")>();
+  return { ...actual, lookupNumber: vi.fn(async (_connectionId: string, phone: string) => ({ phone })) };
+});
 import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
@@ -66,5 +72,24 @@ describe("message attachment download", () => {
 
     const res = await request(app).get(`/api/messages/attachments/${attachmentId}/download?token=${outsiderToken}`);
     expect(res.status).toBe(403);
+  });
+
+  it("lets an agent open the files of the contact's earlier conversations, which are shown in the same chat history", async () => {
+    // Joao attended the contact, sent a photo and closed; Maria then starts a new conversation with the same number.
+    const { accessToken: joaoToken, attachmentId } = await sendAnImage("joao5@test.dev");
+    const oldConversation = await prisma.conversation.findFirstOrThrow();
+    await request(app).post(`/api/conversations/${oldConversation.id}/close`).set("Authorization", `Bearer ${joaoToken}`);
+
+    await createTestUser({ email: "maria@test.dev", role: "AGENT", displayName: "Maria", whatsappConnectionId: connectionId });
+    const { accessToken: mariaToken } = await loginAs("maria@test.dev");
+    const started = await request(app)
+      .post("/api/conversations/start")
+      .set("Authorization", `Bearer ${mariaToken}`)
+      .send({ phone: "5511990009999", whatsappConnectionId: connectionId });
+    expect(started.status).toBe(201);
+
+    const res = await request(app).get(`/api/messages/attachments/${attachmentId}/download?token=${mariaToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.toString()).toBe("fake-png-bytes");
   });
 });

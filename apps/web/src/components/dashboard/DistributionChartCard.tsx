@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { BarChart3, ChartPie, CircleDot } from "lucide-react";
 import { ChartTypeMenu } from "./ChartTypeMenu";
-import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, darken, gradientId, lighten } from "../../lib/chart-theme";
+import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, CHART_TOOLTIP_PROPS, darken, gradientId, lighten } from "../../lib/chart-theme";
 
 type DistributionKind = "donut" | "pie" | "bar";
 
@@ -78,7 +78,7 @@ export function DistributionChartCard({
               </defs>
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip />
+              <Tooltip {...CHART_TOOLTIP_PROPS} />
               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                 {data.map((entry, i) => (
                   <Cell key={entry.name} fill={`url(#${linearIds[i % linearIds.length]})`} />
@@ -110,7 +110,7 @@ export function DistributionChartCard({
                 ))}
               </Pie>
               <Legend verticalAlign="bottom" height={24} wrapperStyle={{ fontSize: 12 }} />
-              <Tooltip />
+              <Tooltip {...CHART_TOOLTIP_PROPS} />
             </PieChart>
           )}
         </ResponsiveContainer>

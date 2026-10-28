@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Send, Tag } from "lucide-react";
+import { PERMISSION } from "@whatsatendende/types";
+import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
 
 type EmailTemplateType = "PASSWORD_RESET" | "USER_WELCOME" | "USER_DEACTIVATED" | "PASSWORD_CHANGED";
 
@@ -44,6 +47,7 @@ type FocusableField = "subject" | "title" | "bodyText";
 
 export function EmailTemplatesPanel() {
   const queryClient = useQueryClient();
+  const canEditar = useAuthStore((s) => s.permissions?.[PERMISSION.CONFIGURACOES_EMAIL_MODELOS_EDITAR]);
   const [type, setType] = useState<EmailTemplateType>("PASSWORD_RESET");
 
   const { data } = useQuery({
@@ -63,14 +67,24 @@ export function EmailTemplatesPanel() {
   const current = data?.templates[type];
   const hasButton = data?.hasButton[type] ?? false;
 
-  useEffect(() => {
+  function resetToSaved() {
     if (!current) return;
     setEnabled(current.enabled);
     setSubject(current.subject);
     setTitle(current.title);
     setBodyText(current.bodyText);
     setButtonText(current.buttonText);
-  }, [current, type]);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(resetToSaved, [current, type]);
+
+  const dirty =
+    Boolean(current) &&
+    (enabled !== current!.enabled ||
+      subject !== current!.subject ||
+      title !== current!.title ||
+      bodyText !== current!.bodyText ||
+      buttonText !== current!.buttonText);
 
   const saveMutation = useMutation({
     mutationFn: () => api.patch(`/settings/email-templates/${type}`, { enabled, subject, title, bodyText, buttonText }),
@@ -204,29 +218,32 @@ export function EmailTemplatesPanel() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-            <button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60"
-            >
-              Salvar modelo
-            </button>
-            <input
-              type="email"
-              value={testTo}
-              onChange={(e) => setTestTo(e.target.value)}
-              placeholder="Enviar teste para..."
-              className="focus-ring min-w-[180px] flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm"
-            />
-            <button
-              onClick={() => testMutation.mutate()}
-              disabled={!testTo || testMutation.isPending}
-              className="focus-ring flex items-center gap-1.5 rounded-card border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:opacity-60"
-            >
-              <Send className="h-4 w-4" /> {testMutation.isPending ? "Enviando..." : "Testar"}
-            </button>
-          </div>
+          {canEditar && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              <button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+                className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60"
+              >
+                Salvar modelo
+              </button>
+              <input
+                type="email"
+                autoComplete="off"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="Enviar teste para..."
+                className="focus-ring min-w-[180px] flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm"
+              />
+              <button
+                onClick={() => testMutation.mutate()}
+                disabled={!testTo || testMutation.isPending}
+                className="focus-ring flex items-center gap-1.5 rounded-card border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:opacity-60"
+              >
+                <Send className="h-4 w-4" /> {testMutation.isPending ? "Enviando..." : "Testar"}
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -239,6 +256,7 @@ export function EmailTemplatesPanel() {
           />
         </div>
       </div>
+      {canEditar && <UnsavedChangesBar dirty={dirty} saving={saveMutation.isPending} onSave={() => saveMutation.mutate()} onDiscard={resetToSaved} />}
     </div>
   );
 }

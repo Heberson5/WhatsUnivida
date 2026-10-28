@@ -1,12 +1,14 @@
-import type { QuickReplyDTO } from "@whatsunivida/types";
+import type { QuickReplyDTO } from "@whatsatendende/types";
+import { toConnectionScopeDTO } from "../../lib/connection-scope";
+import { toReplyMediaDTO, type ReplyMediaColumns } from "../../lib/reply-media";
 
-interface QuickReplyRow {
+interface QuickReplyRow extends ReplyMediaColumns {
   id: string;
   name: string;
   shortcut: string;
   text: string;
-  whatsappConnectionId: string;
-  whatsappConnection: { id: string; name: string };
+  allConnections: boolean;
+  connections: { id: string; name: string }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,8 +19,8 @@ export function toQuickReplyDTO(row: QuickReplyRow): QuickReplyDTO {
     name: row.name,
     shortcut: row.shortcut,
     text: row.text,
-    whatsappConnectionId: row.whatsappConnectionId,
-    whatsappConnectionName: row.whatsappConnection.name,
+    media: toReplyMediaDTO(row),
+    connectionScope: toConnectionScopeDTO(row),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

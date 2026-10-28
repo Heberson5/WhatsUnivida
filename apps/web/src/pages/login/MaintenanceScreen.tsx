@@ -28,7 +28,7 @@ export function MaintenanceScreen({ message, onAdminAccess }: { message: string 
     <div
       onPointerMove={handlePointerMove}
       onPointerLeave={() => setTilt({ x: 0, y: 0 })}
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#05060f] px-4 py-10"
+      className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#05060f] px-4 py-10"
       style={{ perspective: "1400px" }}
     >
       <MaintenanceScreenStyles />

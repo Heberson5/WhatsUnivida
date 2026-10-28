@@ -15,11 +15,11 @@ import {
 } from "recharts";
 import { AreaChart as AreaChartIcon, BarChart3, LineChart as LineChartIcon } from "lucide-react";
 import { ChartTypeMenu } from "./ChartTypeMenu";
-import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, darken, gradientId, lighten } from "../../lib/chart-theme";
+import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, CHART_TOOLTIP_PROPS, darken, gradientId, lighten } from "../../lib/chart-theme";
 
-type SeriesKind = "bar" | "line" | "area";
+export type SeriesKind = "bar" | "line" | "area";
 
-const KIND_OPTIONS = [
+export const SERIES_KIND_OPTIONS = [
   { key: "bar" as const, label: "Barras", icon: BarChart3 },
   { key: "line" as const, label: "Linha", icon: LineChartIcon },
   { key: "area" as const, label: "Área", icon: AreaChartIcon },
@@ -30,6 +30,19 @@ interface Series {
   name: string;
   color: string;
 }
+
+// Recharts hides overlapping tick labels by default (interval="preserveEnd"),
+// which is exactly why some agent names used to vanish from this axis —
+// see PROMPT: "não está aparecendo os nomes de algumas atendentes". interval=0
+// forces every category to render; angling the text lets names that would
+// otherwise collide fit side by side instead of being dropped.
+const CATEGORY_AXIS_PROPS = {
+  tick: { fontSize: 11 },
+  interval: 0 as const,
+  angle: -35,
+  textAnchor: "end" as const,
+  height: 56,
+};
 
 /**
  * "Atendimentos por atendente" — the Dashboard's one multi-series card —
@@ -63,7 +76,7 @@ export function SeriesChartCard({
     <div className={`rounded-card border border-border bg-surface p-4 ${CHART_CARD_SHADOW}`}>
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-medium text-muted">{title}</p>
-        <ChartTypeMenu value={kind} onChange={setKind} options={KIND_OPTIONS} />
+        <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} />
       </div>
 
       {data.length === 0 ? (
@@ -71,7 +84,7 @@ export function SeriesChartCard({
       ) : (
         <ResponsiveContainer width="100%" height={height}>
           {kind === "bar" ? (
-            <BarChart data={data} style={{ filter: CHART_DEPTH_FILTER }}>
+            <BarChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
               <defs>
                 {series.map((s, i) => (
                   <linearGradient key={barIds[i]} id={barIds[i]} x1="0" y1="0" x2="0" y2="1">
@@ -81,20 +94,20 @@ export function SeriesChartCard({
                 ))}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey={categoryKey} tick={{ fontSize: 12 }} />
+              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip />
+              <Tooltip {...CHART_TOOLTIP_PROPS} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {series.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} name={s.name} fill={`url(#${barIds[i]})`} radius={[4, 4, 0, 0]} />
               ))}
             </BarChart>
           ) : kind === "line" ? (
-            <LineChart data={data} style={{ filter: CHART_DEPTH_FILTER }}>
+            <LineChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey={categoryKey} tick={{ fontSize: 12 }} />
+              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip />
+              <Tooltip {...CHART_TOOLTIP_PROPS} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {series.map((s) => (
                 <Line
@@ -110,7 +123,7 @@ export function SeriesChartCard({
               ))}
             </LineChart>
           ) : (
-            <AreaChart data={data} style={{ filter: CHART_DEPTH_FILTER }}>
+            <AreaChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
               <defs>
                 {series.map((s, i) => (
                   <linearGradient key={areaIds[i]} id={areaIds[i]} x1="0" y1="0" x2="0" y2="1">
@@ -120,9 +133,9 @@ export function SeriesChartCard({
                 ))}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey={categoryKey} tick={{ fontSize: 12 }} />
+              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip />
+              <Tooltip {...CHART_TOOLTIP_PROPS} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {series.map((s, i) => (
                 <Area

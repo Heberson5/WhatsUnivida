@@ -3,7 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { withSenderPrefix, __getProviderForTests } from "../src/modules/whatsapp/whatsapp.service";
-import type { MockWhatsAppProvider } from "@whatsunivida/whatsapp";
+import type { MockWhatsAppProvider } from "@whatsatendende/whatsapp";
 import { resetDatabase, createTestUser, createWaitingConversation, TEST_PASSWORD } from "./helpers";
 
 const app = createApp();

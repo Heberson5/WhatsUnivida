@@ -27,7 +27,7 @@ describe("LoginPage", () => {
     useAuthStore.setState({ accessToken: null, user: null, hydrated: true });
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === "/settings/maintenance") return Promise.resolve({ data: { enabled: false, message: null } }) as never;
-      return Promise.resolve({ data: { companyName: "WhatsUnivida", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
+      return Promise.resolve({ data: { companyName: "WhatsAtendende", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
     });
     vi.mocked(api.post).mockReset();
   });
@@ -58,7 +58,7 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /entrar/i }));
 
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBe("token-123"));
-    expect(api.post).toHaveBeenCalledWith("/auth/login", { email: "admin@test.dev", password: "***REMOVIDO***" });
+    expect(api.post).toHaveBeenCalledWith("/auth/login", expect.objectContaining({ email: "admin@test.dev", password: "***REMOVIDO***" }));
   });
 
   it("shows an error message when login fails", async () => {
@@ -75,7 +75,7 @@ describe("LoginPage", () => {
   it("shows the maintenance screen instead of the login form when maintenance mode is on, with the admin's custom message", async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === "/settings/maintenance") return Promise.resolve({ data: { enabled: true, message: "Voltamos às 14h." } }) as never;
-      return Promise.resolve({ data: { companyName: "WhatsUnivida", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
+      return Promise.resolve({ data: { companyName: "WhatsAtendende", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
     });
 
     renderLoginPage();
@@ -87,7 +87,7 @@ describe("LoginPage", () => {
   it("lets an admin reveal the normal login form from the maintenance screen via 'Acesso administrativo'", async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === "/settings/maintenance") return Promise.resolve({ data: { enabled: true, message: null } }) as never;
-      return Promise.resolve({ data: { companyName: "WhatsUnivida", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
+      return Promise.resolve({ data: { companyName: "WhatsAtendende", primaryColor: "#0097B4", secondaryColor: "#FFE450", logoUrl: null, faviconUrl: null } }) as never;
     });
 
     renderLoginPage();

@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -22,7 +22,31 @@ import { whatsappRouter } from "./modules/whatsapp/whatsapp.routes";
 import { profileRouter } from "./modules/profile/profile.routes";
 import { permissionsRouter } from "./modules/permissions/permissions.routes";
 import { quickRepliesRouter } from "./modules/quick-replies/quick-replies.routes";
+import { closingMessagesRouter } from "./modules/closing-messages/closing-messages.routes";
+import { queueWaitMessagesRouter } from "./modules/queue-wait-messages/queue-wait-messages.routes";
+import { birthdayMessagesRouter } from "./modules/birthdays/birthdays.routes";
+import { backupRouter } from "./modules/backup/backup.routes";
+import { autoMessageTemplatesRouter } from "./modules/auto-message-templates/auto-message-templates.routes";
+import { satisfactionRouter } from "./modules/satisfaction/satisfaction.routes";
+import { workSchedulesRouter } from "./modules/work-schedules/work-schedules.routes";
+import { columnViewsRouter } from "./modules/column-views/column-views.routes";
+import { agentToolsRouter } from "./modules/agent-tools/agent-tools.routes";
+import { goalsRouter } from "./modules/goals/goals.routes";
+import { dataSourcesRouter } from "./modules/data-sources/data-sources.routes";
+import { boletosRouter } from "./modules/boletos/boletos.routes";
+import { internalChatRouter } from "./modules/internal-chat/internal-chat.routes";
+import { contactsRouter } from "./modules/contacts/contacts.routes";
+import { linkPreviewRouter } from "./modules/link-preview/link-preview.routes";
+import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
+import { metaRouter } from "./modules/meta/meta.routes";
+import { writingAssistRouter } from "./modules/writing-assist/writing-assist.routes";
+import { messageTemplatesRouter } from "./modules/message-templates/message-templates.routes";
+import { pauseReasonsRouter } from "./modules/pause-reasons/pause-reasons.routes";
+import { clientPanelRouter, tagsRouter } from "./modules/client-panel/client-panel.routes";
+import { flowsRouter } from "./modules/flows/flows.routes";
+import { releaseNotesRouter } from "./modules/release-notes/release-notes.routes";
+import { groupsRouter } from "./modules/groups/groups.routes";
 
 export function createApp() {
   const app = express();
@@ -31,9 +55,10 @@ export function createApp() {
   // this is set, removing a free hint of the backend stack to a scanner.
   app.disable("x-powered-by");
 
-  // Only meaningful (and only safe) when a trusted reverse proxy is the
-  // sole path to this process — see the TRUST_PROXY comment in env.ts/.env.example.
-  if (env.TRUST_PROXY) app.set("trust proxy", 1);
+  // The visitor's real IP (Auditoria, rate limiting) comes in X-Forwarded-For from the proxies in front of the API:
+  // the web container's nginx and, on a VPS, the host's HTTPS proxy. Only hops on private/loopback addresses are
+  // trusted, so a client reaching the API directly from the internet still can't fake its IP with that header.
+  app.set("trust proxy", "loopback, linklocal, uniquelocal");
 
   app.use(
     helmet({
@@ -61,7 +86,21 @@ export function createApp() {
     })
   );
   app.use(compression());
-  app.use(express.json({ limit: "2mb" }));
+  app.use(
+    express.json({
+      limit: "2mb",
+      // Captures the exact bytes received, alongside the normal parsed
+      // body — the Meta webhook needs this to verify X-Hub-Signature-256
+      // (see modules/meta/meta.routes.ts). Every other route ignores it.
+      // body-parser's verify callback types `req` as the bare Node
+      // http.IncomingMessage (it's framework-agnostic), not Express's own
+      // augmented Request — cast to reach the rawBody field declared in
+      // middleware/auth.ts's Express.Request augmentation.
+      verify: (req, _res, buf) => {
+        (req as Request).rawBody = buf;
+      },
+    })
+  );
   app.use(cookieParser());
   app.use(
     pinoHttp({
@@ -90,6 +129,8 @@ export function createApp() {
   app.use("/uploads/branding", express.static(path.join(env.UPLOAD_DIR, "branding")));
   app.use("/uploads/profile", express.static(path.join(env.UPLOAD_DIR, "profile")));
   app.use("/uploads/contacts", express.static(path.join(env.UPLOAD_DIR, "contacts")));
+  app.use("/uploads/message-templates", express.static(path.join(env.UPLOAD_DIR, "message-templates")));
+  app.use("/uploads/release-notes", express.static(path.join(env.UPLOAD_DIR, "release-notes")));
 
   app.get("/api/health", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
@@ -97,16 +138,41 @@ export function createApp() {
   app.use("/api/users", usersRouter);
   app.use("/api/agents", agentsRouter);
   app.use("/api/conversations", conversationsRouter);
+  app.use("/api/conversations", clientPanelRouter);
+  app.use("/api/tags", tagsRouter);
+  app.use("/api/contacts", contactsRouter);
+  app.use("/api/link-preview", linkPreviewRouter);
   app.use("/api/messages", messagesRouter);
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/reports", reportsRouter);
+  app.use("/api/settings/backup", backupRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/audit-logs", auditRouter);
   app.use("/api/whatsapp", whatsappRouter);
+  app.use("/api/message-templates", messageTemplatesRouter);
   app.use("/api/profile", profileRouter);
   app.use("/api/permissions", permissionsRouter);
   app.use("/api/quick-replies", quickRepliesRouter);
+  app.use("/api/closing-messages", closingMessagesRouter);
+  app.use("/api/queue-wait-messages", queueWaitMessagesRouter);
+  app.use("/api/birthday-messages", birthdayMessagesRouter);
+  app.use("/api/auto-message-templates", autoMessageTemplatesRouter);
+  app.use("/api/satisfaction-survey", satisfactionRouter);
+  app.use("/api/work-schedules", workSchedulesRouter);
+  app.use("/api/column-views", columnViewsRouter);
+  app.use("/api/agent-tools", agentToolsRouter);
+  app.use("/api/goals", goalsRouter);
+  app.use("/api/data-sources", dataSourcesRouter);
+  app.use("/api/boletos", boletosRouter);
+  app.use("/api/internal-chat", internalChatRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/holidays", holidaysRouter);
+  app.use("/api/groups", groupsRouter);
+  app.use("/api/meta", metaRouter);
+  app.use("/api/writing-assist", writingAssistRouter);
+  app.use("/api/pause-reasons", pauseReasonsRouter);
+  app.use("/api/flows", flowsRouter);
+  app.use("/api/release-notes", releaseNotesRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: "NOT_FOUND", message: `Rota nao encontrada: ${req.method} ${req.path}` });

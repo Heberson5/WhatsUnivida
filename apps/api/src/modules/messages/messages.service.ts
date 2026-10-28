@@ -4,7 +4,8 @@ import type { MessageType } from "@prisma/client";
 
 const messageInclude = {
   senderAgent: true,
-  attachments: true,
+  // A poll's votes come with it (Enquetes nos grupos).
+  attachments: { include: { pollVotes: true } },
   reactions: { include: { user: true } },
 };
 
@@ -52,12 +53,23 @@ export interface CreateOutboundMessageInput {
   type: MessageType;
   body?: string | null;
   replyToMessageId?: string | null;
+  /** Sent by the system on the agent's behalf (the closing message on Encerrar) — never the agent's first response. */
+  automatic?: boolean;
+  /** "Encaminhar": the original message this one copies. */
+  forwardedFromMessageId?: string;
 }
 
+/**
+ * firstResponseAt — the Dashboard's "1ª resposta" (acceptedAt → this) — is the first message the agent actually
+ * writes. The automatic messages never set it: the acceptance and transfer messages go through
+ * createSystemOutboundMessage, and the closing message passes `automatic`. See PROMPT: "o tempo da primeira
+ * resposta não deve considerar o envio da mensagem de aceite. deve considerar o que o atendente envia depois."
+ */
 export async function createOutboundMessage(input: CreateOutboundMessageInput) {
   const conversation = await prisma.conversation.findUnique({ where: { id: input.conversationId } });
   if (!conversation) throw Errors.notFound("Conversa nao encontrada");
-  if (conversation.assignedAgentId !== input.agentId) throw Errors.forbidden("Esta conversa pertence a outro atendente");
+  // During a Gestão intervention only the person intervening writes; otherwise the assigned agent.
+  if ((conversation.interventionById ?? conversation.assignedAgentId) !== input.agentId) throw Errors.forbidden("Esta conversa pertence a outro atendente");
   if (!["IN_PROGRESS", "TRANSFERRED"].includes(conversation.status)) {
     throw Errors.badRequest("Conversa nao esta em atendimento");
   }
@@ -71,13 +83,66 @@ export async function createOutboundMessage(input: CreateOutboundMessageInput) {
       body: input.body ?? null,
       senderAgentId: input.agentId,
       replyToMessageId: input.replyToMessageId ?? null,
+      forwardedFromMessageId: input.forwardedFromMessageId ?? null,
     },
     include: messageInclude,
   });
 
-  const updates: Record<string, unknown> = { lastMessageAt: new Date(), lastMessageDirection: "OUTBOUND" };
-  if (!conversation.firstResponseAt) updates.firstResponseAt = new Date();
+  const updates: Record<string, unknown> = { lastMessageAt: new Date(), lastMessageDirection: "OUTBOUND", awaitingReplySince: null };
+  if (!conversation.firstResponseAt && !input.automatic) updates.firstResponseAt = new Date();
+  // A message the agent writes restarts the "falta de retorno" countdown from it.
+  if (!input.automatic) Object.assign(updates, { noReturnReminderAt: null, noReturnCloseAt: null });
   await prisma.conversation.update({ where: { id: input.conversationId }, data: updates });
+
+  return message;
+}
+
+export interface CreateSystemOutboundMessageInput {
+  conversationId: string;
+  type: MessageType;
+  body?: string | null;
+  agentId?: string | null;
+  /** The closing message held back until the "Desfazer" window is over is sent to an already-closed conversation. */
+  allowClosed?: boolean;
+}
+
+/**
+ * A message not tied to a specific agent-authored reply in the sense of
+ * createOutboundMessage's ownership check (the auto accept/transfer/close
+ * message can run for whichever agent the operation itself already
+ * resolved — often not "this conversation's assigned agent" at that exact
+ * moment) — but it still carries that agent's name both on the WhatsApp
+ * text prefix (see the caller's use of withSenderPrefix/sendOutboundText)
+ * and on senderAgentId, so the in-app bubble shows the same name badge as
+ * any other reply from them (see MessageBubble's `isOutbound &&
+ * message.senderAgentDisplayName`). Callers that have no specific agent to
+ * attribute it to (there are none today, but the type stays optional
+ * rather than required) leave it null and get no badge.
+ */
+export async function createSystemOutboundMessage(input: CreateSystemOutboundMessageInput) {
+  const conversation = await prisma.conversation.findUnique({ where: { id: input.conversationId } });
+  if (!conversation) throw Errors.notFound("Conversa nao encontrada");
+  const allowedStatuses = input.allowClosed ? ["IN_PROGRESS", "TRANSFERRED", "CLOSED"] : ["IN_PROGRESS", "TRANSFERRED"];
+  if (!allowedStatuses.includes(conversation.status)) {
+    throw Errors.badRequest("Conversa nao esta em atendimento");
+  }
+
+  const message = await prisma.message.create({
+    data: {
+      conversationId: input.conversationId,
+      direction: "OUTBOUND",
+      type: input.type,
+      status: "PENDING",
+      body: input.body ?? null,
+      senderAgentId: input.agentId ?? null,
+    },
+    include: messageInclude,
+  });
+
+  await prisma.conversation.update({
+    where: { id: input.conversationId },
+    data: { lastMessageAt: new Date(), lastMessageDirection: "OUTBOUND", awaitingReplySince: null },
+  });
 
   return message;
 }
@@ -159,7 +224,7 @@ export async function createOutboundMessageFromDevice(input: CreateOutboundMessa
 
   await prisma.conversation.update({
     where: { id: input.conversationId },
-    data: { lastMessageAt: input.timestamp, lastMessageDirection: "OUTBOUND" },
+    data: { lastMessageAt: input.timestamp, lastMessageDirection: "OUTBOUND", awaitingReplySince: null, noReturnReminderAt: null, noReturnCloseAt: null },
   });
 
   return message;
@@ -198,6 +263,9 @@ export async function updateMessageStatusByProviderId(
 ) {
   const message = await prisma.message.findUnique({ where: { providerMessageId } });
   if (!message) return null;
+  // A rejection can show up after the recipient's phone already confirmed the
+  // message — the confirmation wins, a delivered message is never "failed".
+  if (status === "FAILED" && (message.status === "DELIVERED" || message.status === "READ")) return null;
   return prisma.message.update({
     where: { id: message.id },
     data: {
@@ -236,9 +304,16 @@ export async function createInboundMessage(input: CreateInboundMessageInput) {
     include: messageInclude,
   });
 
+  const now = new Date();
   await prisma.conversation.update({
     where: { id: input.conversationId },
-    data: { lastMessageAt: new Date(), lastMessageDirection: "INBOUND" },
+    // The customer answered: no "falta de retorno" countdown, and "Não encerrar automaticamente" has done its job.
+    data: { lastMessageAt: now, lastMessageDirection: "INBOUND", noReturnReminderAt: null, noReturnCloseAt: null, noReturnHold: false },
+  });
+  // Only the first unanswered message starts the "sem resposta" clock.
+  await prisma.conversation.updateMany({
+    where: { id: input.conversationId, awaitingReplySince: null },
+    data: { awaitingReplySince: now },
   });
 
   return message;
@@ -257,29 +332,78 @@ export async function addAttachment(
     vcard?: string;
     pollQuestion?: string;
     pollOptions?: string[];
+    pollSelectableCount?: number;
+    pollSecret?: string | null;
+    pollCreatorJid?: string | null;
     eventName?: string;
     eventDescription?: string;
     eventStartAt?: Date;
     eventJoinLink?: string;
+    isGif?: boolean;
   }
 ) {
   return prisma.messageAttachment.create({ data: { messageId, ...attachment } });
 }
 
 export async function toggleReaction(messageId: string, userId: string, emoji: string | null) {
-  const existing = await prisma.messageReaction.findFirst({ where: { messageId, userId, fromCustomer: false } });
+  const mine = { messageId, userId, fromCustomer: false };
 
   if (!emoji) {
-    if (existing) await prisma.messageReaction.delete({ where: { id: existing.id } });
+    await prisma.messageReaction.deleteMany({ where: mine });
     return prisma.message.findUniqueOrThrow({ where: { id: messageId }, include: messageInclude });
   }
 
-  if (existing) {
-    await prisma.messageReaction.update({ where: { id: existing.id }, data: { emoji } });
-  } else {
-    await prisma.messageReaction.create({ data: { messageId, userId, emoji, fromCustomer: false } });
+  // One row per agent per message (the unique key) — set in one statement so a double click can't leave two.
+  try {
+    await prisma.messageReaction.upsert({
+      where: { messageId_userId_fromCustomer: mine },
+      update: { emoji },
+      create: { ...mine, emoji },
+    });
+  } catch (err) {
+    // Two requests created it at the same moment: the second just updates the row the first made.
+    if ((err as { code?: string }).code !== "P2002") throw err;
+    await prisma.messageReaction.updateMany({ where: mine, data: { emoji } });
   }
   return prisma.message.findUniqueOrThrow({ where: { id: messageId }, include: messageInclude });
+}
+
+/**
+ * The customer's reaction to a message (null = they took it back): replaces the
+ * one they had, so a message never carries two from the same customer.
+ *
+ * Their rows have no user (userId is NULL), which the table's unique key can't
+ * police — NULLs never compare equal in Postgres — so this is serialized per
+ * message instead. Delete-then-create on its own is not atomic: the same event
+ * arriving twice at once, or a reaction changed twice inside one Baileys batch,
+ * both deleted nothing and both created, leaving two.
+ */
+export async function setCustomerReaction(messageId: string, emoji: string | null): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('message-reaction'), hashtext(${messageId}))`;
+    await tx.messageReaction.deleteMany({ where: { messageId, fromCustomer: true } });
+    if (emoji) await tx.messageReaction.create({ data: { messageId, emoji, fromCustomer: true } });
+  });
+}
+
+/**
+ * A group participant's reaction: one per participant, like WhatsApp — a new one replaces theirs, null takes it back.
+ * Serialized per message the same way as setCustomerReaction.
+ */
+export async function setParticipantReaction(
+  messageId: string,
+  participant: { jid: string; name: string | null; phone: string | null },
+  emoji: string | null
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('message-reaction'), hashtext(${messageId}))`;
+    await tx.messageReaction.deleteMany({ where: { messageId, fromCustomer: true, participantJid: participant.jid } });
+    if (emoji) {
+      await tx.messageReaction.create({
+        data: { messageId, emoji, fromCustomer: true, participantJid: participant.jid, participantName: participant.name, participantPhone: participant.phone },
+      });
+    }
+  });
 }
 
 export async function getMessageWithConversation(messageId: string) {

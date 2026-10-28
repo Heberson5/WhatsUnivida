@@ -20,21 +20,18 @@ describe("self-service profile", () => {
     await prisma.$disconnect();
   });
 
-  it("lets a user update their own name and see it reflected on /profile", async () => {
+  it("does not let a user rename themselves — only Usuários changes the name", async () => {
     await createTestUser({ email: "joao@test.dev", role: "AGENT", displayName: "Joao" });
     const token = await loginAs("joao@test.dev");
 
     const res = await request(app)
       .patch("/api/profile")
       .set("Authorization", `Bearer ${token}`)
-      .send({ fullName: "Joao Silva", displayName: "Joao S." });
-
-    expect(res.status).toBe(200);
-    expect(res.body.fullName).toBe("Joao Silva");
-    expect(res.body.displayName).toBe("Joao S.");
+      .send({ fullName: "Outra Pessoa", displayName: "Outra" });
+    expect(res.status).toBe(404);
 
     const fetched = await request(app).get("/api/profile").set("Authorization", `Bearer ${token}`);
-    expect(fetched.body.displayName).toBe("Joao S.");
+    expect(fetched.body.displayName).toBe("Joao");
   });
 
   it("changes the user's own password only with the correct current password, and revokes other sessions", async () => {

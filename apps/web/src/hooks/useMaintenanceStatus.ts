@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { MaintenanceSettingsDTO } from "@whatsunivida/types";
+import type { MaintenanceSettingsDTO } from "@whatsatendende/types";
 import { api } from "../lib/api";
 
 /**

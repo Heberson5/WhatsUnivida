@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { PERMISSION } from "@whatsunivida/types";
+import { PERMISSION } from "@whatsatendende/types";
 import { ProtectedRoute, PermissionRoute } from "./ProtectedRoute";
 import { useAuthStore } from "../../store/auth-store";
 
@@ -46,6 +46,8 @@ describe("ProtectedRoute", () => {
         status: "ACTIVE",
         presence: "ONLINE",
         createdAt: "",
+      deactivatedAt: null,
+      deactivatedByName: null,
         lastAccessAt: null,
         whatsappConnectionId: null,
         whatsappConnectionName: null,
@@ -54,6 +56,17 @@ describe("ProtectedRoute", () => {
         workCity: null,
         accessSchedule: null,
         photoUrl: null,
+        pauseReasonId: null,
+        pauseReasonName: null,
+        pausedAt: null,
+        presenceChartStartHour: null,
+        presenceChartEndHour: null,
+      arrivalsChartStartHour: null,
+      arrivalsChartEndHour: null,
+        releaseNotesSeenVersion: null,
+      soundNewMessage: true,
+      soundNewQueue: true,
+      soundVolume: 70,
       },
       hydrated: true,
     });
@@ -82,6 +95,8 @@ describe("ProtectedRoute", () => {
         status: "ACTIVE",
         presence: "ONLINE",
         createdAt: "",
+      deactivatedAt: null,
+      deactivatedByName: null,
         lastAccessAt: null,
         whatsappConnectionId: null,
         whatsappConnectionName: null,
@@ -90,15 +105,26 @@ describe("ProtectedRoute", () => {
         workCity: null,
         accessSchedule: null,
         photoUrl: null,
+        pauseReasonId: null,
+        pauseReasonName: null,
+        pausedAt: null,
+        presenceChartStartHour: null,
+        presenceChartEndHour: null,
+      arrivalsChartStartHour: null,
+      arrivalsChartEndHour: null,
+        releaseNotesSeenVersion: null,
+      soundNewMessage: true,
+      soundNewQueue: true,
+      soundVolume: 70,
       },
-      permissions: { [PERMISSION.USUARIOS_GERENCIAR]: false } as never,
+      permissions: { [PERMISSION.USUARIOS_VISUALIZAR]: false } as never,
       hydrated: true,
     });
     render(
       <MemoryRouter initialEntries={["/usuarios"]}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route element={<PermissionRoute permission={PERMISSION.USUARIOS_GERENCIAR} />}>
+          <Route element={<PermissionRoute permission={PERMISSION.USUARIOS_VISUALIZAR} />}>
             <Route path="/usuarios" element={<Secret />} />
           </Route>
         </Routes>

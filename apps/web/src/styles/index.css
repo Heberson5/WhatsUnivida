@@ -17,6 +17,12 @@
   --color-primary-fg: #ffffff;
   --color-secondary: #ffe450;
   --color-secondary-fg: #3a2f00;
+  /* Read-receipt tick color — falls back to the secondary color until
+     useBranding.ts overrides it (readReceiptColor set in Identidade
+     Visual). This fallback alone is what makes the default (no admin
+     configuration at all) already follow the theme instead of a hardcoded
+     blue. */
+  --color-read-receipt: var(--color-secondary);
 
   --color-surface: #ffffff;
   --color-surface-alt: #f4f7f9;
@@ -24,6 +30,25 @@
   --color-muted: #64748b;
   --color-text: #14202b;
   --color-bg: #eef2f4;
+
+  /* Status colors — fixed (not branded) so "online/paused/error" keep the
+     same meaning and contrast whatever primary color Identidade Visual sets. */
+  --color-success: #15803d;
+  --color-success-soft: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-info: #7c3aed;
+  --color-info-soft: #ede9fe;
+
+  /* Sidebar follows the theme: light surface here, dark under .dark. */
+  --color-side: #ffffff;
+  --color-side-hover: #f1f5f8;
+  --color-side-text: #334155;
+  --color-side-muted: #64748b;
+  --color-side-strong: #0b1b26;
+  --color-side-border: #e2e8ec;
   /* Shared "soft depth" used on every card/panel/elevated surface in the app, per design guideline: rounded corners everywhere + a subtle shadow instead of a flat, harsh edge — plus a faint inset top highlight for a slight 3D/embossed feel. */
   --shadow-soft:
     0 1px 2px rgba(15, 23, 42, 0.05),
@@ -44,6 +69,20 @@
   --color-muted: #8b98a5;
   --color-text: #e7edf2;
   --color-bg: #0b0f14;
+  --color-success: #4ade80;
+  --color-success-soft: rgba(34, 197, 94, 0.14);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(245, 158, 11, 0.15);
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(239, 68, 68, 0.15);
+  --color-info: #a78bfa;
+  --color-info-soft: rgba(139, 92, 246, 0.16);
+  --color-side: #0f1a22;
+  --color-side-hover: #1a2833;
+  --color-side-text: #c3ced7;
+  --color-side-muted: #6f8392;
+  --color-side-strong: #ffffff;
+  --color-side-border: rgba(255, 255, 255, 0.1);
   --shadow-soft:
     0 1px 2px rgba(0, 0, 0, 0.4),
     0 8px 20px rgba(0, 0, 0, 0.45);
@@ -53,10 +92,56 @@
   --shadow-inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* color-scheme above is not enough on its own: some browser/OS
+   combinations keep the native <select> popup's *background* on the
+   system's light default while still applying the page's light option
+   `color` — pale text on a white popup, unreadable. Setting
+   background-color/color directly on <option> is the older, far more
+   consistently-supported mechanism (Chromium/Firefox/Edge have honored it
+   for years, unlike color-scheme's auto-theming), so it's used here too
+   as the real fix. See PROMPT: "em todas as listas suspensas... quando
+   está no tema escuro, as letras não aparecem". */
+.dark select {
+  color-scheme: dark;
+}
+.dark option {
+  background-color: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+/* The page itself never scrolls: inside the app only the lists/panels do
+   (each has its own overflow container). In the installed desktop app
+   (PWA), the window's height can round a few pixels differently from
+   100vh, which left the whole document scrollable — scrolling past the end
+   of a list then dragged the entire system along with it. #root is the one
+   scroll container for screens outside the app shell (login on a short
+   window), and overscroll-behavior stops the bounce/chaining to the page. */
 html,
-body,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* On phones the page is pinned too: with a plain overflow:hidden, iOS and
+   Android still let a drag at the end of a list (or inside a drawer/modal)
+   move the whole system. Fixed positioning on body removes that, and
+   contain keeps every inner scroller's drag from chaining to the page. */
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+.overflow-y-auto,
+.overflow-auto {
+  overscroll-behavior-y: contain;
+}
+
 #root {
   height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: none;
 }
 
 body {
@@ -64,6 +149,7 @@ body {
   background-image: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 55%);
   color: var(--color-text);
   font-family:
+    "Inter Variable",
     "Inter",
     system-ui,
     -apple-system,
@@ -80,6 +166,56 @@ body {
 ::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
   border-radius: 8px;
+}
+
+/* Side drawer used by every create/edit form (Usuários, Respostas, Fluxo…):
+   slides in from the right so the list stays visible behind it. The last
+   child (the Cancelar/Salvar row) is pushed to the bottom. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background-color: rgb(0 0 0 / 0.32);
+  animation: backdrop-in 0.15s ease-out;
+}
+.drawer-panel {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  box-shadow: -12px 0 32px rgb(15 23 42 / 0.14);
+  animation: drawer-in 0.2s ease-out;
+}
+.drawer-panel > :last-child {
+  margin-top: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel,
+  .drawer-backdrop {
+    animation: none;
+  }
 }
 
 .focus-ring:focus-visible {
@@ -140,4 +276,140 @@ button.shadow-soft:not(:disabled):hover {
   box-shadow:
     var(--shadow-elevated),
     var(--shadow-inset-highlight);
+}
+
+/* Login screen's background glow blobs (see LoginPage.tsx) — each one
+   travels a wide, irregular path (corner -> near-center -> opposite corner)
+   instead of a small wobble, since a subtle sway was invisible behind the
+   heavy blur. Only ever translation, never rotation — an earlier spinning
+   version read as jarring. Durations/delays are deliberately mismatched per
+   blob so the four never look synchronized. */
+@keyframes login-drift-a {
+  0% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(260px, 140px);
+  }
+  45% {
+    transform: translate(80px, 340px);
+  }
+  70% {
+    transform: translate(340px, 60px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes login-drift-b {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-300px, 180px);
+  }
+  50% {
+    transform: translate(-120px, 380px);
+  }
+  75% {
+    transform: translate(-320px, 80px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes login-drift-c {
+  0% {
+    transform: translate(0, 0);
+  }
+  22% {
+    transform: translate(220px, -200px);
+  }
+  48% {
+    transform: translate(-60px, -360px);
+  }
+  74% {
+    transform: translate(300px, -120px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes login-drift-d {
+  0% {
+    transform: translate(0, 0);
+  }
+  28% {
+    transform: translate(-240px, -160px);
+  }
+  55% {
+    transform: translate(40px, -320px);
+  }
+  80% {
+    transform: translate(-260px, -40px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+.animate-login-drift-a {
+  animation: login-drift-a 26s ease-in-out infinite;
+}
+.animate-login-drift-b {
+  animation: login-drift-b 31s ease-in-out infinite;
+}
+.animate-login-drift-c {
+  animation: login-drift-c 29s ease-in-out infinite;
+  animation-delay: -6s;
+}
+.animate-login-drift-d {
+  animation: login-drift-d 23s ease-in-out infinite;
+  animation-delay: -11s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-login-drift-a,
+  .animate-login-drift-b,
+  .animate-login-drift-c,
+  .animate-login-drift-d {
+    animation: none;
+  }
+}
+
+/* Chat interno ----------------------------------------------------------- */
+@keyframes chat-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-9px) rotate(-0.6deg); }
+  40%, 60% { transform: translateX(9px) rotate(0.6deg); }
+}
+/* "Chamar a atenção": the whole app shakes, like MSN's nudge. */
+.chat-nudge-shake { animation: chat-shake 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both 2; }
+@keyframes chat-flash { 50% { box-shadow: inset 0 0 0 6px var(--color-warning); } }
+.chat-nudge-flash { animation: chat-flash 0.5s ease-in-out 3; }
+@keyframes chat-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.45; } 30% { transform: translateY(-4px); opacity: 1; } }
+.chat-typing-dot { animation: chat-dot 1.2s infinite ease-in-out; }
+.chat-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.chat-pop { animation: chat-pop 0.18s ease-out; }
+@keyframes chat-pulse { 50% { opacity: 0.35; } }
+.chat-pulse { animation: chat-pulse 1s infinite; }
+/* The dotted wallpaper behind messages (chat interno and the customer conversation). */
+.chat-wallpaper {
+  background-color: var(--color-surface-alt);
+  background-image: radial-gradient(color-mix(in srgb, var(--color-primary) 9%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-nudge-shake, .chat-typing-dot, .chat-pop, .chat-pulse { animation: none; }
+}
+
+/* Aniversário do cliente ------------------------------------------------- */
+@keyframes bday-fall { to { transform: translateY(260px) rotate(540deg); opacity: 0; } }
+.bday-confetti i { position: absolute; top: -14px; display: block; width: 7px; height: 12px; border-radius: 2px; animation: bday-fall 3.4s linear 2; opacity: 0.9; }
+@keyframes bday-bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
+.bday-cake { animation: bday-bob 3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .bday-confetti i { display: none; }
+  .bday-cake { animation: none; }
 }

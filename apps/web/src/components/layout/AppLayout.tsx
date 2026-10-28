@@ -4,34 +4,48 @@ import { toast } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { BottomNav } from "./BottomNav";
+import { AppUpdateBanner } from "./AppUpdateBanner";
+import { NewVersionModal } from "./NewVersionModal";
+import { CommandPalette } from "./CommandPalette";
+import { WhatsNewModal } from "./WhatsNewModal";
 import { useAuthStore } from "../../store/auth-store";
 import { useActiveConversationStore } from "../../store/active-conversation-store";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket";
-import { useDesktopNotificationPermission } from "../../hooks/useDesktopNotifications";
 import { useIdleLogout } from "../../hooks/useIdleLogout";
 import { useAccessWindow } from "../../hooks/useAccessWindow";
 import { useSocketEvents } from "../../hooks/useSocketEvents";
+import { useLandingPageSettings } from "../../hooks/useLandingPageSettings";
 
-const TITLES: Record<string, string> = {
+// Exported so LandingPagePage.tsx can list every overridable page title
+// without duplicating (and risking drifting from) this map.
+export const TITLES: Record<string, string> = {
   "/atendimento": "Atendimento",
   "/gestao": "Gestão",
+  "/acompanhar-chat": "Chat interno (gestão)",
+  "/contatos": "Contatos",
   "/dashboard": "Dashboard",
   "/relatorios": "Relatórios",
   "/usuarios": "Usuários",
+  "/conexoes": "Conexões",
   "/configuracoes": "Configurações",
   "/auditoria": "Auditoria",
   "/perfil": "Meu Perfil",
+  "/landing-page": "Landing Page",
+  "/respostas": "Respostas",
+  "/fluxo": "Fluxo",
+  "/etiquetas": "Etiquetas",
+  "/notas-de-versao": "Notas de versão",
 };
 
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const role = useAuthStore((s) => s.user?.role);
   const clearSession = useAuthStore((s) => s.clearSession);
   const activeConversationId = useActiveConversationStore((s) => s.activeConversationId);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useDesktopNotificationPermission();
   useIdleLogout();
   useAccessWindow();
 
@@ -68,13 +82,15 @@ export function AppLayout() {
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const handler = (payload?: { reason?: "ADMIN" | "NEW_LOGIN" | "SCHEDULE" }) => {
+    const handler = (payload?: { reason?: "ADMIN" | "NEW_LOGIN" | "SCHEDULE" | "INACTIVITY" }) => {
       toast.error(
         payload?.reason === "NEW_LOGIN"
           ? "Sua conta foi acessada em outro local. Esta sessão foi encerrada."
           : payload?.reason === "SCHEDULE"
             ? "Sua sessão foi encerrada: fora do horário de acesso permitido ou feriado."
-            : "Sua sessão foi encerrada por um administrador."
+            : payload?.reason === "INACTIVITY"
+              ? "Sessão encerrada por inatividade."
+              : "Sua sessão foi encerrada por um administrador."
       );
       clearSession();
       navigate("/login");
@@ -92,12 +108,18 @@ export function AppLayout() {
     setMobileNavOpen(false);
   }, [location.pathname]);
 
-  const title = TITLES[location.pathname] ?? "WhatsUnivida";
+  const { data: landingPage } = useLandingPageSettings();
+  // Nested pages (e.g. /fluxo/:id) take their section's title.
+  const section = "/" + (location.pathname.split("/")[1] ?? "");
+  const title = landingPage?.pageTitles[location.pathname] || landingPage?.pageTitles[section] || TITLES[location.pathname] || TITLES[section] || "WhatsAtendende";
 
   return (
-    <div className="flex h-screen gap-2 overflow-hidden bg-[var(--color-bg)] p-2 sm:gap-3 sm:p-3">
+    <div className="flex h-full gap-2 overflow-hidden bg-[var(--color-bg)] p-2 sm:gap-3 sm:p-3">
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-card border border-border bg-surface shadow-soft">
+        <AppUpdateBanner />
+        {/* A new version was deployed while this page was open: popup, or a bar while a message is unsent / snoozed. */}
+        <NewVersionModal />
         <Topbar title={title} onMenuClick={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-hidden">
           <Outlet />
@@ -111,6 +133,9 @@ export function AppLayout() {
             navegação". */}
         {!activeConversationId && <BottomNav onMoreClick={() => setMobileNavOpen(true)} />}
       </div>
+      {/* The shortcut search (Ctrl K) is for managers and administrators — see Topbar. */}
+      {(role === "MANAGER" || role === "ADMIN") && <CommandPalette />}
+      <WhatsNewModal />
     </div>
   );
 }

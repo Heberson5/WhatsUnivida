@@ -17,3 +17,8 @@ apps/api/uploads-test/
 *.tsbuildinfo
 .vscode/
 .idea/
+
+# Ferramenta de operacao da VPS - roda so no Windows local de quem
+# administra o servidor e guarda dados sensiveis nas primeiras linhas
+# (IP real, caminho da chave SSH, dominio) - nunca deve ir pro repositorio.
+infrastructure/vps/gerenciador-vps.bat

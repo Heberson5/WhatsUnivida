@@ -1,0 +1,2336 @@
+{
+ "flows": [
+  {
+   "key": "univida-qr",
+   "name": "Univida · QR Code",
+   "description": "Atendimento Univida para conexões por QR Code — opções numeradas.",
+   "nodes": [
+    {
+     "id": "start",
+     "type": "START",
+     "positionX": 0,
+     "positionY": 0,
+     "data": {
+      "outOfHoursPrompt": true,
+      "abandonAfterMinutes": 30
+     }
+    },
+    {
+     "id": "n_start",
+     "type": "MENU",
+     "positionX": 360,
+     "positionY": 120,
+     "data": {
+      "name": "Boas-vindas",
+      "prompt": "Olá! 😊\nQue bom ter você aqui na Univida!\n\nEstamos prontos para cuidar de você, oferecendo o melhor atendimento.\n\nSe desejar que nosso time ligue para você para realizar seu atendimento, escolha a opção *Por Ligação*.\n\nPara começarmos, me informe como deseja ser atendido(a) 👇",
+      "options": [
+       {
+        "id": "start_0",
+        "label": "Por Ligação"
+       },
+       {
+        "id": "start_1",
+        "label": "Pelo WhatsApp"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_porLigacaoResult",
+     "type": "TEXT_MESSAGE",
+     "positionX": 720,
+     "positionY": 240,
+     "data": {
+      "name": "Aviso · Ligação",
+      "text": "Perfeito! 📞\n\nEm alguns instantes, um de nossos atendentes ligará para você neste número.\n\nAté já!"
+     }
+    },
+    {
+     "id": "t_0",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1080,
+     "positionY": 360,
+     "data": {
+      "name": "Ligação",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_menu",
+     "type": "MENU",
+     "positionX": 720,
+     "positionY": 480,
+     "data": {
+      "name": "Menu principal",
+      "prompt": "Tudo bem!\nComo podemos te ajudar hoje?\n\nResponda com o número da opção desejada 👇",
+      "options": [
+       {
+        "id": "menu_0",
+        "label": "Guias ou Ortopédicos"
+       },
+       {
+        "id": "menu_1",
+        "label": "Vendas"
+       },
+       {
+        "id": "menu_2",
+        "label": "Outras Opções"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_guiasOrt",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 600,
+     "data": {
+      "name": "Guias ou Ortopédicos",
+      "prompt": "Você selecionou a opção *Guias ou Ortopédicos*.\n\nResponda com o número da opção desejada 👇",
+      "options": [
+       {
+        "id": "guiasOrt_0",
+        "label": "Guias"
+       },
+       {
+        "id": "guiasOrt_1",
+        "label": "Ortopédicos"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_guias",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 720,
+     "data": {
+      "name": "Guias",
+      "prompt": "Você selecionou a opção *Guias*.\n\nFicamos felizes em te ajudar!\nAgora, responda com o número da opção desejada para continuarmos 👇",
+      "options": [
+       {
+        "id": "guias_0",
+        "label": "Consultas"
+       },
+       {
+        "id": "guias_1",
+        "label": "Exames de Laboratório"
+       },
+       {
+        "id": "guias_2",
+        "label": "Exames de Imagens"
+       }
+      ],
+      "image": {
+       "file": "guias.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_consultasCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 840,
+     "data": {
+      "name": "Cidades · Consultas",
+      "prompt": "Certo!\nVocê selecionou a opção *Consultas*.\n\nAntes de te passar para nosso(a) atendente, me informe em qual localidade você quer se consultar (responda com o número) 👇",
+      "options": [
+       {
+        "id": "consultasCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "consultasCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "consultasCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "consultasCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "consultasCity_4",
+        "label": "Denise"
+       },
+       {
+        "id": "consultasCity_5",
+        "label": "Cuiabá"
+       },
+       {
+        "id": "consultasCity_6",
+        "label": "Outras"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_consultasHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 960,
+     "data": {
+      "name": "Aviso · Consultas",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, tenha em mãos:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Nome do *MÉDICO* com quem deseja se consultar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_1",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2520,
+     "positionY": 1080,
+     "data": {
+      "name": "Guias · Consultas",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_exameLabCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 1200,
+     "data": {
+      "name": "Cidades · Laboratório",
+      "prompt": "Certo! 😊\n\nAgora, antes de te passar para nosso(a) atendente, me informe em qual localidade você quer fazer seus exames de laboratório (responda com o número) 👇",
+      "options": [
+       {
+        "id": "exameLabCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "exameLabCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "exameLabCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "exameLabCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "exameLabCity_4",
+        "label": "Cuiabá"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_labTangara",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1320,
+     "data": {
+      "name": "Laboratórios · Tangará",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Tangará da Serra*.\n\nResponda com o número do que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labTangara_0",
+        "label": "Lab. Alvim"
+       },
+       {
+        "id": "labTangara_1",
+        "label": "Lab. Bioclínica"
+       },
+       {
+        "id": "labTangara_2",
+        "label": "Lab. Indap"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_exameLabHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2520,
+     "positionY": 1440,
+     "data": {
+      "name": "Aviso · Laboratório",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_2",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2880,
+     "positionY": 1560,
+     "data": {
+      "name": "Guias · Exames",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_labBarra",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1680,
+     "data": {
+      "name": "Laboratórios · Barra",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Barra do Bugres*.\n\nResponda com o número do que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labBarra_0",
+        "label": "Lab. Albert Sabin"
+       },
+       {
+        "id": "labBarra_1",
+        "label": "Lab. São Lucas"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labCampo",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1800,
+     "data": {
+      "name": "Laboratórios · C. Novo",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Campo Novo do Parecis*.\n\nResponda com o número do que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labCampo_0",
+        "label": "Lab. Alvim"
+       },
+       {
+        "id": "labCampo_1",
+        "label": "Lab. Bioanálise"
+       },
+       {
+        "id": "labCampo_2",
+        "label": "Lab. Laborclin"
+       },
+       {
+        "id": "labCampo_3",
+        "label": "Lab. Unilab"
+       },
+       {
+        "id": "labCampo_4",
+        "label": "Hemo Lab (Clínica Renova)"
+       },
+       {
+        "id": "labCampo_5",
+        "label": "Lab. Central"
+       },
+       {
+        "id": "labCampo_6",
+        "label": "Parecis Clínica"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labNova",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1920,
+     "data": {
+      "name": "Laboratórios · N. Olímpia",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo o laboratório disponível para *Nova Olímpia*.\n\nResponda com o número para continuar 👇",
+      "options": [
+       {
+        "id": "labNova_0",
+        "label": "Lab. Vida"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labCuiaba",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 2040,
+     "data": {
+      "name": "Laboratórios · Cuiabá",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Cuiabá*.\n\nResponda com o número do que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labCuiaba_0",
+        "label": "Lab. Carlos Chagas"
+       },
+       {
+        "id": "labCuiaba_1",
+        "label": "Lab. Cedilab"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_exameImgCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2160,
+     "data": {
+      "name": "Cidades · Imagem",
+      "prompt": "Certo! 😊\n\nAgora, antes de te passar para nosso(a) atendente, me informe em qual localidade você quer fazer seus exames de imagem (responda com o número) 👇",
+      "options": [
+       {
+        "id": "exameImgCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "exameImgCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "exameImgCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "exameImgCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "exameImgCity_4",
+        "label": "Cuiabá"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_exameImgHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 2280,
+     "data": {
+      "name": "Aviso · Imagem",
+      "text": "Tudo certo! 😊\n\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "n_orto",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 2400,
+     "data": {
+      "name": "Ortopédicos",
+      "prompt": "Você selecionou a opção *Ortopédicos*.\n\nFicamos felizes em te ajudar!\nResponda com o número da opção desejada para continuarmos 👇",
+      "options": [
+       {
+        "id": "orto_0",
+        "label": "Particular"
+       },
+       {
+        "id": "orto_1",
+        "label": "Plano Familiar"
+       }
+      ],
+      "image": {
+       "file": "ortopedicos.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_particularCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2520,
+     "data": {
+      "name": "Cidades · Particular",
+      "prompt": "Certo!\n\nAntes de te passar para nosso(a) agente, me informe em qual localidade você deseja fazer a retirada dos itens (responda com o número) 👇",
+      "options": [
+       {
+        "id": "particularCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "particularCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "particularCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "particularCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "particularCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_particularHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 2640,
+     "data": {
+      "name": "Aviso · Particular",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n• Item que deseja alugar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_3",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2520,
+     "positionY": 2760,
+     "data": {
+      "name": "Ortopédicos",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_familiarCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2880,
+     "data": {
+      "name": "Cidades · Plano Familiar",
+      "prompt": "Certo!\n\nAntes de te passar para nosso(a) agente, me informe em qual localidade você deseja fazer a retirada dos itens (responda com o número) 👇",
+      "options": [
+       {
+        "id": "familiarCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "familiarCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "familiarCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "familiarCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "familiarCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_familiarHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 3000,
+     "data": {
+      "name": "Aviso · Plano Familiar",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n• Item que deseja alugar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "n_cemPlanos",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 3120,
+     "data": {
+      "name": "Vendas",
+      "prompt": "Você selecionou a opção *Vendas*.\n\nResponda com o número da opção desejada 👇",
+      "options": [
+       {
+        "id": "cemPlanos_0",
+        "label": "Cemitério Parque"
+       },
+       {
+        "id": "cemPlanos_1",
+        "label": "Planos Univida"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_cemiterioOutcome",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 3240,
+     "data": {
+      "name": "Aviso · Cemitério",
+      "text": "Estamos localizando um de nossos consultores para te atender com todo o cuidado que você merece.\n\nUm instante, por favor 🤍"
+     }
+    },
+    {
+     "id": "t_4",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1800,
+     "positionY": 3360,
+     "data": {
+      "name": "Vendas · Cemitério Parque",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_planosCity",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 3480,
+     "data": {
+      "name": "Cidades · Planos",
+      "prompt": "✨ Que alegria ter você por aqui!\n\nResponda com o número da cidade desejada 👇",
+      "options": [
+       {
+        "id": "planosCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "planosCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "planosCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "planosCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "planosCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_planosOutcome",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 3600,
+     "data": {
+      "name": "Aviso · Planos",
+      "text": "📍 Cidade selecionada: *{{opcao}}*.\n\nEstamos localizando um de nossos consultores para te atender com todo o cuidado que você merece.\n\nUm instante, por favor 🤍"
+     }
+    },
+    {
+     "id": "t_5",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2160,
+     "positionY": 3720,
+     "data": {
+      "name": "Vendas · Planos",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_outras",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 3840,
+     "data": {
+      "name": "Outras opções",
+      "prompt": "Certo! 😊\nAqui estão mais opções.\n\nResponda com o número de uma das opções 👇",
+      "options": [
+       {
+        "id": "outras_0",
+        "label": "Atualização Cadastral"
+       },
+       {
+        "id": "outras_1",
+        "label": "Antecipar Mensalidades"
+       },
+       {
+        "id": "outras_2",
+        "label": "Boletos"
+       },
+       {
+        "id": "outras_3",
+        "label": "Financeiro"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_cadastral",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 3960,
+     "data": {
+      "name": "Aviso · Cadastro",
+      "text": "*Perfeito! Vamos atualizar seus dados cadastrais 📱✨*\n\nPara manter seu cadastro atualizado e garantir que você receba todas as informações importantes sem ruído, preciso confirmar alguns dados com você.\n\nNada complexo — é só para deixar tudo redondo no sistema e evitar qualquer contratempo no futuro.\n\nEnquanto direcionamos você para um de nossos agentes, nos informe os seguintes dados:\n• Nome completo\n• CPF\n• Endereço\n• Nº de telefone/WhatsApp\n\nEm alguns instantes iniciaremos seu atendimento."
+     }
+    },
+    {
+     "id": "t_6",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1800,
+     "positionY": 4080,
+     "data": {
+      "name": "Atualização cadastral",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_antecipar",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 4200,
+     "data": {
+      "name": "Antecipar mensalidades",
+      "prompt": "Olá! Tudo bem? 😊\n\nPara *antecipar suas mensalidades* e garantir um *desconto estratégico* no seu planejamento financeiro, seguem nossas condições vigentes:\n\n🔹 *Acima de 10 mensalidades:*\n• 10% de desconto no Pix/Dinheiro\n• 7% de desconto no cartão à vista/débito\n\n🔹 *De 6 a 9 mensalidades:*\n• 7% de desconto no Pix/Dinheiro\n• 5% de desconto no cartão à vista/débito\n\n🔹 *De 2 a 5 mensalidades:*\n• 5% de desconto no Pix/Dinheiro\n• 3% de desconto no cartão à vista/débito\n\n🔹 *Recorrência no cartão de crédito:*\n• 7% de desconto fixo enquanto a recorrência estiver ativa\n\nOs descontos não são cumulativos, mas todos foram pensados para gerar valor e fortalecer sua experiência com a gente.\n\nSe desejar avançar com a antecipação, podemos fazer todo o processo para você por aqui.",
+      "options": [
+       {
+        "id": "antecipar_0",
+        "label": "Quero Antecipar"
+       },
+       {
+        "id": "antecipar_1",
+        "label": "Encerrar"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_anteciparHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 4320,
+     "data": {
+      "name": "Aviso · Antecipar",
+      "text": "Certo! 😊\nEstamos direcionando você para um de nossos especialistas e, em instantes, seu atendimento será iniciado.\n\nSe desejar, enquanto aguarda, informe-nos alguns dados para agilizarmos seu atendimento:\n• Nome completo do titular do plano\n• Nº da Carteirinha ou CPF do titular do plano"
+     }
+    },
+    {
+     "id": "t_7",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2160,
+     "positionY": 4440,
+     "data": {
+      "name": "Financeiro",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_encerrar",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 4560,
+     "data": {
+      "name": "Despedida",
+      "text": "Tudo bem! Ficamos à disposição sempre que precisar. Até logo! 👋"
+     }
+    },
+    {
+     "id": "end",
+     "type": "END",
+     "positionX": 2160,
+     "positionY": 4680,
+     "data": {}
+    },
+    {
+     "id": "n_boletos",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 4800,
+     "data": {
+      "name": "Aviso · Boletos",
+      "text": "📄 Você selecionou a opção *Boletos*. Em que posso lhe ajudar?"
+     }
+    },
+    {
+     "id": "n_financeiro",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 4920,
+     "data": {
+      "name": "Aviso · Financeiro",
+      "text": "💰 Você selecionou a opção *Financeiro*. Em que posso lhe ajudar?"
+     }
+    }
+   ],
+   "edges": [
+    {
+     "sourceNodeId": "start",
+     "targetNodeId": "n_start",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_start",
+     "targetNodeId": "n_porLigacaoResult",
+     "sourceHandle": "start_0"
+    },
+    {
+     "sourceNodeId": "n_porLigacaoResult",
+     "targetNodeId": "t_0",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_start",
+     "targetNodeId": "n_menu",
+     "sourceHandle": "start_1"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_guiasOrt",
+     "sourceHandle": "menu_0"
+    },
+    {
+     "sourceNodeId": "n_guiasOrt",
+     "targetNodeId": "n_guias",
+     "sourceHandle": "guiasOrt_0"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_consultasCity",
+     "sourceHandle": "guias_0"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_0"
+    },
+    {
+     "sourceNodeId": "n_consultasHandoff",
+     "targetNodeId": "t_1",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_1"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_2"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_3"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_4"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_5"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_6"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_exameLabCity",
+     "sourceHandle": "guias_1"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labTangara",
+     "sourceHandle": "exameLabCity_0"
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_0"
+    },
+    {
+     "sourceNodeId": "n_exameLabHandoff",
+     "targetNodeId": "t_2",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_1"
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_2"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labBarra",
+     "sourceHandle": "exameLabCity_1"
+    },
+    {
+     "sourceNodeId": "n_labBarra",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labBarra_0"
+    },
+    {
+     "sourceNodeId": "n_labBarra",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labBarra_1"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labCampo",
+     "sourceHandle": "exameLabCity_2"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_0"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_1"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_2"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_3"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_4"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_5"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_6"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labNova",
+     "sourceHandle": "exameLabCity_3"
+    },
+    {
+     "sourceNodeId": "n_labNova",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labNova_0"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labCuiaba",
+     "sourceHandle": "exameLabCity_4"
+    },
+    {
+     "sourceNodeId": "n_labCuiaba",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCuiaba_0"
+    },
+    {
+     "sourceNodeId": "n_labCuiaba",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCuiaba_1"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_exameImgCity",
+     "sourceHandle": "guias_2"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_0"
+    },
+    {
+     "sourceNodeId": "n_exameImgHandoff",
+     "targetNodeId": "t_2",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_1"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_2"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_3"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_4"
+    },
+    {
+     "sourceNodeId": "n_guiasOrt",
+     "targetNodeId": "n_orto",
+     "sourceHandle": "guiasOrt_1"
+    },
+    {
+     "sourceNodeId": "n_orto",
+     "targetNodeId": "n_particularCity",
+     "sourceHandle": "orto_0"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_0"
+    },
+    {
+     "sourceNodeId": "n_particularHandoff",
+     "targetNodeId": "t_3",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_1"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_2"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_3"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_4"
+    },
+    {
+     "sourceNodeId": "n_orto",
+     "targetNodeId": "n_familiarCity",
+     "sourceHandle": "orto_1"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_0"
+    },
+    {
+     "sourceNodeId": "n_familiarHandoff",
+     "targetNodeId": "t_3",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_1"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_2"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_3"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_4"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_cemPlanos",
+     "sourceHandle": "menu_1"
+    },
+    {
+     "sourceNodeId": "n_cemPlanos",
+     "targetNodeId": "n_cemiterioOutcome",
+     "sourceHandle": "cemPlanos_0"
+    },
+    {
+     "sourceNodeId": "n_cemiterioOutcome",
+     "targetNodeId": "t_4",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_cemPlanos",
+     "targetNodeId": "n_planosCity",
+     "sourceHandle": "cemPlanos_1"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_0"
+    },
+    {
+     "sourceNodeId": "n_planosOutcome",
+     "targetNodeId": "t_5",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_1"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_2"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_3"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_4"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_outras",
+     "sourceHandle": "menu_2"
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_cadastral",
+     "sourceHandle": "outras_0"
+    },
+    {
+     "sourceNodeId": "n_cadastral",
+     "targetNodeId": "t_6",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_antecipar",
+     "sourceHandle": "outras_1"
+    },
+    {
+     "sourceNodeId": "n_antecipar",
+     "targetNodeId": "n_anteciparHandoff",
+     "sourceHandle": "antecipar_0"
+    },
+    {
+     "sourceNodeId": "n_anteciparHandoff",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_antecipar",
+     "targetNodeId": "n_encerrar",
+     "sourceHandle": "antecipar_1"
+    },
+    {
+     "sourceNodeId": "n_encerrar",
+     "targetNodeId": "end",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_boletos",
+     "sourceHandle": "outras_2"
+    },
+    {
+     "sourceNodeId": "n_boletos",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_financeiro",
+     "sourceHandle": "outras_3"
+    },
+    {
+     "sourceNodeId": "n_financeiro",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    }
+   ]
+  },
+  {
+   "key": "univida-official",
+   "name": "Univida · API Oficial",
+   "description": "Atendimento Univida para a API Oficial — botões e listas.",
+   "nodes": [
+    {
+     "id": "start",
+     "type": "START",
+     "positionX": 0,
+     "positionY": 0,
+     "data": {
+      "outOfHoursPrompt": true,
+      "abandonAfterMinutes": 30
+     }
+    },
+    {
+     "id": "n_start",
+     "type": "MENU",
+     "positionX": 360,
+     "positionY": 120,
+     "data": {
+      "name": "Boas-vindas",
+      "prompt": "Olá! 😊\nQue bom ter você aqui na Univida!\n\nEstamos prontos para cuidar de você, oferecendo o melhor atendimento.\n\nSe desejar que nosso time ligue para você para realizar seu atendimento, toque na opção *Por Ligação*.\n\nPara começarmos, me informe como deseja ser atendido(a) 👇",
+      "options": [
+       {
+        "id": "start_0",
+        "label": "Por Ligação"
+       },
+       {
+        "id": "start_1",
+        "label": "Pelo WhatsApp"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_porLigacaoResult",
+     "type": "TEXT_MESSAGE",
+     "positionX": 720,
+     "positionY": 240,
+     "data": {
+      "name": "Aviso · Ligação",
+      "text": "Perfeito! 📞\n\nEm alguns instantes, um de nossos atendentes ligará para você neste número.\n\nAté já!"
+     }
+    },
+    {
+     "id": "t_0",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1080,
+     "positionY": 360,
+     "data": {
+      "name": "Ligação",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_menu",
+     "type": "MENU",
+     "positionX": 720,
+     "positionY": 480,
+     "data": {
+      "name": "Menu principal",
+      "prompt": "Tudo bem!\nComo podemos te ajudar hoje?\n\nClique na opção desejada abaixo 👇",
+      "options": [
+       {
+        "id": "menu_0",
+        "label": "Guias ou Ortopédicos"
+       },
+       {
+        "id": "menu_1",
+        "label": "Vendas"
+       },
+       {
+        "id": "menu_2",
+        "label": "Outras Opções"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_guiasOrt",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 600,
+     "data": {
+      "name": "Guias ou Ortopédicos",
+      "prompt": "Você selecionou a opção *Guias ou Ortopédicos*.\n\nSelecione a opção desejada abaixo 👇",
+      "options": [
+       {
+        "id": "guiasOrt_0",
+        "label": "Guias"
+       },
+       {
+        "id": "guiasOrt_1",
+        "label": "Ortopédicos"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_guias",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 720,
+     "data": {
+      "name": "Guias",
+      "prompt": "Você selecionou a opção *Guias*.\n\nFicamos felizes em te ajudar!\nAgora, escolha a opção desejada para continuarmos 👇",
+      "options": [
+       {
+        "id": "guias_0",
+        "label": "Consultas"
+       },
+       {
+        "id": "guias_1",
+        "label": "Exame de Laboratório"
+       },
+       {
+        "id": "guias_2",
+        "label": "Exames de Imagens"
+       }
+      ],
+      "image": {
+       "file": "guias.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_consultasCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 840,
+     "data": {
+      "name": "Cidades · Consultas",
+      "prompt": "Certo!\nVocê selecionou a opção *Consultas*.\n\nAntes de te passar para nosso(a) atendente, me informe em qual localidade você quer se consultar 👇",
+      "options": [
+       {
+        "id": "consultasCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "consultasCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "consultasCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "consultasCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "consultasCity_4",
+        "label": "Denise"
+       },
+       {
+        "id": "consultasCity_5",
+        "label": "Cuiabá"
+       },
+       {
+        "id": "consultasCity_6",
+        "label": "Outras"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_consultasHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 960,
+     "data": {
+      "name": "Aviso · Consultas",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, tenha em mãos:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Nome do *MÉDICO* com quem deseja se consultar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_1",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2520,
+     "positionY": 1080,
+     "data": {
+      "name": "Guias · Consultas",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_exameLabCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 1200,
+     "data": {
+      "name": "Cidades · Laboratório",
+      "prompt": "Certo! 😊\n\nAgora, antes de te passar para nosso(a) atendente, me informe em qual localidade você quer fazer seus exames de laboratório 👇",
+      "options": [
+       {
+        "id": "exameLabCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "exameLabCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "exameLabCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "exameLabCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "exameLabCity_4",
+        "label": "Cuiabá"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_labTangara",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1320,
+     "data": {
+      "name": "Laboratórios · Tangará",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Tangará da Serra*.\n\nSelecione o que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labTangara_0",
+        "label": "Lab. Alvim"
+       },
+       {
+        "id": "labTangara_1",
+        "label": "Lab. Bioclínica"
+       },
+       {
+        "id": "labTangara_2",
+        "label": "Lab. Indap"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_exameLabHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2520,
+     "positionY": 1440,
+     "data": {
+      "name": "Aviso · Laboratório",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_2",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2880,
+     "positionY": 1560,
+     "data": {
+      "name": "Guias · Exames",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_labBarra",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1680,
+     "data": {
+      "name": "Laboratórios · Barra",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Barra do Bugres*.\n\nSelecione o que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labBarra_0",
+        "label": "Lab. Albert Sabin"
+       },
+       {
+        "id": "labBarra_1",
+        "label": "Lab. São Lucas"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labCampo",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1800,
+     "data": {
+      "name": "Laboratórios · C. Novo",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Campo Novo do Parecis*.\n\nSelecione o que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labCampo_0",
+        "label": "Lab. Alvim"
+       },
+       {
+        "id": "labCampo_1",
+        "label": "Lab. Bioanálise"
+       },
+       {
+        "id": "labCampo_2",
+        "label": "Lab. Laborclin"
+       },
+       {
+        "id": "labCampo_3",
+        "label": "Lab. Unilab"
+       },
+       {
+        "id": "labCampo_4",
+        "label": "Hemo Lab (Clín. Renova)"
+       },
+       {
+        "id": "labCampo_5",
+        "label": "Lab. Central"
+       },
+       {
+        "id": "labCampo_6",
+        "label": "Parecis Clínica"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labNova",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 1920,
+     "data": {
+      "name": "Laboratórios · N. Olímpia",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo o laboratório disponível para *Nova Olímpia*.\n\nSelecione para continuar 👇",
+      "options": [
+       {
+        "id": "labNova_0",
+        "label": "Lab. Vida"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_labCuiaba",
+     "type": "MENU",
+     "positionX": 2160,
+     "positionY": 2040,
+     "data": {
+      "name": "Laboratórios · Cuiabá",
+      "prompt": "*Perfeito!*\nTrouxemos abaixo os laboratórios disponíveis para *Cuiabá*.\n\nSelecione o que melhor atende você 👇",
+      "options": [
+       {
+        "id": "labCuiaba_0",
+        "label": "Lab. Carlos Chagas"
+       },
+       {
+        "id": "labCuiaba_1",
+        "label": "Lab. Cedilab"
+       }
+      ],
+      "image": {
+       "file": "laboratorios.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_exameImgCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2160,
+     "data": {
+      "name": "Cidades · Imagem",
+      "prompt": "Certo! 😊\n\nAgora, antes de te passar para nosso(a) atendente, me informe em qual localidade você quer fazer seus exames de imagem 👇",
+      "options": [
+       {
+        "id": "exameImgCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "exameImgCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "exameImgCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "exameImgCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "exameImgCity_4",
+        "label": "Cuiabá"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_exameImgHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 2280,
+     "data": {
+      "name": "Aviso · Imagem",
+      "text": "Tudo certo! 😊\n\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "n_orto",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 2400,
+     "data": {
+      "name": "Ortopédicos",
+      "prompt": "Você selecionou a opção *Ortopédicos*.\n\nFicamos felizes em te ajudar!\nEscolha a opção desejada para continuarmos 👇",
+      "options": [
+       {
+        "id": "orto_0",
+        "label": "Particular"
+       },
+       {
+        "id": "orto_1",
+        "label": "Plano Familiar"
+       }
+      ],
+      "image": {
+       "file": "ortopedicos.jpg"
+      }
+     }
+    },
+    {
+     "id": "n_particularCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2520,
+     "data": {
+      "name": "Cidades · Particular",
+      "prompt": "Certo!\n\nAntes de te passar para nosso(a) agente, me informe em qual localidade você deseja fazer a retirada dos itens 👇",
+      "options": [
+       {
+        "id": "particularCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "particularCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "particularCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "particularCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "particularCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_particularHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 2640,
+     "data": {
+      "name": "Aviso · Particular",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n• Item que deseja alugar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "t_3",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2520,
+     "positionY": 2760,
+     "data": {
+      "name": "Ortopédicos",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_familiarCity",
+     "type": "MENU",
+     "positionX": 1800,
+     "positionY": 2880,
+     "data": {
+      "name": "Cidades · Plano Familiar",
+      "prompt": "Certo!\n\nAntes de te passar para nosso(a) agente, me informe em qual localidade você deseja fazer a retirada dos itens 👇",
+      "options": [
+       {
+        "id": "familiarCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "familiarCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "familiarCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "familiarCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "familiarCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_familiarHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 2160,
+     "positionY": 3000,
+     "data": {
+      "name": "Aviso · Plano Familiar",
+      "text": "Tudo certo! 😊\nEstou te encaminhando para um de nossos atendentes.\n\nEnquanto aguarda, envie:\n• Nome completo do(a) Titular\n• Nome completo do(a) Paciente\n• Foto do pedido médico\n• Item que deseja alugar\n\nEm instantes iniciaremos seu atendimento 💙"
+     }
+    },
+    {
+     "id": "n_cemPlanos",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 3120,
+     "data": {
+      "name": "Vendas",
+      "prompt": "Você selecionou a opção *Vendas*.\n\nEscolha a opção desejada abaixo 👇",
+      "options": [
+       {
+        "id": "cemPlanos_0",
+        "label": "Cemitério Parque"
+       },
+       {
+        "id": "cemPlanos_1",
+        "label": "Planos Univida"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_cemiterioOutcome",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 3240,
+     "data": {
+      "name": "Aviso · Cemitério",
+      "text": "Estamos localizando um de nossos consultores para te atender com todo o cuidado que você merece.\n\nUm instante, por favor 🤍"
+     }
+    },
+    {
+     "id": "t_4",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1800,
+     "positionY": 3360,
+     "data": {
+      "name": "Vendas · Cemitério Parque",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_planosCity",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 3480,
+     "data": {
+      "name": "Cidades · Planos",
+      "prompt": "✨ Que alegria ter você por aqui!\n\nSelecione a cidade desejada abaixo 👇",
+      "options": [
+       {
+        "id": "planosCity_0",
+        "label": "Tangará da Serra"
+       },
+       {
+        "id": "planosCity_1",
+        "label": "Barra do Bugres"
+       },
+       {
+        "id": "planosCity_2",
+        "label": "Campo Novo do Parecis"
+       },
+       {
+        "id": "planosCity_3",
+        "label": "Nova Olímpia"
+       },
+       {
+        "id": "planosCity_4",
+        "label": "Denise"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_planosOutcome",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 3600,
+     "data": {
+      "name": "Aviso · Planos",
+      "text": "📍 Cidade selecionada: *{{opcao}}*.\n\nEstamos localizando um de nossos consultores para te atender com todo o cuidado que você merece.\n\nUm instante, por favor 🤍"
+     }
+    },
+    {
+     "id": "t_5",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2160,
+     "positionY": 3720,
+     "data": {
+      "name": "Vendas · Planos",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_outras",
+     "type": "MENU",
+     "positionX": 1080,
+     "positionY": 3840,
+     "data": {
+      "name": "Outras opções",
+      "prompt": "Certo! 😊\nAqui estão mais opções.\n\nClique abaixo e selecione uma das opções 👇",
+      "options": [
+       {
+        "id": "outras_0",
+        "label": "Atualização Cadastral"
+       },
+       {
+        "id": "outras_1",
+        "label": "Antecipar Mensalidades"
+       },
+       {
+        "id": "outras_2",
+        "label": "Boletos"
+       },
+       {
+        "id": "outras_3",
+        "label": "Financeiro"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_cadastral",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 3960,
+     "data": {
+      "name": "Aviso · Cadastro",
+      "text": "*Perfeito! Vamos atualizar seus dados cadastrais 📱✨*\n\nPara manter seu cadastro atualizado e garantir que você receba todas as informações importantes sem ruído, preciso confirmar alguns dados com você.\n\nNada complexo — é só para deixar tudo redondo no sistema e evitar qualquer contratempo no futuro.\n\nEnquanto direcionamos você para um de nossos agentes, nos informe os seguintes dados:\n• Nome completo\n• CPF\n• Endereço\n• Nº de telefone/WhatsApp\n\nEm alguns instantes iniciaremos seu atendimento."
+     }
+    },
+    {
+     "id": "t_6",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 1800,
+     "positionY": 4080,
+     "data": {
+      "name": "Atualização cadastral",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_antecipar",
+     "type": "MENU",
+     "positionX": 1440,
+     "positionY": 4200,
+     "data": {
+      "name": "Antecipar mensalidades",
+      "prompt": "Olá! Tudo bem? 😊\n\nPara *antecipar suas mensalidades* e garantir um *desconto estratégico* no seu planejamento financeiro, seguem nossas condições vigentes:\n\n🔹 *Acima de 10 mensalidades:*\n• 10% de desconto no Pix/Dinheiro\n• 7% de desconto no cartão à vista/débito\n\n🔹 *De 6 a 9 mensalidades:*\n• 7% de desconto no Pix/Dinheiro\n• 5% de desconto no cartão à vista/débito\n\n🔹 *De 2 a 5 mensalidades:*\n• 5% de desconto no Pix/Dinheiro\n• 3% de desconto no cartão à vista/débito\n\n🔹 *Recorrência no cartão de crédito:*\n• 7% de desconto fixo enquanto a recorrência estiver ativa\n\nOs descontos não são cumulativos, mas todos foram pensados para gerar valor e fortalecer sua experiência com a gente.\n\nSe desejar avançar com a antecipação, podemos fazer todo o processo para você por aqui.",
+      "options": [
+       {
+        "id": "antecipar_0",
+        "label": "Quero Antecipar"
+       },
+       {
+        "id": "antecipar_1",
+        "label": "Encerrar"
+       }
+      ]
+     }
+    },
+    {
+     "id": "n_anteciparHandoff",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 4320,
+     "data": {
+      "name": "Aviso · Antecipar",
+      "text": "Certo! 😊\nEstamos direcionando você para um de nossos especialistas e, em instantes, seu atendimento será iniciado.\n\nSe desejar, enquanto aguarda, informe-nos alguns dados para agilizarmos seu atendimento:\n• Nome completo do titular do plano\n• Nº da Carteirinha ou CPF do titular do plano"
+     }
+    },
+    {
+     "id": "t_7",
+     "type": "TRANSFER_TO_AGENT",
+     "positionX": 2160,
+     "positionY": 4440,
+     "data": {
+      "name": "Financeiro",
+      "mode": "any",
+      "assignedAgentIds": []
+     }
+    },
+    {
+     "id": "n_encerrar",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1800,
+     "positionY": 4560,
+     "data": {
+      "name": "Despedida",
+      "text": "Tudo bem! Ficamos à disposição sempre que precisar. Até logo! 👋"
+     }
+    },
+    {
+     "id": "end",
+     "type": "END",
+     "positionX": 2160,
+     "positionY": 4680,
+     "data": {}
+    },
+    {
+     "id": "n_boletos",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 4800,
+     "data": {
+      "name": "Aviso · Boletos",
+      "text": "📄 Você selecionou a opção *Boletos*. Em que posso lhe ajudar?"
+     }
+    },
+    {
+     "id": "n_financeiro",
+     "type": "TEXT_MESSAGE",
+     "positionX": 1440,
+     "positionY": 4920,
+     "data": {
+      "name": "Aviso · Financeiro",
+      "text": "💰 Você selecionou a opção *Financeiro*. Em que posso lhe ajudar?"
+     }
+    }
+   ],
+   "edges": [
+    {
+     "sourceNodeId": "start",
+     "targetNodeId": "n_start",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_start",
+     "targetNodeId": "n_porLigacaoResult",
+     "sourceHandle": "start_0"
+    },
+    {
+     "sourceNodeId": "n_porLigacaoResult",
+     "targetNodeId": "t_0",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_start",
+     "targetNodeId": "n_menu",
+     "sourceHandle": "start_1"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_guiasOrt",
+     "sourceHandle": "menu_0"
+    },
+    {
+     "sourceNodeId": "n_guiasOrt",
+     "targetNodeId": "n_guias",
+     "sourceHandle": "guiasOrt_0"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_consultasCity",
+     "sourceHandle": "guias_0"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_0"
+    },
+    {
+     "sourceNodeId": "n_consultasHandoff",
+     "targetNodeId": "t_1",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_1"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_2"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_3"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_4"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_5"
+    },
+    {
+     "sourceNodeId": "n_consultasCity",
+     "targetNodeId": "n_consultasHandoff",
+     "sourceHandle": "consultasCity_6"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_exameLabCity",
+     "sourceHandle": "guias_1"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labTangara",
+     "sourceHandle": "exameLabCity_0"
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_0"
+    },
+    {
+     "sourceNodeId": "n_exameLabHandoff",
+     "targetNodeId": "t_2",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_1"
+    },
+    {
+     "sourceNodeId": "n_labTangara",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labTangara_2"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labBarra",
+     "sourceHandle": "exameLabCity_1"
+    },
+    {
+     "sourceNodeId": "n_labBarra",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labBarra_0"
+    },
+    {
+     "sourceNodeId": "n_labBarra",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labBarra_1"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labCampo",
+     "sourceHandle": "exameLabCity_2"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_0"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_1"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_2"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_3"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_4"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_5"
+    },
+    {
+     "sourceNodeId": "n_labCampo",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCampo_6"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labNova",
+     "sourceHandle": "exameLabCity_3"
+    },
+    {
+     "sourceNodeId": "n_labNova",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labNova_0"
+    },
+    {
+     "sourceNodeId": "n_exameLabCity",
+     "targetNodeId": "n_labCuiaba",
+     "sourceHandle": "exameLabCity_4"
+    },
+    {
+     "sourceNodeId": "n_labCuiaba",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCuiaba_0"
+    },
+    {
+     "sourceNodeId": "n_labCuiaba",
+     "targetNodeId": "n_exameLabHandoff",
+     "sourceHandle": "labCuiaba_1"
+    },
+    {
+     "sourceNodeId": "n_guias",
+     "targetNodeId": "n_exameImgCity",
+     "sourceHandle": "guias_2"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_0"
+    },
+    {
+     "sourceNodeId": "n_exameImgHandoff",
+     "targetNodeId": "t_2",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_1"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_2"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_3"
+    },
+    {
+     "sourceNodeId": "n_exameImgCity",
+     "targetNodeId": "n_exameImgHandoff",
+     "sourceHandle": "exameImgCity_4"
+    },
+    {
+     "sourceNodeId": "n_guiasOrt",
+     "targetNodeId": "n_orto",
+     "sourceHandle": "guiasOrt_1"
+    },
+    {
+     "sourceNodeId": "n_orto",
+     "targetNodeId": "n_particularCity",
+     "sourceHandle": "orto_0"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_0"
+    },
+    {
+     "sourceNodeId": "n_particularHandoff",
+     "targetNodeId": "t_3",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_1"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_2"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_3"
+    },
+    {
+     "sourceNodeId": "n_particularCity",
+     "targetNodeId": "n_particularHandoff",
+     "sourceHandle": "particularCity_4"
+    },
+    {
+     "sourceNodeId": "n_orto",
+     "targetNodeId": "n_familiarCity",
+     "sourceHandle": "orto_1"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_0"
+    },
+    {
+     "sourceNodeId": "n_familiarHandoff",
+     "targetNodeId": "t_3",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_1"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_2"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_3"
+    },
+    {
+     "sourceNodeId": "n_familiarCity",
+     "targetNodeId": "n_familiarHandoff",
+     "sourceHandle": "familiarCity_4"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_cemPlanos",
+     "sourceHandle": "menu_1"
+    },
+    {
+     "sourceNodeId": "n_cemPlanos",
+     "targetNodeId": "n_cemiterioOutcome",
+     "sourceHandle": "cemPlanos_0"
+    },
+    {
+     "sourceNodeId": "n_cemiterioOutcome",
+     "targetNodeId": "t_4",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_cemPlanos",
+     "targetNodeId": "n_planosCity",
+     "sourceHandle": "cemPlanos_1"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_0"
+    },
+    {
+     "sourceNodeId": "n_planosOutcome",
+     "targetNodeId": "t_5",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_1"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_2"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_3"
+    },
+    {
+     "sourceNodeId": "n_planosCity",
+     "targetNodeId": "n_planosOutcome",
+     "sourceHandle": "planosCity_4"
+    },
+    {
+     "sourceNodeId": "n_menu",
+     "targetNodeId": "n_outras",
+     "sourceHandle": "menu_2"
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_cadastral",
+     "sourceHandle": "outras_0"
+    },
+    {
+     "sourceNodeId": "n_cadastral",
+     "targetNodeId": "t_6",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_antecipar",
+     "sourceHandle": "outras_1"
+    },
+    {
+     "sourceNodeId": "n_antecipar",
+     "targetNodeId": "n_anteciparHandoff",
+     "sourceHandle": "antecipar_0"
+    },
+    {
+     "sourceNodeId": "n_anteciparHandoff",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_antecipar",
+     "targetNodeId": "n_encerrar",
+     "sourceHandle": "antecipar_1"
+    },
+    {
+     "sourceNodeId": "n_encerrar",
+     "targetNodeId": "end",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_boletos",
+     "sourceHandle": "outras_2"
+    },
+    {
+     "sourceNodeId": "n_boletos",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    },
+    {
+     "sourceNodeId": "n_outras",
+     "targetNodeId": "n_financeiro",
+     "sourceHandle": "outras_3"
+    },
+    {
+     "sourceNodeId": "n_financeiro",
+     "targetNodeId": "t_7",
+     "sourceHandle": null
+    }
+   ]
+  }
+ ]
+}

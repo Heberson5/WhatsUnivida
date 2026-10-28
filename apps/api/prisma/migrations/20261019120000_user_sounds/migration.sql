@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "soundNewMessage" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "soundNewQueue" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "soundVolume" INTEGER NOT NULL DEFAULT 70;
+

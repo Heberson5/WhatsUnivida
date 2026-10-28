@@ -1,12 +1,16 @@
+import { PollCard } from "./PollCard";
 import clsx from "clsx";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar, Check, CheckCheck, Clock, ExternalLink, FileText, ListChecks, MapPin, MessageCircle, ReplyIcon, Smile, Trash2, User } from "lucide-react";
-import type { MessageDTO, MessageAttachmentDTO } from "@whatsunivida/types";
+import { Calendar, Check, CheckCheck, Clock, ExternalLink, FileText, Forward, MapPin, MessageCircle, ReplyIcon, Smile, Trash2, User, X } from "lucide-react";
+import type { MessageDTO, MessageAttachmentDTO } from "@whatsatendende/types";
 import { useState } from "react";
-import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
+import { firstUrl, renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
 import { withAuthToken } from "../../lib/api";
 import { MediaLightbox, type LightboxMedia } from "./MediaLightbox";
+import { DocumentAttachment } from "./DocumentPreview";
+import { LinkPreviewCard } from "./LinkPreviewCard";
+import { groupReactions } from "../../lib/reactions";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -14,14 +18,11 @@ function StatusIcon({ status }: { status: MessageDTO["status"] }) {
   if (status === "PENDING") return <Clock className="h-3.5 w-3.5" />;
   if (status === "SENT") return <Check className="h-3.5 w-3.5" />;
   if (status === "DELIVERED") return <CheckCheck className="h-3.5 w-3.5" />;
-  if (status === "READ") return <CheckCheck className="h-3.5 w-3.5 text-blue-400" />;
+  // Uses the theme's read-receipt color (secondary by default, or an
+  // admin override — see Identidade Visual) instead of a hardcoded blue,
+  // so it stays visible against whatever primary color is configured.
+  if (status === "READ") return <CheckCheck className="h-3.5 w-3.5" style={{ color: "var(--color-read-receipt)" }} />;
   return <span className="text-red-400">!</span>;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function vcardName(vcard: string | undefined, fallback: string): string {
@@ -62,6 +63,16 @@ function Attachment({
     return (
       <button type="button" onClick={() => onOpenMedia({ url: src, kind: "IMAGE", fileName: att.fileName })} className="focus-ring block">
         <img src={src} alt={att.fileName} className="max-h-64 max-w-full cursor-zoom-in rounded object-cover" />
+      </button>
+    );
+  }
+  if (att.kind === "VIDEO" && att.isGif) {
+    // A WhatsApp GIF is a short silent video: it plays by itself, in a loop, like in WhatsApp.
+    const src = withAuthToken(att.url);
+    return (
+      <button type="button" onClick={() => onOpenMedia({ url: src, kind: "VIDEO", fileName: att.fileName })} className="focus-ring relative block overflow-hidden rounded">
+        <video src={src} autoPlay loop muted playsInline className="max-h-64 max-w-full cursor-zoom-in rounded" aria-label="GIF" />
+        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">GIF</span>
       </button>
     );
   }
@@ -108,26 +119,7 @@ function Attachment({
       </a>
     );
   }
-  if (att.kind === "POLL") {
-    return (
-      <div className="min-w-[220px] rounded border border-black/10 bg-black/5 px-3 py-2.5">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium opacity-75">
-          <ListChecks className="h-3.5 w-3.5" /> Enquete
-        </div>
-        <p className="text-sm font-medium">{att.pollQuestion}</p>
-        {/* Read-only: WhatsApp encrypts each vote against the poll's own key, so live
-            tallying isn't shown here — just the question/options as the poll was created. */}
-        <div className="mt-2 space-y-1.5">
-          {(att.pollOptions ?? []).map((option, i) => (
-            <div key={i} className="flex items-center gap-2 rounded border border-black/10 bg-[var(--color-surface)] px-2.5 py-1.5 text-xs">
-              <span className="h-3 w-3 shrink-0 rounded-full border border-current opacity-50" />
-              <span className="truncate">{option}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (att.kind === "POLL") return <PollCard att={att} />;
   if (att.kind === "EVENT") {
     return (
       <div className="min-w-[220px] rounded border border-black/10 bg-black/5 px-3 py-2.5">
@@ -196,37 +188,36 @@ function Attachment({
       </div>
     );
   }
-  return (
-    <a href={withAuthToken(att.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded border border-black/10 bg-black/5 px-3 py-2 hover:bg-black/10">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/10">
-        <FileText className="h-4 w-4" />
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{att.fileName}</p>
-        <p className="text-xs opacity-75">{formatBytes(att.sizeBytes)}</p>
-      </div>
-    </a>
-  );
+  return <DocumentAttachment att={att} />;
 }
+
+const FORWARDABLE_TYPES = ["TEXT", "IMAGE", "VIDEO", "DOCUMENT", "AUDIO"];
 
 export function MessageBubble({
   message,
   onReply,
   onReact,
   onDelete,
+  onForward,
   onStartConversation,
   repliedMessage,
+  onJumpToMessage,
   readOnly,
   canDelete,
   highlighted,
 }: {
   message: MessageDTO;
   onReply: (message: MessageDTO) => void;
-  onReact: (message: MessageDTO, emoji: string) => void;
+  /** Omitted where reactions aren't offered (WhatsApp groups). */
+  onReact?: (message: MessageDTO, emoji: string) => void;
   onDelete?: (message: MessageDTO) => void;
+  /** "Encaminhar" — omitted where forwarding isn't offered (groups, read-only views). */
+  onForward?: (message: MessageDTO) => void;
   /** Starts a new conversation with a phone number found inside a received vCard attachment. Omitted in read-only views (Gestão). */
   onStartConversation?: (phone: string, name: string) => void;
   repliedMessage?: MessageDTO;
+  /** Clicking the quote of a reply goes to the message it answers. */
+  onJumpToMessage?: (messageId: string) => void;
   /** Gestão's oversight view: same bubble rendering as Atendimento, but no reply/react — gestores only watch. */
   readOnly?: boolean;
   /** ADMIN-only "excluir mensagem" affordance — local to this app, never touches WhatsApp. */
@@ -235,6 +226,7 @@ export function MessageBubble({
   highlighted?: boolean;
 }) {
   const [showReactions, setShowReactions] = useState(false);
+  const [showReactors, setShowReactors] = useState(false);
   const [openMedia, setOpenMedia] = useState<LightboxMedia | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isOutbound = message.direction === "OUTBOUND";
@@ -242,11 +234,20 @@ export function MessageBubble({
   const bubble = (
     <div
       className={clsx(
-        "relative max-w-[70%] rounded-card px-3 py-2 text-sm shadow-sm transition-shadow",
-        isOutbound ? "bg-primary text-primary-fg" : "bg-surface-alt",
+        // Same bubbles as the chat interno: rounder, the corner toward the sender squarer, on the dotted wallpaper.
+        "chat-pop relative max-w-[70%] rounded-2xl px-3 py-2 text-sm shadow-sm transition-shadow",
+        isOutbound ? "rounded-br-md bg-primary text-primary-fg" : "rounded-bl-md bg-surface",
         highlighted && "ring-2 ring-yellow-400 ring-offset-2 ring-offset-[var(--color-bg)]"
       )}
     >
+      {!isOutbound && message.senderParticipant && (
+        <p className="mb-0.5 text-xs font-bold" style={{ color: message.senderParticipant.color }}>
+          {message.senderParticipant.name}
+          {message.senderParticipant.phone && message.senderParticipant.name !== `+${message.senderParticipant.phone}` && (
+            <span className="ml-1.5 font-normal text-muted">+{message.senderParticipant.phone}</span>
+          )}
+        </p>
+      )}
       {isOutbound && message.senderAgentDisplayName && (
         <>
           <p className="text-xs font-bold opacity-90">{message.senderAgentDisplayName}</p>
@@ -255,11 +256,23 @@ export function MessageBubble({
         </>
       )}
 
+      {message.forwarded && (
+        <p className="mb-0.5 flex items-center gap-1 text-[11px] italic opacity-75">
+          <Forward className="h-3 w-3" /> Encaminhada
+        </p>
+      )}
+
       {repliedMessage && (
-        <div className="mb-1.5 rounded border-l-2 border-secondary bg-black/10 px-2 py-1 text-xs opacity-90">
-          <p className="font-semibold">{repliedMessage.senderAgentDisplayName ?? "Cliente"}</p>
+        <button
+          type="button"
+          onClick={() => onJumpToMessage?.(repliedMessage.id)}
+          disabled={!onJumpToMessage}
+          title={onJumpToMessage ? "Ir para a mensagem respondida" : undefined}
+          className="focus-ring mb-1.5 block w-full rounded border-s-2 border-secondary bg-black/10 px-2 py-1 text-start text-xs opacity-90 enabled:cursor-pointer enabled:hover:bg-black/15"
+        >
+          <p className="font-semibold">{repliedMessage.senderAgentDisplayName ?? repliedMessage.senderParticipant?.name ?? "Cliente"}</p>
           <p className="truncate">{repliedMessage.body ?? "Anexo"}</p>
-        </div>
+        </button>
       )}
 
       {/*
@@ -307,6 +320,12 @@ export function MessageBubble({
         </a>
       )}
 
+      {/* A link WhatsApp didn't attach a card to (typed by an agent here, or sent without one) still gets a preview, fetched by the server. */}
+      {!message.linkPreview && message.body && !message.attachments.length && (() => {
+        const url = firstUrl(message.body);
+        return url ? <LinkPreviewCard url={url} /> : null;
+      })()}
+
       {message.body && <p className="whitespace-pre-wrap break-words">{renderWhatsAppFormatting(message.body)}</p>}
 
       <div className={clsx("mt-1 flex items-center gap-1 text-[11px] opacity-75", isOutbound ? "justify-end" : "justify-start")}>
@@ -315,12 +334,50 @@ export function MessageBubble({
       </div>
 
       {message.reactions.length > 0 && (
-        <div className="absolute -bottom-3 right-2 flex gap-0.5 rounded-full border border-border bg-surface px-1.5 py-0.5 text-xs shadow">
-          {message.reactions.map((r) => (
-            <span key={r.id} title={r.userDisplayName}>
-              {r.emoji}
-            </span>
-          ))}
+        <div className="absolute -bottom-3 right-2 z-10">
+          {/* Like WhatsApp Web: the emojis with how many used each; a click lists who reacted with what. */}
+          <button
+            type="button"
+            onClick={() => setShowReactors((s) => !s)}
+            aria-expanded={showReactors}
+            aria-label="Ver quem reagiu"
+            className="focus-ring flex gap-1 rounded-full border border-border bg-surface px-1.5 py-0.5 text-xs shadow hover:bg-surface-alt"
+          >
+            {groupReactions(message.reactions).map((group) => (
+              <span key={group.emoji} title={group.names.join(", ")} data-testid="reaction-chip">
+                {group.emoji}
+                {group.count > 1 && <span className="ml-0.5 text-[10px] font-medium opacity-75">{group.count}</span>}
+              </span>
+            ))}
+          </button>
+          {showReactors && (
+            <div
+              role="dialog"
+              aria-label="Reações"
+              className={clsx(
+                // Opens upward, over the message itself: below, the conversation's last message (the usual one) cut it off.
+                "absolute bottom-full z-20 mb-1 w-56 rounded-card border border-border bg-surface p-2 text-sm text-[var(--color-text)] shadow-elevated",
+                isOutbound ? "right-0" : "left-0"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between px-1 text-xs text-muted">
+                <span>
+                  {message.reactions.length} {message.reactions.length === 1 ? "reação" : "reações"}
+                </span>
+                <button type="button" onClick={() => setShowReactors(false)} className="focus-ring rounded p-0.5 hover:bg-surface-alt" aria-label="Fechar reações">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <ul className="max-h-56 overflow-y-auto">
+                {message.reactions.map((reaction) => (
+                  <li key={reaction.id} className="flex items-center gap-2 rounded px-1 py-1">
+                    <span className="truncate flex-1">{reaction.userDisplayName}</span>
+                    <span className="text-base leading-none">{reaction.emoji}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -331,10 +388,15 @@ export function MessageBubble({
   // real flex siblings here instead of absolute-positioning over the bubble,
   // ordered so they land on the correct side for each direction.
   const actions = (
-    <div className="flex shrink-0 items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="flex shrink-0 items-center gap-0.5 self-center rounded-full border border-border bg-surface px-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
       <button onClick={() => onReply(message)} className="focus-ring rounded-full p-1.5 text-muted hover:bg-surface-alt hover:text-[var(--color-text)]" aria-label="Responder">
         <ReplyIcon className="h-3.5 w-3.5" />
       </button>
+      {onForward && FORWARDABLE_TYPES.includes(message.type) && (
+        <button onClick={() => onForward(message)} className="focus-ring rounded-full p-1.5 text-muted hover:bg-surface-alt hover:text-[var(--color-text)]" aria-label="Encaminhar" title="Encaminhar">
+          <Forward className="h-3.5 w-3.5" />
+        </button>
+      )}
       {canDelete && onDelete && (
         <button
           onClick={() => setConfirmDelete(true)}
@@ -345,36 +407,38 @@ export function MessageBubble({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
-      <div className="relative">
-        <button
-          onClick={() => setShowReactions((s) => !s)}
-          className="focus-ring rounded-full p-1.5 text-muted hover:bg-surface-alt hover:text-[var(--color-text)]"
-          aria-label="Reagir"
-        >
-          <Smile className="h-3.5 w-3.5" />
-        </button>
-        {showReactions && (
-          <div
-            className={clsx(
-              "absolute top-8 z-10 flex gap-1 rounded-full border border-border bg-surface px-2 py-1 shadow-lg",
-              isOutbound ? "right-0" : "left-0"
-            )}
+      {onReact && (
+        <div className="relative">
+          <button
+            onClick={() => setShowReactions((s) => !s)}
+            className="focus-ring rounded-full p-1.5 text-muted hover:bg-surface-alt hover:text-[var(--color-text)]"
+            aria-label="Reagir"
           >
-            {QUICK_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => {
-                  onReact(message, emoji);
-                  setShowReactions(false);
-                }}
-                className="focus-ring text-base transition-transform hover:scale-125"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+            <Smile className="h-3.5 w-3.5" />
+          </button>
+          {showReactions && (
+            <div
+              className={clsx(
+                "absolute top-8 z-10 flex gap-1 rounded-full border border-border bg-surface px-2 py-1 shadow-lg",
+                isOutbound ? "right-0" : "left-0"
+              )}
+            >
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onReact(message, emoji);
+                    setShowReactions(false);
+                  }}
+                  className="focus-ring text-base transition-transform hover:scale-125"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 

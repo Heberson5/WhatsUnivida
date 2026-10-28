@@ -1,10 +1,12 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Camera, Trash2 } from "lucide-react";
+import { Camera, Trash2, Volume2, X } from "lucide-react";
 import { toast } from "sonner";
-import type { UserDTO } from "@whatsunivida/types";
+import type { UserDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
+import { playAlertSound } from "../../lib/alert-sounds";
 
 const ROLE_LABEL: Record<string, string> = { ADMIN: "Administrador", MANAGER: "Gestor", AGENT: "Atendente" };
 
@@ -14,9 +16,7 @@ export default function MeuPerfilPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const photoInputRef = useRef<HTMLInputElement>(null);
-
-  const [fullName, setFullName] = useState(user?.fullName ?? "");
-  const [displayName, setDisplayName] = useState(user?.displayName ?? "");
+  const navigate = useNavigate();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -27,15 +27,6 @@ export default function MeuPerfilPage() {
     if (accessToken) setSession(accessToken, updated);
     queryClient.invalidateQueries({ queryKey: ["users"] });
   }
-
-  const profileMutation = useMutation({
-    mutationFn: () => api.patch<UserDTO>("/profile", { fullName, displayName }),
-    onSuccess: (res) => {
-      applyUser(res.data);
-      toast.success("Perfil atualizado.");
-    },
-    onError: (err) => toast.error(getApiErrorMessage(err)),
-  });
 
   const photoMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -70,10 +61,20 @@ export default function MeuPerfilPage() {
     onError: (err) => setPasswordError(getApiErrorMessage(err)),
   });
 
-  function handleProfileSubmit(e: FormEvent) {
-    e.preventDefault();
-    profileMutation.mutate();
-  }
+  // Back to the screen the profile was opened from; opened straight from the address bar, to the start screen.
+  const close = useCallback(() => {
+    if ((window.history.state as { idx?: number } | null)?.idx) navigate(-1);
+    else navigate("/", { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (e.key === "Escape" && !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) close();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [close]);
 
   function handlePasswordSubmit(e: FormEvent) {
     e.preventDefault();
@@ -89,7 +90,16 @@ export default function MeuPerfilPage() {
 
   return (
     <div className="h-full overflow-auto p-3 sm:p-6">
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div className="relative mx-auto flex max-w-2xl flex-col gap-6 pt-12 sm:pt-0">
+        <button
+          type="button"
+          onClick={close}
+          className="focus-ring shadow-soft absolute end-0 top-0 rounded-full border border-border bg-surface p-2 text-muted hover:bg-surface-alt hover:text-[var(--color-text)] sm:-end-14"
+          aria-label="Fechar e voltar"
+          title="Fechar e voltar"
+        >
+          <X className="h-5 w-5" />
+        </button>
         <div className="shadow-soft rounded-card border border-border bg-surface p-6">
           <h2 className="mb-4 text-base font-semibold">Foto de perfil</h2>
           <div className="flex items-center gap-4">
@@ -135,13 +145,10 @@ export default function MeuPerfilPage() {
           </div>
         </div>
 
-        <form onSubmit={handleProfileSubmit} className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
+        <section className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
           <h2 className="mb-1 text-base font-semibold">Dados pessoais</h2>
           <Field label="Nome completo">
-            <input required value={fullName} onChange={(e) => setFullName(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
-          </Field>
-          <Field label="Nome de exibição">
-            <input required value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input disabled value={user.fullName} className="w-full rounded-card border border-border bg-surface-alt px-3 py-2 text-sm text-muted" />
           </Field>
           <Field label="E-mail">
             <input disabled value={user.email} className="w-full rounded-card border border-border bg-surface-alt px-3 py-2 text-sm text-muted" />
@@ -149,25 +156,23 @@ export default function MeuPerfilPage() {
           <Field label="Perfil">
             <input disabled value={ROLE_LABEL[user.role] ?? user.role} className="w-full rounded-card border border-border bg-surface-alt px-3 py-2 text-sm text-muted" />
           </Field>
-          <div className="pt-1">
-            <button type="submit" disabled={profileMutation.isPending} className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60">
-              {profileMutation.isPending ? "Salvando..." : "Salvar alterações"}
-            </button>
-          </div>
-        </form>
+          <p className="text-xs text-muted">Para alterar o nome, fale com o gestor ou o administrador.</p>
+        </section>
+
+        <SoundsSection user={user} onSaved={applyUser} />
 
         <form onSubmit={handlePasswordSubmit} className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
           <h2 className="mb-1 text-base font-semibold">Alterar senha</h2>
           <Field label="Senha atual">
-            <input required type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </Field>
           <Field label="Nova senha">
-            <input required type="password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input required type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </Field>
           <Field label="Confirmar nova senha">
-            <input required type="password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input required type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </Field>
-          {passwordError && <p className="rounded-card bg-red-50 px-3 py-2 text-sm text-red-700">{passwordError}</p>}
+          {passwordError && <p className="rounded-card bg-danger-soft px-3 py-2 text-sm text-danger">{passwordError}</p>}
           <div className="pt-1">
             <button type="submit" disabled={passwordMutation.isPending} className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60">
               {passwordMutation.isPending ? "Alterando..." : "Alterar senha"}
@@ -176,6 +181,53 @@ export default function MeuPerfilPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+type SoundPatch = Partial<Pick<UserDTO, "soundNewMessage" | "soundNewQueue" | "soundVolume">>;
+
+function SoundsSection({ user, onSaved }: { user: UserDTO; onSaved: (user: UserDTO) => void }) {
+  const [volume, setVolume] = useState(user.soundVolume);
+  const soundsMutation = useMutation({
+    mutationFn: async (patch: SoundPatch) => (await api.patch<UserDTO>("/profile/sounds", patch)).data,
+    onSuccess: onSaved,
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
+
+  return (
+    <section className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
+      <h2 className="mb-1 text-base font-semibold">Sons</h2>
+      {(
+        [
+          ["soundNewMessage", "newMessage", "Nova mensagem de cliente"],
+          ["soundNewQueue", "newQueue", "Nova conversa na fila"],
+        ] as const
+      ).map(([field, sound, label]) => (
+        <div key={field} className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={user[field]} onChange={(e) => soundsMutation.mutate({ [field]: e.target.checked })} className="h-4 w-4 accent-[var(--color-primary)]" />
+            {label}
+          </label>
+          <button type="button" onClick={() => playAlertSound(sound, volume)} className="focus-ring inline-flex items-center gap-1 rounded-card px-2 py-1 text-xs text-muted hover:bg-surface-alt">
+            <Volume2 className="h-3.5 w-3.5" /> Ouvir
+          </button>
+        </div>
+      ))}
+      <Field label={`Volume: ${volume}%`}>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          onPointerUp={() => soundsMutation.mutate({ soundVolume: volume })}
+          onKeyUp={() => soundsMutation.mutate({ soundVolume: volume })}
+          className="w-full accent-[var(--color-primary)]"
+        />
+      </Field>
+      <p className="text-xs text-muted">Valem só para você, em qualquer computador em que entrar.</p>
+    </section>
   );
 }
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { ROLE, PERMISSION_DEFINITIONS } from "@whatsunivida/types";
+import { ROLE, PERMISSION_DEFINITIONS } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { writeAudit } from "../../lib/audit";

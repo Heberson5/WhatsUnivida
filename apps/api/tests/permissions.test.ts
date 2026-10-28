@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
-import { PERMISSION } from "@whatsunivida/types";
+import { PERMISSION } from "@whatsatendende/types";
 import { resetDatabase, createTestUser, TEST_PASSWORD } from "./helpers";
 
 const app = createApp();
@@ -38,7 +38,7 @@ describe("granular per-role permissions", () => {
     expect(managerPerms.body[PERMISSION.GESTAO_ACESSAR]).toBe(true);
     expect(managerPerms.body[PERMISSION.DASHBOARD_ACESSAR]).toBe(true);
     expect(managerPerms.body[PERMISSION.RELATORIOS_ACESSAR]).toBe(true);
-    expect(managerPerms.body[PERMISSION.USUARIOS_GERENCIAR]).toBe(false);
+    expect(managerPerms.body[PERMISSION.USUARIOS_VISUALIZAR]).toBe(true);
     expect(managerPerms.body[PERMISSION.CONFIGURACOES_GERENCIAR]).toBe(false);
     expect(managerPerms.body[PERMISSION.AUDITORIA_ACESSAR]).toBe(false);
 
@@ -90,14 +90,14 @@ describe("granular per-role permissions", () => {
     const res = await request(app)
       .put("/api/permissions")
       .set("Authorization", `Bearer ${token}`)
-      .send({ entries: [{ role: "ADMIN", permission: PERMISSION.USUARIOS_GERENCIAR, allowed: false }] });
+      .send({ entries: [{ role: "ADMIN", permission: PERMISSION.USUARIOS_EDITAR, allowed: false }] });
     expect(res.status).toBe(400);
 
     const stored = await prisma.rolePermission.findMany({ where: { role: "ADMIN" } });
     expect(stored).toHaveLength(0);
   });
 
-  it("a MANAGER granted usuarios.gerenciar can manage AGENT/MANAGER accounts but not create or touch an ADMIN account", async () => {
+  it("a MANAGER granted usuarios.adicionar/editar can manage AGENT/MANAGER accounts but not create or touch an ADMIN account", async () => {
     await createTestUser({ email: "admin4@test.dev", role: "ADMIN" });
     const targetAdmin = await createTestUser({ email: "otheradmin@test.dev", role: "ADMIN" });
     await createTestUser({ email: "delegatedmanager@test.dev", role: "MANAGER" });
@@ -106,7 +106,12 @@ describe("granular per-role permissions", () => {
     await request(app)
       .put("/api/permissions")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ entries: [{ role: "MANAGER", permission: PERMISSION.USUARIOS_GERENCIAR, allowed: true }] });
+      .send({
+        entries: [
+          { role: "MANAGER", permission: PERMISSION.USUARIOS_ADICIONAR, allowed: true },
+          { role: "MANAGER", permission: PERMISSION.USUARIOS_EDITAR, allowed: true },
+        ],
+      });
 
     const managerToken = await loginAs("delegatedmanager@test.dev");
 

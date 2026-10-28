@@ -7,6 +7,14 @@ const URL_PATTERN = /https?:\/\/[^\s]+/g;
 // of them (").") comes off together rather than one at a time.
 const TRAILING_PUNCTUATION = /[.,;:!?'")\]]+$/;
 
+/** First http(s) link in a message, without trailing punctuation — the one a preview card is shown for. */
+export function firstUrl(text: string): string | null {
+  const match = new RegExp(URL_PATTERN.source, "i").exec(text);
+  if (!match) return null;
+  const url = match[0].replace(TRAILING_PUNCTUATION, "");
+  return url || null;
+}
+
 /** Turns every bare http(s) URL in a plain-text run into a clickable link — WhatsApp Web parity for a message with no rich link-preview card (see MessageBubble's linkPreview), and a fallback even when there is one. */
 function linkifyPlainText(text: string, keyRef: { current: number }): ReactNode[] {
   const parts: ReactNode[] = [];

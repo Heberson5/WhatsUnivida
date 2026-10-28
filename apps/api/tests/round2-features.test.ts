@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+
+// Starting a conversation now asks WhatsApp whether the number exists — answered "yes" here, these tests are about other things.
+vi.mock("../src/modules/whatsapp/whatsapp.service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/modules/whatsapp/whatsapp.service")>();
+  return { ...actual, lookupNumber: vi.fn(async (_connectionId: string, phone: string) => ({ phone })) };
+});
 import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
@@ -110,7 +116,7 @@ describe("transfer targets include MANAGER/ADMIN, who can also receive transfers
     await createTestUser({ email: "gestor3@test.dev", role: "MANAGER", displayName: "Gestora", presence: "ONLINE" });
     const joaoToken = await loginAs("joao6@test.dev");
     const gestorToken = await loginAs("gestor3@test.dev");
-    const gestor = await prisma.user.findUniqueOrThrow({ where: { email: "gestor3@test.dev" } });
+    const gestor = await prisma.user.findFirstOrThrow({ where: { email: "gestor3@test.dev" } });
 
     const { conversation } = await createWaitingConversation("5511990006666", connectionId);
     await request(app).post(`/api/conversations/${conversation.id}/accept`).set("Authorization", `Bearer ${joaoToken}`);

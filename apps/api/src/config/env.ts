@@ -20,18 +20,19 @@ const schema = z.object({
   WHATSAPP_PROVIDER: z.enum(["mock", "baileys"]).default("mock"),
   WHATSAPP_AUTH_DIR: z.string().default("./whatsapp-sessions"),
   WEB_APP_URL: z.string().default("http://localhost:5173"),
+  // Self-hosted LanguageTool instance (see docker-compose.yml) backing the
+  // Composer's writing-suggestion chip. Best-effort only — a down/slow
+  // instance degrades to no suggestions, never blocks sending.
+  LANGUAGETOOL_URL: z.string().default("http://localhost:8010"),
+  // Where Auditoria looks up the approximate place of an IP (each IP once). Empty turns the lookup off.
+  IP_GEOLOCATION_URL: z.string().default("https://ipwho.is"),
+  // Minutes the business is behind UTC (what JS getTimezoneOffset() reports; 240 = UTC-4,
+  // Tangará da Serra) — for jobs that run at a local time, like Monday 00:00.
+  BUSINESS_TZ_OFFSET_MINUTES: z.coerce.number().default(240),
   UPLOAD_DIR: z.string().default("./uploads"),
   UPLOAD_MAX_SIZE_MB: z.coerce.number().default(25),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(300),
-  // Only enable behind a real reverse proxy (e.g. the nginx container in
-  // docker-compose) that overwrites X-Forwarded-For itself. If the API is
-  // ever reachable directly, trusting this header lets any client spoof
-  // its own IP for rate limiting and audit logs — so it defaults to off.
-  TRUST_PROXY: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
 });
 
 export const env = schema.parse(process.env);

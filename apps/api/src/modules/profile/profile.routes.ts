@@ -1,48 +1,16 @@
 import { Router } from "express";
-import multer from "multer";
-import path from "node:path";
-import fs from "node:fs";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth } from "../../middleware/auth";
 import { writeAudit } from "../../lib/audit";
-import { env } from "../../config/env";
-import { Errors } from "../../lib/http-error";
+import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { toUserDTO } from "../users/users.mapper";
+import { realtimeEvents } from "../../realtime/realtime";
 import * as service from "./profile.service";
 
 export const profileRouter = Router();
 
 profileRouter.use(requireAuth);
-
-const profilePhotoDir = path.join(env.UPLOAD_DIR, "profile");
-fs.mkdirSync(profilePhotoDir, { recursive: true });
-
-// Same reasoning as the branding-logo upload: raster formats only, SVG
-// excluded (an uploaded SVG can embed <script>).
-const ALLOWED_PHOTO_MIME_TO_EXT: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-};
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  // A raw, un-resized phone camera photo is routinely 3-8MB — 2MB used to
-  // reject exactly that (the most common source for a profile photo) with
-  // an error the UI only ever showed as a generic "erro interno do
-  // servidor", making the upload look silently broken. See error-handler.ts
-  // for the other half of this fix (a real message for whichever limit is
-  // still hit).
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!(file.mimetype in ALLOWED_PHOTO_MIME_TO_EXT)) {
-      return cb(Errors.badRequest("Formato de imagem nao suportado"));
-    }
-    cb(null, true);
-  },
-});
 
 profileRouter.get(
   "/",
@@ -52,29 +20,15 @@ profileRouter.get(
   })
 );
 
-const updateSchema = z.object({
-  fullName: z.string().min(2).optional(),
-  displayName: z.string().min(1).optional(),
-});
-
-profileRouter.patch(
-  "/",
-  asyncHandler(async (req, res) => {
-    const input = updateSchema.parse(req.body);
-    const user = await service.updateOwnProfile(req.auth!.userId, input);
-    await writeAudit({ userId: req.auth!.userId, action: "PROFILE_UPDATED", entity: "User", entityId: user.id, ipAddress: req.ip ?? null, metadata: input });
-    res.json(toUserDTO(user));
-  })
-);
+// No PATCH "/": the user can't rename themselves — reports and the Dashboard show the current name, so only Usuários
+// (with its "é a mesma pessoa?" check) changes it.
 
 profileRouter.post(
   "/photo",
-  upload.single("file"),
+  profilePhotoUpload.single("file"),
   asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "BAD_REQUEST", message: "Nenhum arquivo enviado" });
-    const fileName = `photo-${req.auth!.userId}-${randomUUID()}${ALLOWED_PHOTO_MIME_TO_EXT[req.file.mimetype]}`;
-    fs.writeFileSync(path.join(profilePhotoDir, fileName), req.file.buffer);
-    const user = await service.updateOwnPhoto(req.auth!.userId, `/uploads/profile/${fileName}`);
+    const user = await service.updateOwnPhoto(req.auth!.userId, saveProfilePhoto(req.auth!.userId, req.file));
     await writeAudit({ userId: req.auth!.userId, action: "PROFILE_PHOTO_UPLOADED", entity: "User", entityId: user.id, ipAddress: req.ip ?? null });
     res.json(toUserDTO(user));
   })
@@ -105,5 +59,53 @@ profileRouter.post(
     await service.changeOwnPassword(req.auth!.userId, currentPassword, newPassword);
     await writeAudit({ userId: req.auth!.userId, action: "PROFILE_PASSWORD_CHANGED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null });
     res.status(204).end();
+  })
+);
+
+// Notas de versão: remembers the newest release this user has seen, so the
+// sidebar's "Novo" badge and the "O que há de novo" popup stop showing it.
+const releaseNotesSeenSchema = z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/, "Versão inválida") });
+
+profileRouter.patch(
+  "/release-notes-seen",
+  asyncHandler(async (req, res) => {
+    const { version } = releaseNotesSeenSchema.parse(req.body);
+    await service.markReleaseNotesSeen(req.auth!.userId, version);
+    res.json({ releaseNotesSeenVersion: version });
+  })
+);
+
+const soundsSchema = z
+  .object({ soundNewMessage: z.boolean().optional(), soundNewQueue: z.boolean().optional(), soundVolume: z.number().int().min(0).max(100).optional() })
+  .strict();
+
+profileRouter.patch(
+  "/sounds",
+  asyncHandler(async (req, res) => {
+    const user = await service.updateOwnSounds(req.auth!.userId, soundsSchema.parse(req.body));
+    res.json(toUserDTO(user));
+  })
+);
+
+const pauseSchema = z.object({ pauseReasonId: z.string().uuid() });
+
+profileRouter.post(
+  "/pause",
+  asyncHandler(async (req, res) => {
+    const { pauseReasonId } = pauseSchema.parse(req.body);
+    const user = await service.pauseOwnAttendance(req.auth!.userId, pauseReasonId);
+    realtimeEvents.presenceChanged(req.auth!.userId, "AWAY");
+    await writeAudit({ userId: req.auth!.userId, action: "PROFILE_PAUSED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null, metadata: { pauseReasonId } });
+    res.json(toUserDTO(user));
+  })
+);
+
+profileRouter.post(
+  "/resume",
+  asyncHandler(async (req, res) => {
+    const user = await service.resumeOwnAttendance(req.auth!.userId);
+    realtimeEvents.presenceChanged(req.auth!.userId, "ONLINE");
+    await writeAudit({ userId: req.auth!.userId, action: "PROFILE_RESUMED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null });
+    res.json(toUserDTO(user));
   })
 );

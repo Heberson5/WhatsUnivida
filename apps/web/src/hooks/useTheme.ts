@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { create } from "zustand";
 import { api } from "../lib/api";
 import { useAuthStore } from "../store/auth-store";
 
-type ThemePreference = "LIGHT" | "DARK" | "AUTO";
+export type ThemePreference = "LIGHT" | "DARK" | "AUTO";
 
 function applyTheme(preference: ThemePreference) {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -10,10 +11,16 @@ function applyTheme(preference: ThemePreference) {
   document.documentElement.classList.toggle("dark", isDark);
 }
 
+// Shared store (not per-component state) so the Topbar toggle and the Ctrl+K
+// palette always agree on the current preference.
+const useThemeStore = create<{ preference: ThemePreference; setPreference: (p: ThemePreference) => void }>((set) => ({
+  preference: (localStorage.getItem("theme") as ThemePreference | null) ?? "AUTO",
+  setPreference: (preference) => set({ preference }),
+}));
+
 export function useTheme() {
-  const [preference, setPreference] = useState<ThemePreference>(
-    () => (localStorage.getItem("theme") as ThemePreference | null) ?? "AUTO"
-  );
+  const preference = useThemeStore((s) => s.preference);
+  const setPreference = useThemeStore((s) => s.setPreference);
   const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
@@ -30,7 +37,7 @@ export function useTheme() {
       localStorage.setItem("theme", next);
       if (user) api.patch("/settings/theme", { theme: next }).catch(() => undefined);
     },
-    [user]
+    [user, setPreference]
   );
 
   return { preference, setTheme };

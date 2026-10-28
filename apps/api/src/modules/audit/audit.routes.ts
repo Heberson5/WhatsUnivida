@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
-import { PERMISSION } from "@whatsunivida/types";
+import { PERMISSION } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
+import { isIP } from "node:net";
 import { prisma } from "../../lib/prisma";
+import { normalizeIp } from "../../lib/audit";
+import { getIpPlaces, isInternalIp } from "../../lib/ip-location";
 
 export const auditRouter = Router();
 auditRouter.use(requireAuth, requirePermission(PERMISSION.AUDITORIA_ACESSAR));
@@ -29,6 +32,7 @@ auditRouter.get(
     });
     const hasMore = logs.length > limit;
     const page = hasMore ? logs.slice(0, limit) : logs;
+    const places = await getIpPlaces(page.map((l) => normalizeIp(l.ipAddress)).filter((ip): ip is string => ip !== null));
     res.json({
       items: page.map((l) => ({
         id: l.id,
@@ -36,7 +40,9 @@ auditRouter.get(
         action: l.action,
         entity: l.entity,
         entityId: l.entityId,
-        ipAddress: l.ipAddress,
+        ipAddress: normalizeIp(l.ipAddress),
+        ipInternal: Boolean(l.ipAddress && isIP(normalizeIp(l.ipAddress)!) && isInternalIp(normalizeIp(l.ipAddress)!)),
+        ipPlace: places.get(normalizeIp(l.ipAddress) ?? "") ?? null,
         metadata: l.metadata,
         createdAt: l.createdAt.toISOString(),
       })),

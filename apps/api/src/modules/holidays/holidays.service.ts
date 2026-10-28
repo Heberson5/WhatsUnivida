@@ -10,22 +10,26 @@ export interface HolidayFilter {
   year?: number;
 }
 
+/** A year's holidays — plus those that repeat every year, registered in any year (shown on this year's day and month). */
 export async function listHolidays(filter: HolidayFilter = {}) {
-  return prisma.holiday.findMany({
+  const rows = await prisma.holiday.findMany({
     where: {
       scope: filter.scope,
       state: filter.state,
-      year: filter.year,
+      ...(filter.year ? { OR: [{ year: filter.year }, { recurringYearly: true }] } : {}),
     },
     orderBy: [{ date: "asc" }, { name: "asc" }],
   });
+  if (!filter.year) return rows;
+  const monthDay = (h: (typeof rows)[number]) => (h.recurringYearly ? (h.monthDay ?? "") : h.date.toISOString().slice(5, 10));
+  return rows.sort((a, b) => monthDay(a).localeCompare(monthDay(b)) || a.name.localeCompare(b.name));
 }
 
 function dateKeyToDate(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00.000Z`);
 }
 
-export async function createManualHoliday(input: { date: string; name: string; scope: HolidayScope; state?: string | null; city?: string | null }) {
+export async function createManualHoliday(input: { date: string; name: string; scope: HolidayScope; state?: string | null; city?: string | null; recurringYearly?: boolean }) {
   validateScopeFields(input.scope, input.state ?? null, input.city ?? null);
   const date = dateKeyToDate(input.date);
   return prisma.holiday.create({
@@ -37,13 +41,15 @@ export async function createManualHoliday(input: { date: string; name: string; s
       city: input.city ?? null,
       source: "MANUAL",
       year: date.getUTCFullYear(),
+      recurringYearly: input.recurringYearly ?? false,
+      monthDay: input.date.slice(5, 10),
     },
   });
 }
 
 export async function updateManualHoliday(
   id: string,
-  input: Partial<{ date: string; name: string; scope: HolidayScope; state: string | null; city: string | null }>
+  input: Partial<{ date: string; name: string; scope: HolidayScope; state: string | null; city: string | null; recurringYearly: boolean }>
 ) {
   const existing = await prisma.holiday.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound("Feriado nao encontrado");
@@ -64,6 +70,8 @@ export async function updateManualHoliday(
       state: nextState,
       city: nextCity,
       year: date.getUTCFullYear(),
+      recurringYearly: input.recurringYearly ?? existing.recurringYearly,
+      monthDay: date.toISOString().slice(5, 10),
     },
   });
 }
@@ -91,11 +99,16 @@ export async function findApplicableHoliday(dateKey: string, state: string | nul
   const date = dateKeyToDate(dateKey);
   const holiday = await prisma.holiday.findFirst({
     where: {
-      date,
-      OR: [
-        { scope: "NATIONAL" },
-        ...(state ? [{ scope: "STATE" as const, state }] : []),
-        ...(state && city ? [{ scope: "MUNICIPAL" as const, state, city }] : []),
+      // That date — or the same day and month, for a holiday that repeats every year.
+      AND: [
+        { OR: [{ date }, { recurringYearly: true, monthDay: dateKey.slice(5, 10) }] },
+        {
+          OR: [
+            { scope: "NATIONAL" },
+            ...(state ? [{ scope: "STATE" as const, state }] : []),
+            ...(state && city ? [{ scope: "MUNICIPAL" as const, state, city }] : []),
+          ],
+        },
       ],
     },
   });

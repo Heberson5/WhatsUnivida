@@ -76,7 +76,13 @@ export interface ApiErrorShape {
 export function getApiErrorMessage(err: unknown, fallback = "Ocorreu um erro inesperado"): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as ApiErrorShape | undefined;
-    return data?.message ?? fallback;
+    if (data?.message) return data.message;
+    // A body over the web server's limit is refused by nginx itself (or by a
+    // proxy in front of it) with a bare HTML page — the request never reaches
+    // the API, so there is no { message } to show, and the generic fallback
+    // left an agent staring at "erro inesperado" after attaching a video.
+    if (err.response?.status === 413) return "Arquivo muito grande para o servidor aceitar";
+    return fallback;
   }
   return fallback;
 }

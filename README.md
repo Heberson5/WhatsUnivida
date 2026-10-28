@@ -1,46 +1,8 @@
-# WhatsUnivida
+# WhatsAtendende
 
 Plataforma Web multiusuário de atendimento ao cliente via WhatsApp — semelhante ao WhatsApp Web, mas com fila de atendimento, aceite exclusivo, transferência, gestão, dashboard, relatórios e controle de usuários/permissões.
 
 > **Status:** funcional de ponta a ponta (login → fila → aceite → atendimento → transferência → encerramento → histórico → dashboard → relatórios), com testes automatizados cobrindo as regras críticas de negócio. Consulte [Pendências / Roadmap](#pendências--roadmap) antes de considerar qualquer item "pronto para produção" — a integração real com o WhatsApp em particular exige validação com um número real, que este ambiente de desenvolvimento não pode executar sozinho.
-
----
-
-## Modo demonstração (WhatsUnivida)
-
-Esta versão do projeto inclui um conjunto completo de **dados de exemplo** para apresentar o sistema sem usar WhatsApp real. Tudo é fictício (telefones no padrão `55 65 9 0000-xxxx`).
-
-**O que é criado** (`apps/api/prisma/demo-data.ts`):
-
-- 3 conexões de demonstração — *Atendimento Univida*, *Comercial - Planos* e *Financeiro* — marcadas com `isDemo = true`. Elas rodam no **simulador** (`MockWhatsAppProvider`) mesmo com `WHATSAPP_PROVIDER=baileys`: aparecem como conectadas, as respostas dos atendentes ganham os "tiques" de enviado/entregue e **nada é enviado para números reais**.
-- 6 atendentes (2 por conexão), 1 gestora e 1 administrador, com foto.
-- 42 contatos com foto, e conversas em todos os estados: na fila (novas/aguardando), em atendimento (com mensagens não lidas), transferidas (com observação), encerradas, abandonada e atendida pelo celular.
-- ~100 conversas com ~520 mensagens, distribuídas em 30 dias (Dashboard, Relatórios e Auditoria com números reais para mostrar).
-- Mensagens com imagem (comprovante PIX, cartão do beneficiário), PDF (boleto, proposta), localização, contato (vCard), resposta citada, pré-visualização de link e reações.
-- Respostas rápidas por conexão (digite `/` no campo de mensagem).
-
-**Como usar**
-
-```bash
-npm run seed                          # usuários base + demonstração (não duplica se já existir)
-SEED_DEMO_FORCE=true npm run seed     # apaga só a demonstração e recria com datas de hoje
-SEED_DEMO_DATA=false npm run seed     # só usuários base, sem demonstração
-SEED_DEMO_REMOVE=true npm run seed    # remove a demonstração por completo
-```
-
-Na VPS, use as opções **[21]** (popular), **[24]** (recriar) e **[25]** (remover demonstração) do `infrastructure/vps/gerenciador-vps.bat`.
-
-**Conexão real:** em *Configurações → Conexões*, crie uma nova conexão e leia o QR Code normalmente. Ela usa o provedor real (Baileys) e convive com as de demonstração. As conversas reais nunca são apagadas pelo `SEED_DEMO_FORCE`. A tela de Configurações não exclui conexões que têm histórico (o histórico é preservado), então, quando não precisar mais da demonstração, remova-a por completo com `SEED_DEMO_REMOVE=true npm run seed` (apaga as 3 conexões de demonstração, suas conversas/contatos e os 6 atendentes de exemplo — nada de conexões reais).
-
-**Usuários de demonstração** (senhas padrão — defina `SEED_DEMO_PASSWORD` antes de expor na internet):
-
-| Perfil | E-mail | Senha padrão |
-|---|---|---|
-| Administrador | `admin@whatsunivida.dev` | `***REMOVIDO***` |
-| Gestora | `gestor@whatsunivida.dev` | `***REMOVIDO***` |
-| Atendentes | `carla@`, `joao@`, `pedro@`, `maria@`, `luciana@`, `ricardo@` `whatsunivida.dev` | `***REMOVIDO***` |
-
-**Publicação:** o `docker-compose.yml` publica o sistema na porta **8085**. Veja `infrastructure/vps/nginx-whatsunivida.conf` para vincular o domínio `whatsunivida.sauberlich.com.br` (HTTPS) e `infrastructure/vps/README.md` para o passo a passo.
 
 ---
 
@@ -160,8 +122,8 @@ cp apps/api/.env.example apps/api/.env
 
 # 3. Subir um Postgres (se não usar Docker, use uma instância local)
 #    Exemplo rápido com Docker apenas para o banco:
-docker run -d --name whatsunivida-db -e POSTGRES_USER=whatsunivida \
-  -e POSTGRES_PASSWORD=whatsunivida -e POSTGRES_DB=whatsunivida \
+docker run -d --name whatsatendende-db -e POSTGRES_USER=whatsatendende \
+  -e POSTGRES_PASSWORD=whatsatendende -e POSTGRES_DB=whatsatendende \
   -p 5432:5432 postgres:16-alpine
 
 # 4. Compilar os pacotes compartilhados (necessário antes da API/Web em dev)
@@ -194,7 +156,6 @@ Principais variáveis da API:
 | `WHATSAPP_AUTH_DIR` | Diretório onde o Baileys persiste a sessão pareada |
 | `UPLOAD_DIR` / `UPLOAD_MAX_SIZE_MB` | Armazenamento local de anexos e limite de tamanho |
 | `WEB_APP_URL` | Origem permitida no CORS e nos cookies; também usada para montar o link de redefinição de senha enviado por e-mail |
-| `TRUST_PROXY` | `false` por padrão — só ativar atrás de um proxy reverso confiável (ver comentário em `.env.example`) |
 
 ## Banco de dados e migrações
 
@@ -215,7 +176,7 @@ cp .env.example .env   # preencha JWT_ACCESS_SECRET, JWT_REFRESH_SECRET e SETTIN
 docker compose up --build
 ```
 
-Sobe: PostgreSQL, Redis, API e Web servido por nginx — apenas o Web (porta 8085) é publicado no host; PostgreSQL, Redis e a API ficam acessíveis somente pela rede interna do compose (nginx faz proxy de `/api`, `/uploads` e `/socket.io` para a API), o que evita expor banco de dados e cache diretamente numa VPS pública. `docker compose config` foi validado neste repositório.
+Sobe: PostgreSQL, Redis, API e Web servido por nginx — apenas o Web (porta 8080) é publicado no host; PostgreSQL, Redis e a API ficam acessíveis somente pela rede interna do compose (nginx faz proxy de `/api`, `/uploads` e `/socket.io` para a API), o que evita expor banco de dados e cache diretamente numa VPS pública. `docker compose config` foi validado neste repositório.
 
 ## Integração com WhatsApp
 
@@ -295,7 +256,7 @@ Em **Configurações → E-mail** (perfil Administrador), configure um servidor 
 - Toda rota sensível usa `requireAuth` + `requireRole(...)` no backend — o menu lateral apenas *esconde* itens que o usuário não pode acessar; a proteção real está nas rotas Express.
 - Cabeçalhos de segurança via `helmet` (com `X-Powered-By` também desabilitado explicitamente); rate limiting global, limite mais agressivo no login, e limite dedicado em `forgot-password`/`reset-password`/teste de SMTP (`express-rate-limit`).
 - **Logs nunca contêm segredos**: `Authorization`, `Cookie` e `Set-Cookie` são redigidos nos logs de requisição (`pino-http` com `redact`) — sem isso, o access/refresh token de cada request apareceria em texto puro no log.
-- `TRUST_PROXY` desligado por padrão — só deve ser ativado quando a API é alcançável exclusivamente através de um proxy reverso confiável (evita que um cliente falsifique seu próprio IP para burlar o rate limit ou poluir a auditoria).
+- IP real do visitante: a API só confia no cabeçalho `X-Forwarded-For` vindo de proxies em endereços internos (o nginx do container e o proxy HTTPS da VPS). Um cliente da internet não consegue falsificar o próprio IP. O proxy HTTPS da VPS precisa repassar o cabeçalho (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
 - Upload de anexos valida MIME type contra uma allowlist e respeita um tamanho máximo configurável (`UPLOAD_MAX_SIZE_MB`); uploads de identidade visual (logo/favicon) usam uma allowlist só de formatos raster (SVG é recusado — evita o vetor de XSS de SVG com `<script>` embutido) e o nome do arquivo salvo é derivado do MIME type validado, nunca do nome enviado pelo cliente.
 - Prisma usa consultas parametrizadas (sem SQL bruto concatenado); a única query raw do projeto (contagem de não lidas) usa `Prisma.sql`/`Prisma.join` parametrizados.
 - Configurações de negócio (`PATCH /settings/business`) e de e-mail (`PATCH /settings/email`) são validadas com Zod (`.strict()` no primeiro caso) — não persistem JSON arbitrário enviado pelo cliente.
@@ -310,7 +271,7 @@ Socket.IO autenticado por JWT no handshake. Rooms: `queue` (todos os atendentes)
 
 ```bash
 # Backend — sobe contra um banco de testes real (não mocka o Postgres)
-createdb whatsunivida_test   # ou: docker run ... postgres, criando esse banco
+createdb whatsatendende_test   # ou: docker run ... postgres, criando esse banco
 npm run prisma:migrate -w apps/api -- deploy   # ou DATABASE_URL=... npx prisma migrate deploy
 npm run test -w apps/api
 

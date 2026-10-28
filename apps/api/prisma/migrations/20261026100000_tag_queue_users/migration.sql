@@ -1,0 +1,1 @@
+ALTER TABLE "Tag" ADD COLUMN "queueUserIds" TEXT[] DEFAULT ARRAY[]::TEXT[];

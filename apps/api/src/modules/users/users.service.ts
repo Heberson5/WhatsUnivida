@@ -4,9 +4,10 @@ import { prisma } from "../../lib/prisma";
 import { Errors } from "../../lib/http-error";
 import { sendTemplatedMail } from "../../lib/mail";
 import { env } from "../../config/env";
+import { queueMayMove } from "../../lib/presence-status";
 import type { Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
-import type { AccessSchedule, WeekdayKey } from "@whatsunivida/types";
+import type { AccessSchedule, WeekdayKey } from "@whatsatendende/types";
 
 const WEEKDAY_KEYS: WeekdayKey[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -24,7 +25,29 @@ function validateAccessSchedule(schedule: AccessSchedule | null | undefined) {
   }
 }
 
-const withConnection = { whatsappConnection: true } as const;
+const withConnection = { whatsappConnection: true, pauseReason: true, deactivatedBy: { select: { displayName: true } } } as const;
+
+/**
+ * An e-mail repeats only across inactive users: at most one ACTIVE user per e-mail. Says who has it when it's taken —
+ * checked when creating, reactivating and editing an active user's e-mail.
+ */
+export async function assertEmailFreeForActive(email: string, exceptUserId?: string) {
+  const active = await prisma.user.findFirst({ where: { email: email.toLowerCase(), status: "ACTIVE", ...(exceptUserId && { id: { not: exceptUserId } }) } });
+  if (active) throw Errors.conflict(`O e-mail ${email.toLowerCase()} já está em uso por "${active.fullName}" (ativo).`);
+}
+
+/** For the e-mail field of the user form: the active user that has it (if any) and the inactive ones that had it. */
+export async function describeEmailUse(email: string, exceptUserId?: string) {
+  const users = await prisma.user.findMany({
+    where: { email: email.toLowerCase(), ...(exceptUserId && { id: { not: exceptUserId } }) },
+    select: { fullName: true, status: true, deactivatedAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return {
+    active: users.find((u) => u.status === "ACTIVE")?.fullName ?? null,
+    inactive: users.filter((u) => u.status === "INACTIVE").map((u) => ({ name: u.fullName, deactivatedAt: u.deactivatedAt?.toISOString() ?? null })),
+  };
+}
 
 /** AGENT requires a home WhatsApp connection (which queue they see); ADMIN/MANAGER never have one — they see everything via oversight. */
 async function resolveConnectionAssignment(role: Role, whatsappConnectionId: string | null | undefined): Promise<string | null> {
@@ -56,8 +79,7 @@ export async function createUser(input: {
   workCity?: string | null;
   accessSchedule?: AccessSchedule | null;
 }) {
-  const existing = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-  if (existing) throw Errors.conflict("Ja existe um usuario com este e-mail");
+  await assertEmailFreeForActive(input.email);
   if (input.workCity && !input.workState) throw Errors.badRequest("Selecione o estado antes da cidade");
   validateAccessSchedule(input.accessSchedule);
 
@@ -116,6 +138,7 @@ export async function updateUser(
   const nextWorkCity = "workCity" in input ? input.workCity : current.workCity;
   if (nextWorkCity && !nextWorkState) throw Errors.badRequest("Selecione o estado antes da cidade");
   if ("accessSchedule" in input) validateAccessSchedule(input.accessSchedule);
+  if (input.email && input.email.toLowerCase() !== current.email && current.status === "ACTIVE") await assertEmailFreeForActive(input.email, id);
 
   const user = await prisma.user.update({
     where: { id },
@@ -144,9 +167,20 @@ export async function updateUser(
   return user;
 }
 
-export async function setUserStatus(id: string, status: "ACTIVE" | "INACTIVE") {
+export async function setUserStatus(id: string, status: "ACTIVE" | "INACTIVE", actorId: string) {
   const current = await getUser(id);
-  const user = await prisma.user.update({ where: { id }, data: { status }, include: withConnection });
+  // Reactivating an old user can't take an e-mail an active user already has.
+  if (status === "ACTIVE" && current.status !== "ACTIVE") await assertEmailFreeForActive(current.email, id);
+  const changed = current.status !== status;
+  const user = await prisma.user.update({
+    where: { id },
+    data: {
+      status,
+      ...(changed && status === "INACTIVE" && { deactivatedAt: new Date(), deactivatedById: actorId }),
+      ...(changed && status === "ACTIVE" && { deactivatedAt: null, deactivatedById: null }),
+    },
+    include: withConnection,
+  });
   // Only on an actual ACTIVE->INACTIVE transition — never on a no-op PATCH
   // (e.g. deactivating an already-deactivated user) or on reactivation.
   if (status === "INACTIVE" && current.status !== "INACTIVE") {
@@ -167,8 +201,10 @@ export async function forceLogoutUser(id: string) {
   await getUser(id);
   await prisma.$transaction([
     prisma.refreshToken.updateMany({ where: { userId: id }, data: { revokedAt: new Date() } }),
-    prisma.user.update({ where: { id }, data: { presence: "OFFLINE" } }),
+    // Same as signing out: a pause ends here too (it would otherwise come back on the next login).
+    prisma.user.update({ where: { id }, data: { presence: "OFFLINE", pauseReasonId: null, pausedAt: null } }),
   ]);
+  await queueMayMove(id);
 }
 
 /**

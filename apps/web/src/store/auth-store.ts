@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { AgentPresence, PermissionMap, UserDTO, WhatsAppConnectionStatus } from "@whatsunivida/types";
+import { clearTemporaryColumnViews } from "../lib/temporaryColumnViews";
+import type { AgentPresence, PermissionMap, UserDTO, WhatsAppConnectionStatus } from "@whatsatendende/types";
 
 interface AuthState {
   accessToken: string | null;
@@ -29,6 +30,24 @@ interface AuthState {
   // aparecendo Online" — since nothing ever told the client the flip
   // happened. Patched from the "presence:self" socket event.
   updateOwnPresence: (presence: AgentPresence) => void;
+  // Patches the current user's own pause state after POST /profile/pause
+  // or /resume — those return the full updated UserDTO, but presence
+  // itself is already kept live by updateOwnPresence (driven by the
+  // "presence:self" socket event, which fires from the same request); this
+  // just carries the reason along so the profile menu can show "Pausado —
+  // <motivo>" immediately, without waiting on anything else.
+  updateOwnPauseState: (pauseReasonId: string | null, pauseReasonName: string | null) => void;
+  // Patches the saved default hour range for the Dashboard's "Presença ao
+  // longo do dia" chart after PATCH /settings/presence-chart-hours — so a
+  // later remount of the Dashboard in this same session picks it up without
+  // a refetch of the whole profile.
+  updatePresenceChartHours: (startHour: number | null, endHour: number | null) => void;
+  // Same, for "Conversas que chegam ao longo do dia".
+  updateArrivalsChartHours: (startHour: number | null, endHour: number | null) => void;
+  // Patches the newest Notas de versão release the user has seen, right
+  // after PATCH /profile/release-notes-seen, so the sidebar badge and the
+  // "O que há de novo" popup clear immediately.
+  updateReleaseNotesSeen: (version: string | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -38,7 +57,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrated: false,
   setSession: (accessToken, user, permissions) =>
     set((state) => ({ accessToken, user, permissions: permissions ?? state.permissions })),
-  clearSession: () => set({ accessToken: null, user: null, permissions: null }),
+  clearSession: () => {
+    clearTemporaryColumnViews();
+    set({ accessToken: null, user: null, permissions: null });
+  },
   setHydrated: () => set({ hydrated: true }),
   updateOwnConnectionStatus: (connectionId, status) =>
     set((state) => {
@@ -47,4 +69,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     }),
   updateOwnPresence: (presence) =>
     set((state) => (state.user ? { user: { ...state.user, presence } } : state)),
+  updateOwnPauseState: (pauseReasonId, pauseReasonName) =>
+    set((state) => (state.user ? { user: { ...state.user, pauseReasonId, pauseReasonName } } : state)),
+  updatePresenceChartHours: (presenceChartStartHour, presenceChartEndHour) =>
+    set((state) => (state.user ? { user: { ...state.user, presenceChartStartHour, presenceChartEndHour } } : state)),
+  updateArrivalsChartHours: (arrivalsChartStartHour, arrivalsChartEndHour) =>
+    set((state) => (state.user ? { user: { ...state.user, arrivalsChartStartHour, arrivalsChartEndHour } } : state)),
+  updateReleaseNotesSeen: (releaseNotesSeenVersion) =>
+    set((state) => (state.user ? { user: { ...state.user, releaseNotesSeenVersion } } : state)),
 }));

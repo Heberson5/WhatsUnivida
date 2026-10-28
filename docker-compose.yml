@@ -3,18 +3,18 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: whatsunivida
-      POSTGRES_PASSWORD: whatsunivida
-      POSTGRES_DB: whatsunivida
+      POSTGRES_USER: whatsatendende
+      POSTGRES_PASSWORD: whatsatendende
+      POSTGRES_DB: whatsatendende
     # No host port published: only the api container needs to reach this
     # (over the compose network, by service name — see DATABASE_URL below),
     # and this stack is meant to run on a public VPS where exposing Postgres
     # to the internet would be a real, needless risk. For a local psql
-    # session use `docker compose exec postgres psql -U whatsunivida`.
+    # session use `docker compose exec postgres psql -U whatsatendende`.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U whatsunivida"]
+      test: ["CMD-SHELL", "pg_isready -U whatsatendende"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,6 +25,15 @@ services:
     # Same reasoning as postgres above — internal-only.
     volumes:
       - redis_data:/data
+
+  languagetool:
+    image: erikvl87/languagetool:latest
+    restart: unless-stopped
+    # Same reasoning as postgres/redis above — internal-only, no host port.
+    # Stateless (no volume needed). The api service calls it over the
+    # compose network via LANGUAGETOOL_URL below; a Composer correction
+    # suggestion is best-effort, so the api already tolerates this service
+    # being slow or down (see writing-assist.service.ts).
 
   api:
     build:
@@ -37,7 +46,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://whatsunivida:whatsunivida@postgres:5432/whatsunivida
+      DATABASE_URL: postgresql://whatsatendende:whatsatendende@postgres:5432/whatsatendende
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a random secret in .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a random secret in .env}
@@ -52,14 +61,15 @@ services:
       # happen entirely inside Baileys — needed to diagnose anything at the
       # WhatsApp-protocol level instead of guessing from the outside.
       WHATSAPP_LOG_LEVEL: ${WHATSAPP_LOG_LEVEL:-silent}
-      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:8085}
+      WEB_APP_URL: ${WEB_APP_URL:-https://whatsunivida.sauberlich.com.br}
+      LANGUAGETOOL_URL: http://languagetool:8010
       UPLOAD_DIR: /data/uploads
-      # Left false (the default) on purpose: this stack still publishes the
-      # api container's port directly (see `ports` below), so a client could
-      # reach it without going through the nginx container and spoof
-      # X-Forwarded-For. Only set TRUST_PROXY=true once that direct port
-      # mapping is removed and nginx is the sole path to the API.
-      TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Largest single file an agent can attach in Atendimento (video, photo,
+      # PDF, audio) — the API answers "Arquivo muito grande" above it. Set
+      # UPLOAD_MAX_SIZE_MB in .env to change it; nginx.conf lets up to 300 MB
+      # through to the API, so keep it at or below that. The whole file is
+      # held in memory while it is sent, so a small VPS wants this modest.
+      UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-25}
     volumes:
       - api_uploads:/data/uploads
       - whatsapp_sessions:/data/whatsapp-sessions
@@ -80,9 +90,17 @@ services:
       - api
     ports:
       - "8085:80"
+    volumes:
+      # Holds the installable Android app (.apk) — see nginx.conf's
+      # /downloads/ location. A named volume, not part of the image build,
+      # so uploading the file once (see infrastructure/vps/README.md)
+      # survives every future `git pull` + rebuild, the same way
+      # api_uploads/whatsapp_sessions already do for the api service.
+      - app_downloads:/usr/share/nginx/downloads
 
 volumes:
   postgres_data:
   redis_data:
   api_uploads:
   whatsapp_sessions:
+  app_downloads:

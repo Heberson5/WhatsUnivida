@@ -42,11 +42,11 @@ export function ConnectionFilter({ value, onChange }: { value: string[]; onChang
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="focus-ring flex items-center gap-2 rounded-card border border-border bg-surface px-3 py-2 text-sm"
+        className="focus-ring flex max-w-full items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[13px]"
       >
-        <Radio className="h-4 w-4 text-primary" />
-        {label}
-        <ChevronDown className="h-3.5 w-3.5 text-muted" />
+        <Radio className="h-4 w-4 shrink-0 text-primary" />
+        <span className="truncate">{label}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
       </button>
 
       {open && (

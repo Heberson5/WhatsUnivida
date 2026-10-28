@@ -40,7 +40,7 @@ describe("ADMIN-only message deletion (local to this app, never touches WhatsApp
 
   it("an ADMIN can delete a message: it disappears from listMessages but the row (and audit trail) survives, and providerMessageId is untouched", async () => {
     await createTestUser({ email: "admin-del@test.dev", role: "ADMIN" });
-    const admin = await prisma.user.findUniqueOrThrow({ where: { email: "admin-del@test.dev" } });
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: "admin-del@test.dev" } });
     const adminToken = await loginAs("admin-del@test.dev");
     const { conversation } = await createWaitingConversation("5511900002222", connectionId);
     const keep = await prisma.message.create({

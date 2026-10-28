@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import request from "supertest";
-import { PERMISSION } from "@whatsunivida/types";
+import { PERMISSION } from "@whatsatendende/types";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import * as usersService from "../src/modules/users/users.service";
@@ -32,7 +32,7 @@ describe("DELETE /users/:id — ADMIN-only account deletion", () => {
     expect(await prisma.user.findUnique({ where: { id: target.id } })).toBeNull();
   });
 
-  it("a MANAGER with usuarios.gerenciar granted still cannot delete — ADMIN-only, not the configurable permission", async () => {
+  it("a MANAGER with usuarios.inativar granted still cannot delete — ADMIN-only, not the configurable permission", async () => {
     await createTestUser({ email: "admin-del2@test.dev", role: "ADMIN" });
     const target = await createTestUser({ email: "agent-del2@test.dev", role: "AGENT" });
     await createTestUser({ email: "manager-del@test.dev", role: "MANAGER" });
@@ -41,7 +41,7 @@ describe("DELETE /users/:id — ADMIN-only account deletion", () => {
     await request(app)
       .put("/api/permissions")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ entries: [{ role: "MANAGER", permission: PERMISSION.USUARIOS_GERENCIAR, allowed: true }] });
+      .send({ entries: [{ role: "MANAGER", permission: PERMISSION.USUARIOS_INATIVAR, allowed: true }] });
 
     const managerToken = await loginAs("manager-del@test.dev");
     const res = await request(app).delete(`/api/users/${target.id}`).set("Authorization", `Bearer ${managerToken}`);

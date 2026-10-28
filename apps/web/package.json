@@ -1,5 +1,5 @@
 {
-  "name": "@whatsunivida/web",
+  "name": "@whatsatendende/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,12 +11,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@tanstack/react-query": "^5.59.20",
-    "@whatsunivida/types": "^0.1.0",
+    "@whatsatendende/types": "^0.1.0",
     "axios": "^1.7.7",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "docx-preview": "^0.4.1",
     "lucide-react": "^0.454.0",
+    "pdfjs-dist": "^6.4.299",
     "pptxgenjs": "^4.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

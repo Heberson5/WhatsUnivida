@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
+import type { NoReturnSettingsDTO } from "@whatsatendende/types";
 import { prisma } from "../../lib/prisma";
 import { encryptSecret, decryptSecret } from "../../lib/crypto";
+import { realtimeEvents } from "../../realtime/realtime";
 
 export const BRANDING_KEY = "branding";
 
@@ -18,16 +20,33 @@ export interface BrandingSettings {
   // falls back to companyName / the bundled default icon.
   appName: string | null;
   appIconUrl: string | null;
+  // Auto-generated from appIconUrl on every upload (opaque white background,
+  // logo confined to Android's safe zone) — used only for the manifest's
+  // "maskable" purpose icon. A transparent PNG there (the raw appIconUrl)
+  // gets its transparent pixels painted black by Android's own adaptive-icon
+  // renderer, and content outside the safe zone gets clipped by the
+  // circle/squircle crop. See PROMPT: "a logo... está aparecendo com fundo
+  // preto... quero que fique com mais espaço nos cantos".
+  appIconMaskableUrl: string | null;
+  // Overrides the double-check "lida" (read) tick color, which otherwise
+  // follows secondaryColor automatically — null means "no override, use
+  // secondaryColor". Exists because the secondary color is sometimes too
+  // pastel/light against a given primary to read as a clear status change
+  // (see PROMPT: "o risquinho que indica que a mensagem foi lida, seja
+  // compatível com a paleta de cores").
+  readReceiptColor: string | null;
 }
 
 const DEFAULT_BRANDING: BrandingSettings = {
-  companyName: "WhatsUnivida",
+  companyName: "WhatsAtendende",
   primaryColor: "#0097B4",
   secondaryColor: "#FFE450",
   logoUrl: null,
   faviconUrl: null,
   appName: null,
   appIconUrl: null,
+  appIconMaskableUrl: null,
+  readReceiptColor: null,
 };
 
 export async function getBranding(): Promise<BrandingSettings> {
@@ -42,6 +61,88 @@ export async function updateBranding(patch: Partial<BrandingSettings>): Promise<
     where: { key: BRANDING_KEY },
     update: { value: next as unknown as Prisma.InputJsonValue },
     create: { key: BRANDING_KEY, value: next as unknown as Prisma.InputJsonValue },
+  });
+  realtimeEvents.brandingChanged();
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Export branding (PowerPoint cover + PDF/Excel reports) — deliberately its
+// own logo/cor/nome, independent from the app's own Identidade visual above.
+// See PROMPT: "Na guia Exportações... Não é para ter vínculo com a
+// Identidade Visual".
+export const EXPORT_BRANDING_KEY = "exportBranding";
+
+export interface ExportBrandingSettings {
+  companyName: string;
+  primaryColor: string;
+  logoUrl: string | null;
+}
+
+const DEFAULT_EXPORT_BRANDING: ExportBrandingSettings = {
+  companyName: "WhatsAtendende",
+  primaryColor: "#0097B4",
+  logoUrl: null,
+};
+
+export async function getExportBranding(): Promise<ExportBrandingSettings> {
+  const record = await prisma.systemSetting.findUnique({ where: { key: EXPORT_BRANDING_KEY } });
+  return record ? { ...DEFAULT_EXPORT_BRANDING, ...(record.value as object) } : DEFAULT_EXPORT_BRANDING;
+}
+
+export async function updateExportBranding(patch: Partial<ExportBrandingSettings>): Promise<ExportBrandingSettings> {
+  const current = await getExportBranding();
+  const next = { ...current, ...patch };
+  await prisma.systemSetting.upsert({
+    where: { key: EXPORT_BRANDING_KEY },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { key: EXPORT_BRANDING_KEY, value: next as unknown as Prisma.InputJsonValue },
+  });
+  realtimeEvents.brandingChanged();
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Landing Page — customizes the login screen (logo size/alignment/subtitle),
+// the main menu (order, label, icon of each item — shared by Sidebar and
+// BottomNav) and each page's header title. Its own top-level menu/permission,
+// not nested under Configurações — see PROMPT: "planeje um novo menu chamado
+// landing page".
+export const LANDING_PAGE_KEY = "landingPage";
+
+export interface LandingPageSettings {
+  loginLogoSizePx: number;
+  loginLogoAlign: "center" | "left";
+  loginSubtitle: string | null;
+  /** `to` paths (Sidebar's MENU_ITEMS) in the desired order; [] = default order. */
+  menuOrder: string[];
+  /** `to` path -> only the fields actually customized. */
+  menuItems: Record<string, { label?: string; icon?: string }>;
+  /** route path -> custom page title (AppLayout's TITLES map). */
+  pageTitles: Record<string, string>;
+}
+
+const DEFAULT_LANDING_PAGE: LandingPageSettings = {
+  loginLogoSizePx: 80,
+  loginLogoAlign: "center",
+  loginSubtitle: null,
+  menuOrder: [],
+  menuItems: {},
+  pageTitles: {},
+};
+
+export async function getLandingPageSettings(): Promise<LandingPageSettings> {
+  const record = await prisma.systemSetting.findUnique({ where: { key: LANDING_PAGE_KEY } });
+  return record ? { ...DEFAULT_LANDING_PAGE, ...(record.value as object) } : DEFAULT_LANDING_PAGE;
+}
+
+export async function updateLandingPageSettings(patch: Partial<LandingPageSettings>): Promise<LandingPageSettings> {
+  const current = await getLandingPageSettings();
+  const next = { ...current, ...patch };
+  await prisma.systemSetting.upsert({
+    where: { key: LANDING_PAGE_KEY },
+    update: { value: next as unknown as Prisma.InputJsonValue },
+    create: { key: LANDING_PAGE_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
   return next;
 }
@@ -82,7 +183,13 @@ export async function updateMaintenanceSettings(patch: Partial<MaintenanceSettin
 
 export async function getBusinessSettings(): Promise<Record<string, unknown>> {
   const record = await prisma.systemSetting.findUnique({ where: { key: "business" } });
-  return (record?.value as Record<string, unknown> | undefined) ?? DEFAULT_BUSINESS_SETTINGS;
+  // Merge over the defaults (same pattern as getBranding/getMaintenanceSettings
+  // below) rather than returning the stored row as-is — a key added to
+  // DEFAULT_BUSINESS_SETTINGS after this row was first saved would otherwise
+  // come back undefined forever, since nothing here ever re-saves the whole
+  // object. See queueReminderIntervalMinutes, added well after this key was
+  // already in use in any environment that had touched Configurações > Segurança.
+  return record ? { ...DEFAULT_BUSINESS_SETTINGS, ...(record.value as Record<string, unknown>) } : DEFAULT_BUSINESS_SETTINGS;
 }
 
 // Roadmap knobs (spec section 52/53): not all are enforced by business
@@ -99,7 +206,45 @@ const DEFAULT_BUSINESS_SETTINGS = {
   businessHours: null as { start: string; end: string; days: number[] } | null,
   greetingMessage: null as string | null,
   awayMessage: null as string | null,
+  // How often (in minutes) an ONLINE agent is reminded that their
+  // connection's queue still has a conversation waiting to be accepted —
+  // see PROMPT: "notificações a cada um minuto quando tem conversas na
+  // fila... parametrizado quanto tempo deverá ser notificado". Checked by
+  // the queue-reminder timer in server.ts.
+  queueReminderIntervalMinutes: 1,
+  // Time alerts (Configurações › Fila): a card turns yellow, then red, after
+  // this many minutes without a reply (Meus) or waiting to be accepted (Fila).
+  noReplyWarningMinutes: 5,
+  noReplyDangerMinutes: 15,
+  queueWarningMinutes: 5,
+  queueDangerMinutes: 10,
+  // Encerramento por falta de retorno (Respostas › Encerramento): off until a manager turns it on. The minutes only
+  // count while the connection's work schedule is open.
+  noReturnEnabled: false,
+  noReturnReminderMinutes: 10,
+  noReturnCloseMinutes: 15,
+  noReturnReminderText: "Oi, {{cliente}}! Ainda está por aí? 😊 Fico aguardando seu retorno para continuarmos o atendimento.",
+  // The satisfaction survey after a no-return close — off by default (it never went out before).
+  noReturnSendSurvey: false,
+  noReturnCloseText:
+    "{{cliente}}, como não tivemos retorno, estamos encerrando este atendimento por enquanto. Quando quiser continuar, é só mandar uma mensagem aqui que retomamos de onde paramos. Até logo! 👋",
+  // Avisos de digitação (Configurações › Fila), QR Code connections: the customer sees "digitando…"/"gravando áudio…"
+  // while the attendant writes or records, and the attendant sees the customer's.
+  typingToCustomer: true,
+  typingFromCustomer: true,
 };
+
+export async function getNoReturnSettings(): Promise<NoReturnSettingsDTO> {
+  const s = await getBusinessSettings();
+  return {
+    enabled: s.noReturnEnabled as boolean,
+    reminderMinutes: s.noReturnReminderMinutes as number,
+    closeMinutes: s.noReturnCloseMinutes as number,
+    reminderText: s.noReturnReminderText as string,
+    closeText: s.noReturnCloseText as string,
+    sendSurvey: Boolean(s.noReturnSendSurvey),
+  };
+}
 
 export async function updateBusinessSettings(patch: Record<string, unknown>) {
   const current = await getBusinessSettings();
@@ -114,6 +259,16 @@ export async function updateBusinessSettings(patch: Record<string, unknown>) {
 
 export async function setUserThemePreference(userId: string, theme: "LIGHT" | "DARK" | "AUTO") {
   await prisma.user.update({ where: { id: userId }, data: { themePreference: theme } });
+}
+
+/** Dashboard "Presença ao longo do dia" gear icon's "Definir como padrão" — both null clears back to "show every hour". */
+export async function setUserPresenceChartHours(userId: string, startHour: number | null, endHour: number | null) {
+  await prisma.user.update({ where: { id: userId }, data: { presenceChartStartHour: startHour, presenceChartEndHour: endHour } });
+}
+
+/** Same, for "Conversas que chegam ao longo do dia". */
+export async function setUserArrivalsChartHours(userId: string, startHour: number | null, endHour: number | null) {
+  await prisma.user.update({ where: { id: userId }, data: { arrivalsChartStartHour: startHour, arrivalsChartEndHour: endHour } });
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +295,7 @@ const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   secure: false,
   username: null,
   password: null,
-  fromName: "WhatsUnivida",
+  fromName: "WhatsAtendende",
   fromEmail: "",
 };
 
@@ -372,4 +527,96 @@ export async function updateEmailTemplate(type: EmailTemplateType, patch: Partia
     create: { key: EMAIL_TEMPLATES_KEY, value: next as unknown as Prisma.InputJsonValue },
   });
   return next;
+}
+
+// ---------------------------------------------------------------------------
+// Meta (Instagram / Messenger) app credentials — see PROMPT: "prepare tudo
+// para integrar com Instagram e Facebook". Same shape/pattern as
+// EmailSettings above: one SystemSetting row, secrets encrypted at rest,
+// never echoed back to an HTTP response.
+// ---------------------------------------------------------------------------
+
+export const META_KEY = "meta";
+
+export interface MetaSettings {
+  appId: string;
+  appSecret: string | null;
+  pageAccessToken: string | null;
+  igAccessToken: string | null;
+  // Arbitrary string chosen by the admin and entered on both sides (here
+  // and in the Meta App Dashboard's webhook config) so Meta's verification
+  // handshake (GET /webhook?hub.verify_token=...) can be checked against
+  // it — not a credential issued by Meta, so it isn't encrypted like the
+  // tokens above.
+  webhookVerifyToken: string | null;
+}
+
+export type MetaSettingsMasked = Omit<MetaSettings, "appSecret" | "pageAccessToken" | "igAccessToken"> & {
+  hasAppSecret: boolean;
+  hasPageAccessToken: boolean;
+  hasIgAccessToken: boolean;
+};
+
+const DEFAULT_META_SETTINGS: MetaSettings = {
+  appId: "",
+  appSecret: null,
+  pageAccessToken: null,
+  igAccessToken: null,
+  webhookVerifyToken: null,
+};
+
+/** Internal — includes the secrets. Never expose this to an HTTP response; use getMetaSettingsMasked instead. */
+export async function getMetaSettings(): Promise<MetaSettings> {
+  const record = await prisma.systemSetting.findUnique({ where: { key: META_KEY } });
+  const settings = { ...DEFAULT_META_SETTINGS, ...((record?.value as Partial<MetaSettings>) ?? {}) };
+  return {
+    ...settings,
+    appSecret: settings.appSecret ? decryptSecret(settings.appSecret) : null,
+    pageAccessToken: settings.pageAccessToken ? decryptSecret(settings.pageAccessToken) : null,
+    igAccessToken: settings.igAccessToken ? decryptSecret(settings.igAccessToken) : null,
+  };
+}
+
+/** Safe to return to the client: secrets are never echoed back, only whether one is set. */
+export async function getMetaSettingsMasked(): Promise<MetaSettingsMasked> {
+  const settings = await getMetaSettings();
+  const { appSecret, pageAccessToken, igAccessToken, ...rest } = settings;
+  return {
+    ...rest,
+    hasAppSecret: Boolean(appSecret),
+    hasPageAccessToken: Boolean(pageAccessToken),
+    hasIgAccessToken: Boolean(igAccessToken),
+  };
+}
+
+export async function updateMetaSettings(patch: Partial<MetaSettings>): Promise<MetaSettingsMasked> {
+  const current = await getMetaSettings();
+  const next: MetaSettings = {
+    appId: patch.appId ?? current.appId,
+    // Only overwrite a secret when a new non-empty one is sent, same
+    // reasoning as updateEmailSettings — the API never sends it back, so
+    // there's nothing to "leave unchanged" from a form value.
+    appSecret: patch.appSecret ? patch.appSecret : current.appSecret,
+    pageAccessToken: patch.pageAccessToken ? patch.pageAccessToken : current.pageAccessToken,
+    igAccessToken: patch.igAccessToken ? patch.igAccessToken : current.igAccessToken,
+    webhookVerifyToken: patch.webhookVerifyToken !== undefined ? patch.webhookVerifyToken : current.webhookVerifyToken,
+  };
+  const stored = {
+    ...next,
+    appSecret: next.appSecret ? encryptSecret(next.appSecret) : null,
+    pageAccessToken: next.pageAccessToken ? encryptSecret(next.pageAccessToken) : null,
+    igAccessToken: next.igAccessToken ? encryptSecret(next.igAccessToken) : null,
+  };
+  await prisma.systemSetting.upsert({
+    where: { key: META_KEY },
+    update: { value: stored as unknown as Prisma.InputJsonValue },
+    create: { key: META_KEY, value: stored as unknown as Prisma.InputJsonValue },
+  });
+  // Keep every MetaConnection row's status in sync with whether this
+  // channel actually has an access token configured — same shallow
+  // "configured" semantics getEmailSettingsMasked already uses (a token
+  // being present, not a live-verified handshake).
+  await prisma.metaConnection.updateMany({ where: { channel: "MESSENGER" }, data: { status: next.pageAccessToken ? "CONNECTED" : "DISCONNECTED" } });
+  await prisma.metaConnection.updateMany({ where: { channel: "INSTAGRAM" }, data: { status: next.igAccessToken ? "CONNECTED" : "DISCONNECTED" } });
+  return getMetaSettingsMasked();
 }

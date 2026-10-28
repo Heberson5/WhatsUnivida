@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { X } from "lucide-react";
-import type { UserDTO, Role, ManagerConnectionAccessDTO, AccessSchedule, WeekdayKey } from "@whatsunivida/types";
-import { WEEKDAY_KEYS } from "@whatsunivida/types";
+import { AlertTriangle, Camera, Info, Trash2, UserX, X } from "lucide-react";
+import type { UserDTO, Role, ManagerConnectionAccessDTO, AccessSchedule, WeekdayKey, UserEmailUseDTO } from "@whatsatendende/types";
+import { WEEKDAY_KEYS } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { StateCitySelect } from "../../components/common/StateCitySelect";
 
@@ -16,6 +16,19 @@ const WEEKDAY_LABELS: Record<WeekdayKey, string> = {
   SAT: "Sábado",
   SUN: "Domingo",
 };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** "João  Silva" and "joao silva" are the same name: accents, case and spacing don't count as renaming someone. */
+function sameName(a: string, b: string): boolean {
+  const norm = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  return norm(a) === norm(b);
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString("pt-BR")} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
 
 export interface UserFormValues {
   fullName: string;
@@ -42,8 +55,26 @@ export function UserFormModal({
 }: {
   user: UserDTO | null;
   onClose: () => void;
-  onSubmit: (values: UserFormValues) => Promise<void>;
+  /** Saves the user and resolves with its id (needed to attach a photo to a brand-new user). */
+  onSubmit: (values: UserFormValues) => Promise<string>;
 }) {
+  const queryClient = useQueryClient();
+  // The photo is staged here and sent right after the user itself is saved,
+  // so it works the same for "Novo usuário" (no id yet) and "Editar".
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(photoFile);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
+  const shownPhoto = photoPreview ?? (photoRemoved ? null : (user?.photoUrl ?? null));
   const { data: connections } = useQuery({
     queryKey: ["whatsapp-connections"],
     queryFn: async () => (await api.get<ConnectionOption[]>("/whatsapp/connections")).data,
@@ -64,10 +95,32 @@ export function UserFormModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  // Renaming someone into another person would rewrite their past reports — asked before saving.
+  const [confirmingRename, setConfirmingRename] = useState(false);
+  const renamed = Boolean(user && (!sameName(user.fullName, values.fullName) || !sameName(user.displayName, values.displayName)));
+
+  // Who already uses the typed e-mail: an active user blocks saving; inactive ones only inform.
+  const typedEmail = values.email.trim().toLowerCase();
+  const checkEmail = EMAIL_PATTERN.test(typedEmail) && typedEmail !== user?.email;
+  const { data: emailUse } = useQuery({
+    queryKey: ["user-email-use", typedEmail, user?.id],
+    queryFn: async () => (await api.get<UserEmailUseDTO>("/users/email-use", { params: { email: typedEmail, exceptUserId: user?.id } })).data,
+    enabled: checkEmail,
+  });
+  const emailTakenBy = checkEmail && (!user || user.status === "ACTIVE") ? (emailUse?.active ?? null) : null;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (emailTakenBy) {
+      setError(`O e-mail ${typedEmail} já está em uso por "${emailTakenBy}" (ativo).`);
+      return;
+    }
+    if (renamed && !confirmingRename) {
+      setConfirmingRename(true);
+      return;
+    }
+    setConfirmingRename(false);
     const wantsPasswordChange = !user || changingPassword;
     if (wantsPasswordChange && (values.password || values.confirmPassword) && values.password !== values.confirmPassword) {
       setError("As senhas não coincidem");
@@ -84,7 +137,19 @@ export function UserFormModal({
     setLoading(true);
     try {
       const payload = wantsPasswordChange ? values : { ...values, password: undefined, confirmPassword: undefined };
-      await onSubmit(payload);
+      const userId = await onSubmit(payload);
+      try {
+        if (photoFile) {
+          const form = new FormData();
+          form.append("file", photoFile);
+          await api.post(`/users/${userId}/photo`, form, { headers: { "Content-Type": "multipart/form-data" } });
+        } else if (photoRemoved && user?.photoUrl) {
+          await api.delete(`/users/${userId}/photo`);
+        }
+      } catch (photoErr) {
+        toast.error(`Usuário salvo, mas a foto não foi atualizada: ${getApiErrorMessage(photoErr)}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar usuário");
@@ -94,7 +159,7 @@ export function UserFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+    <div className="drawer-backdrop">
       {/* flex-col + max-h-full on the form itself (not just this wrapper) is
           what keeps the header/footer always visible: the form's own height
           is capped to the available viewport space, and only the middle
@@ -102,7 +167,7 @@ export function UserFormModal({
           semana, cidade, permissões de conexão...) grows taller than the
           screen with nothing to shrink it, pushing the X/Cancelar/Salvar
           buttons out of view with no way to reach them. */}
-      <form onSubmit={handleSubmit} className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-card border border-border bg-surface shadow-elevated">
+      <form onSubmit={handleSubmit} className="drawer-panel max-w-md overflow-hidden">
         <div className="flex shrink-0 items-center justify-between border-b border-border p-5 pb-4">
           <h2 className="text-base font-semibold">{user ? "Editar usuário" : "Novo usuário"}</h2>
           <button type="button" onClick={onClose} className="focus-ring rounded-full p-1 text-muted hover:bg-surface-alt" aria-label="Fechar">
@@ -111,6 +176,78 @@ export function UserFormModal({
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
+          {user?.status === "INACTIVE" && (
+            <div className="flex items-start gap-2 rounded-card border border-border bg-surface-alt px-3 py-2 text-xs text-muted">
+              <UserX className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                <strong className="text-[var(--color-text)]">Usuário inativo.</strong>{" "}
+                {user.deactivatedAt
+                  ? `Desativado em ${formatDateTime(user.deactivatedAt)}${user.deactivatedByName ? ` por ${user.deactivatedByName}` : ""}.`
+                  : "Desativado antes do registro da data."}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-4 rounded-card border border-dashed border-border bg-surface-alt p-3">
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="focus-ring relative h-16 w-16 shrink-0 rounded-full"
+              aria-label="Escolher foto do usuário"
+            >
+              <span className="block h-full w-full overflow-hidden rounded-full bg-primary/15 text-lg font-semibold text-primary">
+                {shownPhoto ? (
+                  <img src={shownPhoto} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center">{(values.displayName || values.fullName || "?").slice(0, 1).toUpperCase()}</span>
+                )}
+              </span>
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-surface bg-primary text-primary-fg">
+                <Camera className="h-3 w-3" />
+              </span>
+            </button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Foto do usuário</p>
+              <p className="mb-1.5 text-xs text-muted">JPG, PNG ou WEBP, até 8 MB.</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  className="focus-ring rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-surface-alt"
+                >
+                  {shownPhoto ? "Trocar foto" : "Escolher foto"}
+                </button>
+                {shownPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhotoFile(null);
+                      setPhotoRemoved(true);
+                    }}
+                    className="focus-ring flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft"
+                  >
+                    <Trash2 className="h-3 w-3" /> Remover
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                if (file.size > 8 * 1024 * 1024) {
+                  setError("A foto deve ter no máximo 8 MB.");
+                  return;
+                }
+                setPhotoFile(file);
+                setPhotoRemoved(false);
+              }}
+            />
+          </div>
           <Field label="Nome completo">
             <input required value={values.fullName} onChange={(e) => setValues((v) => ({ ...v, fullName: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </Field>
@@ -118,7 +255,20 @@ export function UserFormModal({
             <input required value={values.displayName} onChange={(e) => setValues((v) => ({ ...v, displayName: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </Field>
           <Field label="E-mail">
-            <input required type="email" value={values.email} onChange={(e) => setValues((v) => ({ ...v, email: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input required type="email" autoComplete="off" value={values.email} onChange={(e) => setValues((v) => ({ ...v, email: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            {emailTakenBy ? (
+              <p className="mt-1 flex items-start gap-1.5 text-xs text-danger">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Este e-mail já está em uso por &quot;{emailTakenBy}&quot; (ativo). Use outro e-mail ou desative esse usuário antes.
+              </p>
+            ) : checkEmail && emailUse && emailUse.inactive.length > 0 ? (
+              <p className="mt-1 flex items-start gap-1.5 text-xs text-muted">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Este e-mail já foi usado por {emailUse.inactive.map((u) => `"${u.name}"${u.deactivatedAt ? ` (inativo desde ${new Date(u.deactivatedAt).toLocaleDateString("pt-BR")})` : " (inativo)"}`).join(", ")}. Será um
+                  usuário novo, com o histórico separado nos relatórios.
+                </span>
+              </p>
+            ) : null}
           </Field>
           <Field label="Perfil">
             <select
@@ -176,15 +326,15 @@ export function UserFormModal({
           {!user && (
             <>
               {values.role === "MANAGER" && (
-                <p className="rounded-card bg-secondary/30 px-3 py-2 text-xs text-secondary-fg">
+                <p className="rounded-card bg-secondary/30 px-3 py-2 text-xs text-text">
                   Depois de criar este gestor, edite-o novamente para escolher quais conexões (além das que ele mesmo cadastrar) ele poderá ver/editar e receber conversas.
                 </p>
               )}
               <Field label="Senha">
-                <input required type="password" minLength={8} value={values.password} onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+                <input required type="password" autoComplete="new-password" minLength={8} value={values.password} onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
               </Field>
               <Field label="Confirmar senha">
-                <input required type="password" minLength={8} value={values.confirmPassword} onChange={(e) => setValues((v) => ({ ...v, confirmPassword: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+                <input required type="password" autoComplete="new-password" minLength={8} value={values.confirmPassword} onChange={(e) => setValues((v) => ({ ...v, confirmPassword: e.target.value }))} className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
               </Field>
             </>
           )}
@@ -209,6 +359,7 @@ export function UserFormModal({
                     <input
                       required
                       type="password"
+                      autoComplete="new-password"
                       minLength={8}
                       value={values.password}
                       onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))}
@@ -219,6 +370,7 @@ export function UserFormModal({
                     <input
                       required
                       type="password"
+                      autoComplete="new-password"
                       minLength={8}
                       value={values.confirmPassword}
                       onChange={(e) => setValues((v) => ({ ...v, confirmPassword: e.target.value }))}
@@ -232,7 +384,7 @@ export function UserFormModal({
         </div>
 
         <div className="shrink-0 border-t border-border p-5 pt-4">
-          {error && <p className="mb-3 rounded-card bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {error && <p className="mb-3 rounded-card bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="focus-ring flex-1 rounded-card border border-border py-2 text-sm">
               Cancelar
@@ -242,6 +394,39 @@ export function UserFormModal({
             </button>
           </div>
         </div>
+        {confirmingRename && user && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" role="alertdialog" aria-modal="true" aria-labelledby="rename-title">
+            <div className="w-full max-w-md rounded-card border border-border bg-surface p-5 shadow-elevated">
+              <h2 id="rename-title" className="flex items-center gap-2 text-base font-semibold">
+                <AlertTriangle className="h-5 w-5 text-warning" /> Alterar o nome do usuário?
+              </h2>
+              <div className="mt-3 space-y-1 rounded-card bg-surface-alt px-3 py-2 text-sm">
+                {!sameName(user.fullName, values.fullName) && (
+                  <p>
+                    Nome completo: <span className="text-muted line-through">{user.fullName}</span> → <strong>{values.fullName}</strong>
+                  </p>
+                )}
+                {!sameName(user.displayName, values.displayName) && (
+                  <p>
+                    Nome de exibição: <span className="text-muted line-through">{user.displayName}</span> → <strong>{values.displayName}</strong>
+                  </p>
+                )}
+              </div>
+              <p className="mt-3 text-sm text-muted">
+                Não altere o nome para outra pessoa: os relatórios, o Dashboard e o histórico de conversas deste usuário passariam a mostrar o novo nome. Para outra
+                pessoa, desative este usuário e cadastre um novo.
+              </p>
+              <div className="mt-5 flex gap-2">
+                <button type="button" onClick={() => setConfirmingRename(false)} className="focus-ring flex-1 rounded-card border border-border py-2 text-sm">
+                  Cancelar
+                </button>
+                <button type="submit" className="focus-ring flex-1 rounded-card bg-primary py-2 text-sm font-semibold text-primary-fg">
+                  É a mesma pessoa, salvar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );
@@ -379,7 +564,7 @@ function ManagerConnectionAccessEditor({ managerId }: { managerId: string }) {
               <span className="flex items-center gap-1.5 truncate">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.whatsappConnectionColor }} />
                 <span className="truncate">{row.whatsappConnectionName}</span>
-                {row.owned && <span className="shrink-0 rounded-full bg-secondary/40 px-1.5 py-0.5 text-[10px] text-secondary-fg">própria</span>}
+                {row.owned && <span className="shrink-0 rounded-full bg-secondary/40 px-1.5 py-0.5 text-[10px] text-text">própria</span>}
               </span>
               <span className="w-16 text-center">
                 <input

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { GitMerge, X } from "lucide-react";
-import type { ConversationListItemDTO } from "@whatsunivida/types";
+import type { ConversationListItemDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { contactDisplayName } from "../../lib/contact-display";
 
 /**
  * ADMIN-only cleanup tool for the @lid duplicate-conversation bug (see
@@ -46,7 +47,7 @@ export function MergeConversationModal({
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
 
-  const displayName = conversation.contact.name || conversation.contact.phone;
+  const displayName = contactDisplayName(conversation.contact, conversation.channel);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -89,8 +90,8 @@ export function MergeConversationModal({
               className="focus-ring flex w-full items-center justify-between gap-2 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-surface-alt disabled:opacity-60"
             >
               <span className="min-w-0">
-                <span className="block truncate font-medium">{c.contact.name || c.contact.phone}</span>
-                <span className="block truncate text-xs text-muted">{c.contact.phone}</span>
+                <span className="block truncate font-medium">{contactDisplayName(c.contact)}</span>
+                {c.contact.phone && <span className="block truncate text-xs text-muted">{c.contact.phone}</span>}
               </span>
               <span className="shrink-0 text-xs font-semibold text-primary">
                 {mergeMutation.isPending && mergeMutation.variables === c.id ? "Mesclando..." : "Mesclar aqui"}

@@ -1,8 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { PERMISSION } from "@whatsatendende/types";
+import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useBranding } from "../../hooks/useBranding";
+import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
 
 // Curated primary/secondary combinations — see PROMPT: "Nas configurações
 // precisa ter paletas de cores para alterar quando o administrador desejar."
@@ -22,21 +25,55 @@ const COLOR_PALETTES: { name: string; primary: string; secondary: string }[] = [
 export function BrandingPanel() {
   const { data: branding } = useBranding();
   const queryClient = useQueryClient();
+  const canEditar = useAuthStore((s) => s.permissions?.[PERMISSION.CONFIGURACOES_IDENTIDADE_EDITAR]);
   const [companyName, setCompanyName] = useState(branding?.companyName ?? "");
   const [primaryColor, setPrimaryColor] = useState(branding?.primaryColor ?? "#0097B4");
   const [secondaryColor, setSecondaryColor] = useState(branding?.secondaryColor ?? "#FFE450");
+  // Off by default — the read-receipt tick already follows secondaryColor
+  // automatically (see styles/index.css's --color-read-receipt fallback);
+  // this only lets an admin override it when the secondary color is too
+  // pastel/light to read clearly against a given primary.
+  const [customReadReceipt, setCustomReadReceipt] = useState(Boolean(branding?.readReceiptColor));
+  const [readReceiptColor, setReadReceiptColor] = useState(branding?.readReceiptColor ?? branding?.secondaryColor ?? "#FFE450");
   const logoInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
 
   const saveMutation = useMutation({
     mutationFn: (colors?: { primaryColor: string; secondaryColor: string }) =>
-      api.patch("/settings/branding", { companyName, primaryColor: colors?.primaryColor ?? primaryColor, secondaryColor: colors?.secondaryColor ?? secondaryColor }),
+      api.patch("/settings/branding", {
+        companyName,
+        primaryColor: colors?.primaryColor ?? primaryColor,
+        secondaryColor: colors?.secondaryColor ?? secondaryColor,
+        readReceiptColor: customReadReceipt ? readReceiptColor : null,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["branding"] });
       toast.success("Identidade visual atualizada.");
     },
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
+
+  const dirty =
+    Boolean(branding) &&
+    (companyName !== (branding?.companyName ?? "") ||
+      primaryColor.toLowerCase() !== (branding?.primaryColor ?? "").toLowerCase() ||
+      secondaryColor.toLowerCase() !== (branding?.secondaryColor ?? "").toLowerCase() ||
+      (customReadReceipt ? readReceiptColor.toLowerCase() : null) !== (branding?.readReceiptColor?.toLowerCase() ?? null));
+
+  function discardChanges() {
+    setCompanyName(branding?.companyName ?? "");
+    setPrimaryColor(branding?.primaryColor ?? "#0097B4");
+    setSecondaryColor(branding?.secondaryColor ?? "#FFE450");
+    setCustomReadReceipt(Boolean(branding?.readReceiptColor));
+    setReadReceiptColor(branding?.readReceiptColor ?? branding?.secondaryColor ?? "#FFE450");
+  }
+
+  // The form used to start empty when branding hadn't loaded yet at mount
+  // (blank "Nome da empresa") — load it, and reload after every save.
+  useEffect(() => {
+    if (branding) discardChanges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branding]);
 
   function applyPalette(palette: { primary: string; secondary: string }) {
     setPrimaryColor(palette.primary);
@@ -69,9 +106,10 @@ export function BrandingPanel() {
   });
 
   return (
-    <div className="shadow-soft max-w-xl space-y-6 rounded-card border border-border bg-surface p-6">
-      <h2 className="text-base font-semibold">Identidade visual</h2>
+    <div className="shadow-soft max-w-xl rounded-card border border-border bg-surface p-6">
+      <h2 className="mb-6 text-base font-semibold">Identidade visual</h2>
 
+      <fieldset disabled={!canEditar} className="m-0 min-w-0 space-y-6 border-0 p-0">
       <div className="flex items-center gap-6">
         <div>
           <p className="mb-2 text-sm font-medium">Logo</p>
@@ -119,21 +157,40 @@ export function BrandingPanel() {
         </div>
       </div>
 
-      <div className="flex gap-4">
-        <label className="flex-1">
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <label className="min-w-0 flex-1">
           <span className="mb-1 block text-sm font-medium">Cor principal</span>
           <div className="flex items-center gap-2">
-            <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-9 w-9 rounded border border-border" />
-            <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="focus-ring flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-9 w-9 shrink-0 rounded border border-border" />
+            <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="focus-ring min-w-0 flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </div>
         </label>
-        <label className="flex-1">
+        <label className="min-w-0 flex-1">
           <span className="mb-1 block text-sm font-medium">Cor secundária</span>
           <div className="flex items-center gap-2">
-            <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-9 w-9 rounded border border-border" />
-            <input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="focus-ring flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+            <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-9 w-9 shrink-0 rounded border border-border" />
+            <input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="focus-ring min-w-0 flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
           </div>
         </label>
+      </div>
+
+      <div>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={customReadReceipt}
+            onChange={(e) => setCustomReadReceipt(e.target.checked)}
+            className="focus-ring h-4 w-4 rounded border-border"
+          />
+          Personalizar cor do traço de mensagem lida
+        </label>
+        <p className="mb-2 mt-1 text-xs text-muted">Por padrão, o traço duplo de "lida" usa a cor secundária. Ative para escolher outra cor.</p>
+        {customReadReceipt && (
+          <div className="flex items-center gap-2">
+            <input type="color" value={readReceiptColor} onChange={(e) => setReadReceiptColor(e.target.value)} className="h-9 w-9 shrink-0 rounded border border-border" />
+            <input value={readReceiptColor} onChange={(e) => setReadReceiptColor(e.target.value)} className="focus-ring min-w-0 flex-1 rounded-card border border-border bg-transparent px-3 py-2 text-sm" />
+          </div>
+        )}
       </div>
 
       <button
@@ -143,6 +200,10 @@ export function BrandingPanel() {
       >
         Salvar identidade visual
       </button>
+      </fieldset>
+      {canEditar && (
+        <UnsavedChangesBar dirty={dirty} saving={saveMutation.isPending} onSave={() => saveMutation.mutate(undefined)} onDiscard={discardChanges} />
+      )}
     </div>
   );
 }

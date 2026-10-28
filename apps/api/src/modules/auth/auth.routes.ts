@@ -11,7 +11,7 @@ import { prisma } from "../../lib/prisma";
 import { getPermissionsForRole } from "../../lib/permissions";
 import { resolveAccessDecision, resolveLocalNow } from "../../lib/access-schedule";
 import { findApplicableHoliday } from "../holidays/holidays.service";
-import type { AccessSchedule } from "@whatsunivida/types";
+import type { AccessSchedule } from "@whatsatendende/types";
 
 export const authRouter = Router();
 
@@ -57,6 +57,17 @@ authRouter.post(
     const { accessToken, refreshToken, user } = await authService.refresh(token, tzOffsetMinutes, req.ip ?? null);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions());
     res.json({ accessToken, user: toUserDTO(user), permissions: await getPermissionsForRole(user.role) });
+  })
+);
+
+// The browser reports that the person is using the system (mouse, keyboard, touch) — at most every 30 seconds.
+// Background requests don't count: without these reports the session ends at the inactivity limit.
+authRouter.post(
+  "/activity",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    if (req.auth!.sessionId) await authService.recordSessionActivity(req.auth!.sessionId);
+    res.status(204).end();
   })
 );
 

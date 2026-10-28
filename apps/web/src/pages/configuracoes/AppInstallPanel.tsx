@@ -1,7 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { PERMISSION } from "@whatsatendende/types";
+import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
 import { useBranding } from "../../hooks/useBranding";
 
 // Separate from the "Identidade visual" card above on purpose: the in-app
@@ -14,7 +17,12 @@ import { useBranding } from "../../hooks/useBranding";
 export function AppInstallPanel() {
   const { data: branding } = useBranding();
   const queryClient = useQueryClient();
-  const [appName, setAppName] = useState(branding?.appName ?? branding?.companyName ?? "");
+  const canEditar = useAuthStore((s) => s.permissions?.[PERMISSION.CONFIGURACOES_IDENTIDADE_EDITAR]);
+  const savedName = branding?.appName ?? branding?.companyName ?? "";
+  const [appName, setAppName] = useState(savedName);
+  useEffect(() => {
+    setAppName(savedName);
+  }, [savedName]);
   const iconInputRef = useRef<HTMLInputElement>(null);
 
   const nameMutation = useMutation({
@@ -50,6 +58,7 @@ export function AppInstallPanel() {
         </p>
       </div>
 
+      <fieldset disabled={!canEditar} className="m-0 min-w-0 space-y-6 border-0 p-0">
       <div>
         <p className="mb-2 text-sm font-medium">Ícone do aplicativo</p>
         {branding?.appIconUrl && (
@@ -99,6 +108,24 @@ export function AppInstallPanel() {
         Quem já instalou o aplicativo antes de uma mudança precisa desinstalar e instalar novamente para ver o novo
         ícone/nome — isso é uma limitação normal desse tipo de instalação, não um erro.
       </p>
+
+      <div className="border-t border-border pt-6">
+        <p className="text-sm font-medium">Versão do aplicativo</p>
+        <p className="mt-1 text-sm">{branding?.appVersion ?? "—"}</p>
+        <span className="mt-1 block text-xs text-muted">
+          Atualizada sozinha: é sempre a versão mais nova das Notas de versão, e aparece no menu lateral. Quando o ícone ou o nome
+          acima mudam, quem já tem o aplicativo instalado vê um aviso pedindo para reinstalar.
+        </span>
+      </div>
+      </fieldset>
+      {canEditar && branding && (
+        <UnsavedChangesBar
+          dirty={appName !== savedName}
+          saving={nameMutation.isPending}
+          onSave={() => nameMutation.mutate(appName)}
+          onDiscard={() => setAppName(savedName)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { AccessSchedule, WeekdayKey } from "@whatsunivida/types";
+import type { AccessSchedule, WeekdayKey } from "@whatsatendende/types";
 
 // Same fixed-offset approach as lib/period.ts's dayBoundsUTC/localNowParts —
 // this API runs with no TZ set (UTC container), so "what weekday/time is it

@@ -3,7 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { __getProviderForTests } from "../src/modules/whatsapp/whatsapp.service";
-import type { MockWhatsAppProvider } from "@whatsunivida/whatsapp";
+import type { MockWhatsAppProvider } from "@whatsatendende/whatsapp";
 import { resetDatabase, createTestUser, createWaitingConversation, TEST_PASSWORD } from "./helpers";
 
 const app = createApp();
@@ -60,9 +60,9 @@ describe("opening a conversation in the app syncs a WhatsApp read receipt to the
       .set("Authorization", `Bearer ${agentToken}`);
     expect(readRes.status).toBe(204);
 
-    await wait(50); // syncReadReceiptToDevice is fire-and-forget, not awaited by the route
-
+    // syncReadReceiptToDevice is fire-and-forget, not awaited by the route: wait for it (a busy machine takes longer).
     const provider = __getProviderForTests(created.body.id) as MockWhatsAppProvider;
+    for (let i = 0; i < 60 && provider.readReceiptsSent.length === 0; i++) await wait(50);
     expect(provider.readReceiptsSent.at(-1)).toEqual({
       chatId: `${contact.phone}@s.whatsapp.net`,
       providerMessageIds: ["wa-msg-inbound-1"],

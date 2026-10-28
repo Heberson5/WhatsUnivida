@@ -10,7 +10,10 @@ COPY package.json package-lock.json* ./
 COPY packages/types/package.json packages/types/package.json
 COPY packages/whatsapp/package.json packages/whatsapp/package.json
 COPY apps/api/package.json apps/api/package.json
-RUN npm ci
+# mkdir guarantees this always exists for the runtime stage's COPY below,
+# even on a lockfile where npm hoists every apps/api dependency to the root
+# and leaves nothing nested here.
+RUN npm ci && mkdir -p apps/api/node_modules
 
 FROM deps AS build
 COPY packages/types packages/types
@@ -24,6 +27,12 @@ RUN npm run build -w packages/types \
 FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=build /repo/node_modules ./node_modules
+# npm workspaces hoists most deps to the root node_modules above, but any
+# dependency whose version conflicts with another workspace's own copy (e.g.
+# apps/api's image-size vs. an older image-size some other dependency
+# needs) gets nested here instead — without this, Node can't resolve it at
+# all in the runtime image even though `npm ci` installed it correctly.
+COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /repo/package.json ./package.json
 COPY --from=build /repo/packages/types ./packages/types
 COPY --from=build /repo/packages/whatsapp ./packages/whatsapp

@@ -5,7 +5,10 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-function isStandalone(): boolean {
+/** Whether this tab is currently running as the installed app (not a regular
+ * browser tab) — also used by AppUpdateBanner to show the reinstall notice
+ * only to people who actually have it installed. */
+export function isStandalone(): boolean {
   return (
     window.matchMedia?.("(display-mode: standalone)").matches === true ||
     // iOS Safari has no display-mode support — this is its own non-standard flag for the same thing.

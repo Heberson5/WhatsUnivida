@@ -7,6 +7,7 @@ import { setIO, ROOMS } from "./realtime";
 import { registerConnection, registerDisconnection } from "./presence-tracker";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/prisma";
+import { watchCustomerTyping } from "../modules/whatsapp/whatsapp.service";
 
 export function createSocketServer(httpServer: HttpServer): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
@@ -57,7 +58,9 @@ export function createSocketServer(httpServer: HttpServer): SocketIOServer {
     // from the previous session ending) — nothing told it the flip
     // happened, so the topbar kept showing the stale value. See PROMPT:
     // "não está aparecendo Online".
-    socket.emit("presence:self", { presence: "ONLINE" });
+    // A paused user stays paused across reconnects and new logins — tell the topbar what is actually saved.
+    const saved = await prisma.user.findUnique({ where: { id: auth.userId }, select: { presence: true } }).catch(() => null);
+    socket.emit("presence:self", { presence: saved?.presence === "AWAY" ? "AWAY" : "ONLINE" });
 
     if (auth.role === "AGENT") {
       // Looked up fresh on every connect (rather than trusted from the JWT)
@@ -65,13 +68,23 @@ export function createSocketServer(httpServer: HttpServer): SocketIOServer {
       // effect on their next reconnect without requiring a new login.
       const user = await prisma.user.findUnique({ where: { id: auth.userId }, select: { whatsappConnectionId: true } });
       if (user?.whatsappConnectionId) socket.join(ROOMS.queue(user.whatsappConnectionId));
+      // Instagram/Messenger conversations have no "fixed agent" concept yet
+      // (see PROMPT: "prepare tudo para integrar com Instagram e
+      // Facebook") — every AGENT joins every Meta connection's queue room,
+      // same as MANAGER/ADMIN already see everything via ROOMS.oversight().
+      const metaConnections = await prisma.metaConnection.findMany({ select: { id: true } });
+      for (const conn of metaConnections) socket.join(ROOMS.queue(conn.id));
     }
     if (auth.role === "MANAGER" || auth.role === "ADMIN") socket.join(ROOMS.oversight());
 
     // Unlike the REST layer, a socket event has no per-route middleware to
     // enforce this, so the ownership check has to happen right here: an
-    // AGENT must only be able to join the room for a conversation actually
-    // assigned to them, otherwise they could listen in on another agent's
+    // AGENT must only be able to join the room for a conversation they
+    // either own or personally transferred away (read-only "Transferidas"
+    // watch — see PROMPT: "possa abrir a conversa para acompanhar em tempo
+    // real sem poder interferir"; joining a room only ever lets a socket
+    // receive events, never send anything, so this stays read-only by
+    // construction), otherwise they could listen in on any other agent's
     // conversation just by guessing/observing its ID. MANAGER/ADMIN keep
     // the same unrestricted oversight access they already have via REST.
     socket.on("conversation:join", async (conversationId: unknown) => {
@@ -81,9 +94,18 @@ export function createSocketServer(httpServer: HttpServer): SocketIOServer {
           where: { id: conversationId },
           select: { assignedAgentId: true },
         });
-        if (!conversation || conversation.assignedAgentId !== auth.userId) return;
+        if (!conversation) return;
+        const isOwner = conversation.assignedAgentId === auth.userId;
+        if (!isOwner) {
+          const transferredByMe = await prisma.conversationTransfer.findFirst({
+            where: { conversationId, fromAgentId: auth.userId },
+            select: { id: true },
+          });
+          if (!transferredByMe) return;
+        }
       }
       socket.join(ROOMS.conversation(conversationId));
+      watchCustomerTyping(conversationId).catch((err) => logger.debug({ err, conversationId }, "could not subscribe to the customer's typing"));
     });
     socket.on("conversation:leave", (conversationId: unknown) => {
       if (typeof conversationId !== "string" || !conversationId) return;
