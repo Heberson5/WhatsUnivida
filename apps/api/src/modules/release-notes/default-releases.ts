@@ -11,6 +11,37 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.27.1",
+    date: "28 out 2026",
+    name: "Boleto com QR Code do PIX",
+    summary:
+      "Quando a parcela tem PIX, o boleto sai com o QR Code e \"Pague via PIX\", e o atendente pode enviar também o PIX copia e cola numa mensagem, além da linha digitável. Sem PIX, o boleto sai como antes, sem QR Code e sem falar em PIX.",
+    notes: [
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "QR Code do PIX no boleto",
+        text: "O boleto que tem PIX sai com o QR Code e \"Pague via PIX\" no lado direito das instruções. O código vem pronto do banco, pela coluna qr_code_boleto da lista de clientes, e só é usado se estiver inteiro (o sistema confere o dígito no fim): uma chave solta (CNPJ, e-mail) ou um código cortado conta como sem PIX. Sem PIX, o boleto não tem QR Code, e as linhas das instruções e da mensagem de envio que falam de PIX ficam de fora.",
+        where: "Atendimento › Dados do cliente › Enviar boleto",
+      },
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "Enviar o PIX copia e cola",
+        text: "Na janela Enviar boleto, cada boleto com PIX mostra o código com o botão de copiar, e a opção de enviar o PIX copia e cola numa mensagem, depois da linha digitável (marcada sozinha quando é um boleto só). Para boletos sem PIX, a opção não aparece.",
+        where: "Atendimento › Dados do cliente › Enviar boleto",
+      },
+      {
+        type: "melhoria",
+        area: "dados",
+        title: "Script da lista de clientes traz o PIX do boleto",
+        text: "O script SQL (whatsatendente.sql) passou a trazer a coluna qr_code_boleto, que a fonte de dados reconhece sozinha como \"PIX copia e cola (QR Code do boleto)\", inclusive nas fontes que já existiam. Gere e importe o CSV novo para os boletos passarem a sair com o PIX.",
+        where: "Dados › Fontes de dados",
+        requires: [PERMISSION.FONTES_DADOS_EDITAR],
+      },
+    ],
+  },
+  {
     version: "2.27.0",
     date: "25 out 2026",
     name: "Chat interno renovado, aniversário do cliente e backup",
