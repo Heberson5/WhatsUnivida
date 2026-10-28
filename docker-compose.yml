@@ -89,7 +89,7 @@ services:
     depends_on:
       - api
     ports:
-      - "8085:80"
+      - "8086:80"
     volumes:
       # Holds the installable Android app (.apk) — see nginx.conf's
       # /downloads/ location. A named volume, not part of the image build,

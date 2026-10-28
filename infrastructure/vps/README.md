@@ -111,13 +111,13 @@ Fica guardado num volume Docker próprio (`app_downloads`, veja
 `git pull` + rebuild seguinte, sem precisar reenviar o arquivo de novo.
 Só repita o `docker cp` acima se gerar uma versão nova do `.apk`.
 
-## WhatsUnivida — porta 8085, domínio e dados de demonstração
+## WhatsUnivida — porta 8086, domínio e dados de demonstração
 
-Esta cópia publica o container `web` na porta **8085** do host
+Esta cópia publica o container `web` na porta **8086** do host
 (`docker-compose.yml`) e usa `WEB_APP_URL=https://whatsunivida.sauberlich.com.br`
 por padrão. Aponte o DNS de `whatsunivida.sauberlich.com.br` para a VPS e
 configure o proxy do host (nginx/Caddy) para encaminhar o domínio para
-`http://127.0.0.1:8085`, incluindo os cabeçalhos de WebSocket (`Upgrade` e
+`http://127.0.0.1:8086`, incluindo os cabeçalhos de WebSocket (`Upgrade` e
 `Connection`) para o `/socket.io`.
 
 O seed (opção **[21]**, ou `docker compose exec api npx tsx prisma/seed.ts`)
