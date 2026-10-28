@@ -93,7 +93,7 @@ describe("multi-WhatsApp connections", () => {
     const missingConnection = await request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${token}`)
-      .send({ fullName: "Novo Atendente", displayName: "Novo", email: "novo@test.dev", password: "***REMOVIDO***", confirmPassword: "***REMOVIDO***", role: "AGENT" });
+      .send({ fullName: "Novo Atendente", displayName: "Novo", email: "novo@test.dev", password: "Test@1234", confirmPassword: "Test@1234", role: "AGENT" });
     expect(missingConnection.status).toBe(400);
 
     const withConnection = await request(app)
@@ -103,8 +103,8 @@ describe("multi-WhatsApp connections", () => {
         fullName: "Novo Atendente",
         displayName: "Novo",
         email: "novo@test.dev",
-        password: "***REMOVIDO***",
-        confirmPassword: "***REMOVIDO***",
+        password: "Test@1234",
+        confirmPassword: "Test@1234",
         role: "AGENT",
         whatsappConnectionId: connection.id,
       });
@@ -114,7 +114,7 @@ describe("multi-WhatsApp connections", () => {
     const manager = await request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${token}`)
-      .send({ fullName: "Gestora", displayName: "Gestora", email: "gestora2@test.dev", password: "***REMOVIDO***", confirmPassword: "***REMOVIDO***", role: "MANAGER" });
+      .send({ fullName: "Gestora", displayName: "Gestora", email: "gestora2@test.dev", password: "Test@1234", confirmPassword: "Test@1234", role: "MANAGER" });
     expect(manager.status).toBe(201);
     expect(manager.body.whatsappConnectionId).toBeNull();
   });

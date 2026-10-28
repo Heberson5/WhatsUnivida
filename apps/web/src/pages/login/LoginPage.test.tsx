@@ -54,11 +54,11 @@ describe("LoginPage", () => {
 
     renderLoginPage();
     fireEvent.change(await screen.findByLabelText(/e-mail/i), { target: { value: "admin@test.dev" } });
-    fireEvent.change(screen.getByLabelText(/^senha$/i), { target: { value: "***REMOVIDO***" } });
+    fireEvent.change(screen.getByLabelText(/^senha$/i), { target: { value: "Test@1234" } });
     fireEvent.click(screen.getByRole("button", { name: /entrar/i }));
 
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBe("token-123"));
-    expect(api.post).toHaveBeenCalledWith("/auth/login", expect.objectContaining({ email: "admin@test.dev", password: "***REMOVIDO***" }));
+    expect(api.post).toHaveBeenCalledWith("/auth/login", expect.objectContaining({ email: "admin@test.dev", password: "Test@1234" }));
   });
 
   it("shows an error message when login fails", async () => {

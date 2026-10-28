@@ -207,10 +207,11 @@ Depois, em **Configurações → WhatsApp** (perfil Administrador), clique em **
 ## Usuários de desenvolvimento e provisionamento de admin real
 
 `npm run prisma:seed -w apps/api` cria alguns usuários e conexões de
-exemplo para desenvolvimento local — **as credenciais desses usuários de
-exemplo não ficam publicadas aqui**; consulte `apps/api/prisma/seed.ts` se
-precisar delas para testar localmente, e troque todas as senhas antes de
-qualquer uso fora de desenvolvimento.
+exemplo para desenvolvimento local (só num banco ainda sem usuários). Nenhum
+login ou senha fica no repositório: o domínio dos e-mails vem de
+`SEED_EMAIL_DOMAIN` e a senha de `SEED_USERS_PASSWORD`; sem ela, o seed sorteia
+uma senha e mostra os logins e a senha apenas no console. Troque todas as
+senhas antes de qualquer uso fora de desenvolvimento.
 
 Para provisionar um administrador **real** (com e-mail e senha próprios,
 sem nada disso passar pelo Git), rode o seed com estas variáveis de

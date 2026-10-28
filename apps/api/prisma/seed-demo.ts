@@ -1,5 +1,6 @@
 import { PrismaClient, type ConversationStatus, type MessageDirection } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedEmail, seedPassword } from "./seed-credentials";
 
 // Dados de exemplo para apresentar o sistema (WhatsUnivida). Tudo fica numa
 // conexão própria, "Central Univida (Demonstração)", que nunca é pareada com
@@ -9,7 +10,6 @@ import bcrypt from "bcryptjs";
 
 const DEMO_CONNECTION = "Central Univida (Demonstração)";
 const DEMO_SALES_CONNECTION = "Comercial Univida (Demonstração)";
-const DEMO_PASSWORD = "***REMOVIDO***";
 
 const MIN = 60_000;
 const ago = (minutes: number) => new Date(Date.now() - minutes * MIN);
@@ -42,19 +42,20 @@ export async function seedDemo(prisma: PrismaClient) {
   });
   const comercial = await prisma.whatsAppConnection.create({ data: { name: DEMO_SALES_CONNECTION, color: "#E67E22" } });
 
-  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
-  const mkUser = async (email: string, fullName: string, displayName: string, role: "ADMIN" | "MANAGER" | "AGENT", connectionId?: string) =>
-    (await prisma.user.findFirst({ where: { email, status: "ACTIVE" } })) ??
+  const password = seedPassword();
+  const passwordHash = await bcrypt.hash(password, 12);
+  const mkUser = async (handle: string, fullName: string, displayName: string, role: "ADMIN" | "MANAGER" | "AGENT", connectionId?: string) =>
+    (await prisma.user.findFirst({ where: { email: seedEmail(handle), status: "ACTIVE" } })) ??
     prisma.user.create({
-      data: { email, fullName, displayName, role, passwordHash, status: "ACTIVE", whatsappConnectionId: connectionId, workState: "MT", workCity: "Cuiabá", lastAccessAt: ago(30) },
+      data: { email: seedEmail(handle), fullName, displayName, role, passwordHash, status: "ACTIVE", whatsappConnectionId: connectionId, workState: "MT", workCity: "Cuiabá", lastAccessAt: ago(30) },
     });
 
   const agents = {
-    gestora: await mkUser("usuario@exemplo.com", "Patrícia Moraes", "Patrícia", "MANAGER"),
-    ana: await mkUser("usuario@exemplo.com", "Ana Souza", "Ana", "AGENT", central.id),
-    carlos: await mkUser("usuario@exemplo.com", "Carlos Lima", "Carlos", "AGENT", central.id),
-    juliana: await mkUser("usuario@exemplo.com", "Juliana Rocha", "Juliana", "AGENT", central.id),
-    pedro: await mkUser("usuario@exemplo.com", "Pedro Alves", "Pedro", "AGENT", comercial.id),
+    gestora: await mkUser("gestora", "Patrícia Moraes", "Patrícia", "MANAGER"),
+    ana: await mkUser("ana", "Ana Souza", "Ana", "AGENT", central.id),
+    carlos: await mkUser("carlos", "Carlos Lima", "Carlos", "AGENT", central.id),
+    juliana: await mkUser("juliana", "Juliana Rocha", "Juliana", "AGENT", central.id),
+    pedro: await mkUser("pedro", "Pedro Alves", "Pedro", "AGENT", comercial.id),
   };
   type AgentKey = keyof typeof agents;
 
@@ -363,5 +364,5 @@ export async function seedDemo(prisma: PrismaClient) {
   await say(direct.id, agents.ana.id, "Sei sim! É no portal administrativo, menu Associados > Redefinir acesso", 12);
   await say(direct.id, agents.carlos.id, "Valeu! 🙏", 11);
 
-  console.log(`Dados de demonstração criados. Usuários de exemplo: gestora/ana/carlos/juliana/usuario@exemplo.com — senha ${DEMO_PASSWORD}`);
+  console.log(`Dados de demonstração criados. Usuários de exemplo: ${Object.keys(agents).map(seedEmail).join(", ")} — senha ${password}`);
 }

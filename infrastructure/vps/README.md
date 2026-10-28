@@ -126,8 +126,10 @@ conexões "Central Univida (Demonstração)" e "Comercial Univida (Demonstraçã
 contatos com etiquetas, conversas na fila, em atendimento, transferidas e
 encerradas, 3 grupos do WhatsApp, respostas rápidas e o chat interno (#Geral
 com enquete e mensagem fixada, grupo "Financeiro & Cobrança" e uma conversa
-direta). Usuários de exemplo: `gestora@`, `ana@`, `carlos@`, `juliana@` e
-`usuario@exemplo.com`, todos com a senha `***REMOVIDO***`. Os números são fictícios e
+direta), além dos usuários de exemplo. Nenhum login ou senha fica no
+repositório: o domínio dos e-mails vem de `SEED_EMAIL_DOMAIN` e a senha de
+`SEED_USERS_PASSWORD`; sem ela, o seed sorteia uma senha e mostra os logins e a
+senha só no console, no fim da execução. Os números são fictícios e
 as conexões de demonstração nunca são pareadas — conecte o WhatsApp real numa
 conexão nova em **Configurações**. Para rodar o seed sem os dados de exemplo,
 use `SEED_DEMO=false`. Roda uma vez só: se a conexão de demonstração já

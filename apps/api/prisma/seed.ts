@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedEmail, seedPassword } from "./seed-credentials";
 import { seedDemo } from "./seed-demo";
 
 const prisma = new PrismaClient();
@@ -45,39 +46,17 @@ async function main() {
   const suporte = await upsertConnection("Suporte");
   const vendas = await upsertConnection("Vendas");
 
-  await upsertUser({
-    email: "usuario@exemplo.com",
-    fullName: "Administrador do Sistema",
-    displayName: "Admin",
-    role: "ADMIN",
-    password: "***REMOVIDO***",
-  });
-
-  await upsertUser({
-    email: "usuario@exemplo.com",
-    fullName: "Gestora de Atendimento",
-    displayName: "Gestora",
-    role: "MANAGER",
-    password: "***REMOVIDO***",
-  });
-
-  await upsertUser({
-    email: "usuario@exemplo.com",
-    fullName: "Joao Pereira",
-    displayName: "Joao",
-    role: "AGENT",
-    password: "***REMOVIDO***",
-    whatsappConnectionId: suporte.id,
-  });
-
-  await upsertUser({
-    email: "usuario@exemplo.com",
-    fullName: "Maria Fernandes",
-    displayName: "Maria",
-    role: "AGENT",
-    password: "***REMOVIDO***",
-    whatsappConnectionId: vendas.id,
-  });
+  // Contas de desenvolvimento só num banco vazio, para que rodar o seed de
+  // novo numa instalação em uso não crie logins extras. E-mail e senha vêm
+  // de seed-credentials.ts — nada fica gravado no repositório.
+  if ((await prisma.user.count()) === 0) {
+    const password = seedPassword();
+    await upsertUser({ email: seedEmail("admin"), fullName: "Administrador do Sistema", displayName: "Admin", role: "ADMIN", password });
+    await upsertUser({ email: seedEmail("gestor"), fullName: "Gestora de Atendimento", displayName: "Gestora", role: "MANAGER", password });
+    await upsertUser({ email: seedEmail("joao"), fullName: "Joao Pereira", displayName: "Joao", role: "AGENT", password, whatsappConnectionId: suporte.id });
+    await upsertUser({ email: seedEmail("maria"), fullName: "Maria Fernandes", displayName: "Maria", role: "AGENT", password, whatsappConnectionId: vendas.id });
+    console.log(`Contas de desenvolvimento: ${["admin", "gestor", "joao", "maria"].map(seedEmail).join(", ")} — senha ${password}`);
+  }
 
   // A real admin account, provisioned only from environment variables so
   // its credentials never end up committed to the repo or printed in
