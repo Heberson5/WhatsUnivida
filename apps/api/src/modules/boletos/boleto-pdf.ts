@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 import { BOLETO_BANKS, type BoletoLayoutModel, type BoletoLayoutSettings } from "@whatsatendende/types";
 import { BANK_LOGOS } from "./bank-logos";
 import { BOLETO_BANK_RULES } from "./boleto-banks";
@@ -28,6 +29,8 @@ export interface BoletoPdfData {
   instructions: string[];
   /** The DEMONSTRATIVO model's top box, already filled in. */
   demonstrative: string[];
+  /** PIX copia e cola: its QR Code and "Pague via PIX" go in the instructions box. Null = nothing about PIX. */
+  pix: string | null;
 }
 
 export interface BoletoPdfLayout {
@@ -76,6 +79,18 @@ function drawBarcode(doc: PDFKit.PDFDocument, code: string, x: number, y: number
   bar(true, true); // stop: wide bar, narrow space, narrow bar
   bar(false, false);
   bar(false, true);
+}
+
+/** The PIX QR Code, drawn module by module (vector: sharp at any zoom), `size` points wide. */
+function drawQrCode(doc: PDFKit.PDFDocument, code: string, x: number, y: number, size: number) {
+  const { modules } = QRCode.create(code, { errorCorrectionLevel: "M" });
+  const unit = size / modules.size;
+  for (let row = 0; row < modules.size; row++) {
+    for (let col = 0; col < modules.size; col++) {
+      if (modules.get(row, col)) doc.rect(x + col * unit, y + row * unit, unit, unit);
+    }
+  }
+  doc.fill("#000");
 }
 
 function text(
@@ -258,7 +273,15 @@ function drawSlip(doc: PDFKit.PDFDocument, data: BoletoPdfData, settings: Boleto
 
   const instructionsHeight = SIDE_ROW * 5;
   cell(doc, x, y, main, instructionsHeight, "Instruções de responsabilidade do Cedente", "", { boxed: true });
-  data.instructions.slice(0, 8).forEach((line, i) => text(doc, line, x + 8, y + 10 + i * 8.5, main - 16, 6.5));
+  // With PIX, its QR Code takes the box's right end and the instructions keep the rest.
+  const qrSize = instructionsHeight - 14;
+  const qrColumn = data.pix ? qrSize + 8 : 0;
+  data.instructions.slice(0, 8).forEach((line, i) => text(doc, line, x + 8, y + 10 + i * 8.5, main - 16 - qrColumn, 6.5));
+  if (data.pix) {
+    const qrX = x + main - qrSize - 4;
+    text(doc, "Pague via PIX", qrX - 10, y + 2, qrSize + 10, 6, { bold: true, align: "right" });
+    drawQrCode(doc, data.pix, qrX, y + 10, qrSize);
+  }
   ["2 (-) Desconto / Abatimento", "3 (-) Outras Deduções", "4 (+) Mora / Multa", "5 (+) Outros Acréscimos", "6 (=) Valor Cobrado"].forEach((label, i) =>
     cell(doc, side, y + i * SIDE_ROW, sideWidth, SIDE_ROW, label, "", { boxed: true })
   );

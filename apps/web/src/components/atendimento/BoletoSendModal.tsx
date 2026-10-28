@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, Copy, FileText, X } from "lucide-react";
+import { AlertTriangle, Copy, FileText, QrCode, X } from "lucide-react";
 import type { BoletoPreviewDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 
@@ -12,6 +12,8 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
   const [confirmOverdue, setConfirmOverdue] = useState(false);
   // One boleto: its linha goes by default. Several in the same PDF: only if the attendant ticks it.
   const [sendLinhas, setSendLinhas] = useState(false);
+  // Same for the PIX copia e cola — only offered when at least one of the boletos has PIX.
+  const [sendPix, setSendPix] = useState(false);
 
   const previewMutation = useMutation({
     mutationFn: async () => (await api.post<BoletoPreviewDTO>(`/messages/conversations/${conversationId}/boletos/preview`, { parcelIds })).data,
@@ -19,6 +21,7 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
       setPreview(data);
       setMessage(data.message);
       setSendLinhas(data.items.length === 1);
+      setSendPix(data.items.length === 1 && Boolean(data.items[0].pix));
     },
     onError: (err) => {
       toast.error(getApiErrorMessage(err));
@@ -26,7 +29,7 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
     },
   });
   const sendMutation = useMutation({
-    mutationFn: () => api.post(`/messages/conversations/${conversationId}/boletos/send`, { parcelIds, message, confirmOverdue, sendLinhas }),
+    mutationFn: () => api.post(`/messages/conversations/${conversationId}/boletos/send`, { parcelIds, message, confirmOverdue, sendLinhas, sendPix }),
     onSuccess: () => {
       toast.success(parcelIds.length === 1 ? "Boleto enviado." : `${parcelIds.length} boletos enviados.`);
       onSent();
@@ -67,6 +70,23 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
                   <Copy className="h-3 w-3" />
                 </button>
               </p>
+              {item.pix && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs">
+                  <QrCode className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <span className="font-medium">Pague via PIX</span>
+                  <span className="min-w-0 truncate font-mono text-muted" title={item.pix}>
+                    {item.pix}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(item.pix!).then(() => toast.success("PIX copia e cola copiado."))}
+                    className="focus-ring shrink-0 rounded p-0.5 text-muted hover:text-[var(--color-text)]"
+                    aria-label="Copiar PIX copia e cola"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </p>
+              )}
             </div>
           ))}
           {preview && preview.warnings.length > 0 && (
@@ -97,6 +117,15 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
               <span>
                 {preview.items.length > 1 ? "Enviar também a linha digitável de cada boleto, cada uma numa mensagem" : "Enviar também a linha digitável numa mensagem"}
                 <span className="block text-xs text-muted">Só os números, prontos para colar no aplicativo do banco. O cliente não vê o nome do atendente nela.</span>
+              </span>
+            </label>
+          )}
+          {preview?.items.some((item) => item.pix) && (
+            <label className="flex items-start gap-2">
+              <input type="checkbox" checked={sendPix} onChange={(e) => setSendPix(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]" />
+              <span>
+                {preview.items.length > 1 ? "Enviar também o PIX copia e cola de cada boleto com PIX, cada um numa mensagem" : "Enviar também o PIX copia e cola numa mensagem"}
+                <span className="block text-xs text-muted">O código para colar em “PIX copia e cola” no aplicativo do banco. O QR Code já vai impresso no boleto.</span>
               </span>
             </label>
           )}

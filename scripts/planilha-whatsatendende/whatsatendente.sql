@@ -11,9 +11,13 @@
    sistema. Usa só tabelas temporárias (#...), que somem sozinhas.
 
    O QUE TEM EM CADA LINHA
-   Uma linha por telefone + contrato + parcela. Só entram clientes
-   que têm pelo menos um contrato ATIVO. Contratos cancelados (e as
-   parcelas deles) ficam de fora. Parcelas que entram:
+   Uma linha por telefone + contrato + parcela. Entram os contratos
+   ATIVOS, SUSPENSOS e CANCELADOS (situacao_contrato), inclusive de
+   clientes que só têm contratos cancelados. Nos cancelados vêm a data
+   e o motivo do cancelamento (contrato_cancelado, data_cancelamento,
+   motivo_cancelamento) e NENHUMA parcela. "Suspenso" = contrato não
+   cancelado com parcelas em atraso >= parcelas_suspensao (parâmetro do
+   sistema). Parcelas que entram (só de contratos não cancelados):
      - TODAS as vencidas e não pagas;
      - e só a PRÓXIMA parcela a vencer de cada contrato (uma só).
    Contrato sem nenhuma dessas aparece numa linha com as colunas da
@@ -33,7 +37,16 @@
    do cadastro (o WhatsAtendente descarta linhas sem telefone).
    email é a última coluna.
 
+   BOLETO SICREDI (748): posto_beneficiario = 5ª e 6ª posições das
+   configurações gerais do convênio (ex.: "ANBN22..." -> 22), conferido
+   com o boleto real (Agência/Código Beneficiário 0804.22.00017).
+   convenio = código do beneficiário. carteira = "1" (carteira simples).
+   BACKUP do script anterior: whatsatendente_BKP_2026-10-23.sql
+
    - "Sem data" no sistema (01/01/1900) sai vazio.
+   qr_code_boleto: código do QR Code (PIX copia e cola) da emissão atual
+   do boleto; vazio quando o boleto não tem QR Code.
+
    - Campos sem informação saem EM BRANCO (nunca "NULL").
    - Valores com centavos usam ponto (ex.: 123.45).
    ===================================================================== */
@@ -136,14 +149,15 @@ OUTER APPLY (
 ) ende
 WHERE e.[nm_id] IN (SELECT id_cliente FROM #telefones);
 
-/* 3. Contratos (só os ATIVOS — cancelados ficam de fora) */
+/* 3. Contratos (ativos, suspensos e cancelados) */
 SELECT
   c.[nm_id]                                   AS id_contrato,
   c.[nm_id_cliente]                           AS id_cliente,
   c.[ch_referência]                           AS numero_contrato,
   ct.[ch_nome]                                AS plano,
-  CASE WHEN c.[dt_cancelamento] > '19000101' OR ISNULL(c.[bt_registro_ativo], 1) = 0
-       THEN 'Cancelado' ELSE 'Ativo' END      AS situacao_contrato,
+  CASE WHEN c.[dt_cancelamento] > '19000101' OR ISNULL(c.[bt_registro_ativo], 1) = 0 THEN 'Cancelado'
+       WHEN @parcelas_suspensao > 0 AND ISNULL(res.[nm_documentos_em_atraso], 0) >= @parcelas_suspensao THEN 'Suspenso'
+       ELSE 'Ativo' END                       AS situacao_contrato,
   mc.[ch_nome]                                AS motivo_cancelamento,
   CONVERT(VARCHAR(10), NULLIF(c.[dt_contrato], '19000101'), 103)     AS data_contrato,
   CONVERT(VARCHAR(10), NULLIF(c.[dt_cancelamento], '19000101'), 103) AS data_cancelamento,
@@ -189,9 +203,7 @@ OUTER APPLY (
   WHERE r.[nm_id_cliente] = c.[nm_id_cliente] AND r.[nm_id_origem] = c.[nm_id]
   ORDER BY r.[dt_processamento] DESC
 ) res
-WHERE c.[nm_id_cliente] IN (SELECT id_cliente FROM #clientes)
-  AND (c.[dt_cancelamento] IS NULL OR c.[dt_cancelamento] <= '19000101')
-  AND ISNULL(c.[bt_registro_ativo], 1) = 1;
+WHERE c.[nm_id_cliente] IN (SELECT id_cliente FROM #clientes);
 
 /* 4. Parcelas (vencidas + a próxima a vencer) e dados do boleto */
 SELECT
@@ -213,12 +225,15 @@ SELECT
     WHEN lb.[ch_arquivo] LIKE '%Sem[_]Emiss%'        THEN 'Sem boleto (aviso de carteira)'
     ELSE 'Boleto' END                                     AS forma_pagamento,
   ISNULL(NULLIF(em.[ch_nosso_número_banco], ''), em.[ch_nosso_número]) AS nosso_numero,
+  NULLIF(LTRIM(RTRIM(em.[ch_qr_code])), '')              AS qr_code_boleto,
   bc.[ch_número]                                          AS banco_codigo,
   bc.[ch_nome_fantasia]                                   AS banco_nome,
   ag.[ch_agência_número] + ISNULL('-' + NULLIF(ag.[ch_agência_dígito], ''), '') AS agencia_beneficiario,
   cb.[ch_conta_número] + ISNULL('-' + cb.[ch_conta_dígito], '')                 AS conta_beneficiario,
   cv.[ch_número_convênio]                                 AS convenio,
-  CASE WHEN bc.[ch_número] = '001' THEN LEFT(cf.[ch_configurações_gerais], 2) END        AS carteira,
+  CASE WHEN bc.[ch_número] = '001' THEN LEFT(cf.[ch_configurações_gerais], 2)
+       WHEN bc.[ch_número] = '748' THEN '1' END                                            AS carteira,
+  CASE WHEN bc.[ch_número] = '748' THEN SUBSTRING(cf.[ch_configurações_gerais], 5, 2) END AS posto_beneficiario,
   CASE WHEN bc.[ch_número] = '001' THEN SUBSTRING(cf.[ch_configurações_gerais], 3, 3) END AS variacao_carteira,
   COALESCE(NULLIF(ge.[ch_razão_social], ''), NULLIF(cv.[ch_razão_social], ''), ge.[ch_nome_fantasia]) AS beneficiario_nome,
   ge.[ch_cnpj]                                            AS beneficiario_cnpj,
@@ -242,7 +257,7 @@ FROM (
   WHERE a.[dt_vencimento] < @hoje OR a.proxima = 1
 ) d
 OUTER APPLY (
-  SELECT TOP 1 x.[nm_id], x.[dt_vencimento], x.[mn_valor_total], x.[ch_nosso_número], x.[ch_nosso_número_banco], x.[nm_id_configuração]
+  SELECT TOP 1 x.[nm_id], x.[dt_vencimento], x.[mn_valor_total], x.[ch_nosso_número], x.[ch_nosso_número_banco], x.[nm_id_configuração], x.[ch_qr_code]
   FROM dbo.[tbl_contas_a_receber_documentos_emissões] x
   WHERE x.[nm_id_documento] = d.[nm_id] AND ISNULL(x.[bt_atual], 0) = 1
   ORDER BY x.[nm_id] DESC
@@ -257,22 +272,22 @@ LEFT JOIN dbo.[tbl_grupo_empresas] ge     ON ge.[nm_id] = cv.[nm_id_empresa];
 
 /* 5. Resultado único, em colunas — campos vazios em branco */
 ;WITH linhas AS (
-  -- contratos ativos (com ou sem parcela em aberto)
+  -- contratos (os cancelados sem nenhuma parcela)
   SELECT t.telefone, t.id_cliente, c.id_contrato, c.numero_contrato, c.plano, c.situacao_contrato, c.motivo_cancelamento,
          c.data_contrato, c.data_cancelamento, c.dia_vencimento, c.quantidade_beneficiarios, c.beneficiarios,
          c.parcelas_em_atraso, c.valor_em_atraso, c.ultimo_pagamento,
-         p.documento, p.dt_vencimento, p.vencimento_parcela, p.dias_em_atraso, p.valor_original, p.saldo, p.multa, p.juros, p.vencimento_boleto, p.valor_boleto, p.forma_pagamento, p.nosso_numero, p.banco_codigo, p.banco_nome, p.agencia_beneficiario, p.conta_beneficiario, p.convenio, p.carteira, p.variacao_carteira, p.beneficiario_nome, p.beneficiario_cnpj, p.id_configuracao_boleto
+         p.documento, p.dt_vencimento, p.vencimento_parcela, p.dias_em_atraso, p.valor_original, p.saldo, p.multa, p.juros, p.vencimento_boleto, p.valor_boleto, p.forma_pagamento, p.nosso_numero, p.qr_code_boleto, p.banco_codigo, p.banco_nome, p.agencia_beneficiario, p.conta_beneficiario, p.convenio, p.carteira, p.variacao_carteira, p.posto_beneficiario, p.beneficiario_nome, p.beneficiario_cnpj, p.id_configuracao_boleto
   FROM #telefones t
   JOIN #contratos c       ON c.id_cliente = t.id_cliente
-  LEFT JOIN #parcelas p   ON p.id_cliente = t.id_cliente AND p.id_contrato = c.id_contrato
+  LEFT JOIN #parcelas p   ON p.id_cliente = t.id_cliente AND p.id_contrato = c.id_contrato AND c.situacao_contrato <> 'Cancelado'
   UNION ALL
-  -- vendas/acordos avulsos (NÃO são parcela de contrato), só de clientes com contrato ativo.
+  -- vendas/acordos avulsos (NÃO são parcela de contrato), só de clientes com contrato ativo ou suspenso.
   -- Parcelas de contratos cancelados NÃO entram aqui.
   SELECT t.telefone, t.id_cliente, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-         p.documento, p.dt_vencimento, p.vencimento_parcela, p.dias_em_atraso, p.valor_original, p.saldo, p.multa, p.juros, p.vencimento_boleto, p.valor_boleto, p.forma_pagamento, p.nosso_numero, p.banco_codigo, p.banco_nome, p.agencia_beneficiario, p.conta_beneficiario, p.convenio, p.carteira, p.variacao_carteira, p.beneficiario_nome, p.beneficiario_cnpj, p.id_configuracao_boleto
+         p.documento, p.dt_vencimento, p.vencimento_parcela, p.dias_em_atraso, p.valor_original, p.saldo, p.multa, p.juros, p.vencimento_boleto, p.valor_boleto, p.forma_pagamento, p.nosso_numero, p.qr_code_boleto, p.banco_codigo, p.banco_nome, p.agencia_beneficiario, p.conta_beneficiario, p.convenio, p.carteira, p.variacao_carteira, p.posto_beneficiario, p.beneficiario_nome, p.beneficiario_cnpj, p.id_configuracao_boleto
   FROM #telefones t
   JOIN #parcelas p ON p.id_cliente = t.id_cliente AND p.id_contrato IS NULL
-  WHERE EXISTS (SELECT 1 FROM #contratos c WHERE c.id_cliente = t.id_cliente)
+  WHERE EXISTS (SELECT 1 FROM #contratos c WHERE c.id_cliente = t.id_cliente AND c.situacao_contrato <> 'Cancelado')
 )
 SELECT
   ISNULL(l.telefone, '')                                                                    AS telefone_whatsapp,
@@ -287,6 +302,9 @@ SELECT
   ISNULL(REPLACE(CONVERT(NVARCHAR(100), l.numero_contrato), ';', ' '), '')                  AS numero_contrato,
   ISNULL(REPLACE(REPLACE(l.plano, ';', ' '), ',', ' '), '')                                 AS plano,
   ISNULL(l.situacao_contrato, '')                                                           AS situacao_contrato,
+  CASE WHEN l.id_contrato IS NULL THEN '' WHEN l.situacao_contrato = 'Cancelado' THEN 'Sim' ELSE 'Não' END AS contrato_cancelado,
+  ISNULL(l.data_cancelamento, '')                                                           AS data_cancelamento,
+  ISNULL(REPLACE(REPLACE(l.motivo_cancelamento, ';', ' '), ',', ' '), '')                   AS motivo_cancelamento,
   ISNULL(l.data_contrato, '')                                                               AS data_contrato,
   ISNULL(REPLACE(CONVERT(VARCHAR(10), l.dia_vencimento), ';', ' '), '')                     AS dia_vencimento,
   ISNULL(CONVERT(VARCHAR(10), l.quantidade_beneficiarios), '')                              AS quantidade_beneficiarios,
@@ -309,6 +327,7 @@ SELECT
   ISNULL(CONVERT(VARCHAR(20), l.valor_boleto), '')                                          AS valor_boleto,
   ISNULL(l.forma_pagamento, '')                                                             AS forma_pagamento,
   ISNULL(REPLACE(l.nosso_numero, ';', ' '), '')                                             AS nosso_numero,
+  ISNULL(REPLACE(REPLACE(REPLACE(REPLACE(l.qr_code_boleto, ';', ' '), '"', ''), CHAR(13), ''), CHAR(10), ''), '') AS qr_code_boleto,
   ISNULL(REPLACE(l.banco_codigo, ';', ' '), '')                                             AS banco_codigo,
   ISNULL(REPLACE(REPLACE(l.banco_nome, ';', ' '), ',', ' '), '')                            AS banco_nome,
   ISNULL(REPLACE(l.agencia_beneficiario, ';', ' '), '')                                     AS agencia_beneficiario,
@@ -316,6 +335,7 @@ SELECT
   ISNULL(REPLACE(l.convenio, ';', ' '), '')                                                 AS convenio,
   ISNULL(REPLACE(l.carteira, ';', ' '), '')                                                 AS carteira,
   ISNULL(REPLACE(l.variacao_carteira, ';', ' '), '')                                        AS variacao_carteira,
+  ISNULL(REPLACE(l.posto_beneficiario, ';', ' '), '')                                       AS posto_beneficiario,
   ISNULL(REPLACE(REPLACE(l.beneficiario_nome, ';', ' '), ',', ' '), '')                     AS beneficiario_nome,
   ISNULL(REPLACE(l.beneficiario_cnpj, ';', ' '), '')                                        AS beneficiario_cnpj,
   ISNULL(CONVERT(VARCHAR(20), l.id_configuracao_boleto), '')                                AS id_configuracao_boleto,

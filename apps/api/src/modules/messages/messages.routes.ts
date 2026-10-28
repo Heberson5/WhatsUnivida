@@ -514,8 +514,14 @@ messagesRouter.post(
   })
 );
 
-// sendLinhas: the attendant ticks it to also send each boleto's linha digitável in its own message.
-const boletoSendSchema = boletoSelectionSchema.extend({ message: z.string().max(4096), confirmOverdue: z.boolean().default(false), sendLinhas: z.boolean() });
+// sendLinhas: the attendant ticks it to also send each boleto's linha digitável in its own message; sendPix, the PIX
+// copia e cola of the boletos that have one (a boleto without PIX sends nothing about it).
+const boletoSendSchema = boletoSelectionSchema.extend({
+  message: z.string().max(4096),
+  confirmOverdue: z.boolean().default(false),
+  sendLinhas: z.boolean(),
+  sendPix: z.boolean().default(false),
+});
 messagesRouter.post(
   "/conversations/:conversationId/boletos/send",
   requireAttendanceAccess,
@@ -538,6 +544,11 @@ messagesRouter.post(
         const linhaDigits = item.linha.replace(/\D/g, "");
         const linhaMessage = await service.createOutboundMessage({ conversationId: conversation.id, agentId: req.auth!.userId, type: "TEXT", body: linhaDigits });
         await whatsappService.sendOutboundText(connectionId, linhaMessage.id, phone, linhaDigits, null);
+      }
+      if (input.sendPix && item.pix) {
+        // The code alone, to paste in "PIX copia e cola" of the bank's app.
+        const pixMessage = await service.createOutboundMessage({ conversationId: conversation.id, agentId: req.auth!.userId, type: "TEXT", body: item.pix });
+        await whatsappService.sendOutboundText(connectionId, pixMessage.id, phone, item.pix, null);
       }
       await prisma.conversationNote.create({
         data: {

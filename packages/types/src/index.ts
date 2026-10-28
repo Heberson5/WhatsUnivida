@@ -2610,6 +2610,7 @@ export const DATA_SOURCE_ROLES = {
   boletoDue: { label: "Vencimento do boleto", column: "vencimento_boleto" },
   boletoValue: { label: "Valor do boleto", column: "valor_boleto" },
   ourNumber: { label: "Nosso número", column: "nosso_numero" },
+  pixCode: { label: "PIX copia e cola (QR Code do boleto)", column: "qr_code_boleto" },
   bankCode: { label: "Código do banco", column: "banco_codigo" },
   agency: { label: "Agência do beneficiário", column: "agencia_beneficiario" },
   account: { label: "Conta do beneficiário", column: "conta_beneficiario" },
@@ -2802,6 +2803,8 @@ export interface BoletoPreviewItemDTO {
   value: string;
   overdue: boolean;
   linha: string;
+  /** The boleto's PIX copia e cola (its QR Code), when the source has a valid one; null = no PIX on this boleto. */
+  pix: string | null;
 }
 
 export interface BoletoPreviewDTO {

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import {
   BOLETO_BANK_CODES,
   BOLETO_SAMPLES_REQUIRED,
+  DATA_SOURCE_ROLES,
   fillBoletoSendMessage,
   type BoletoBankValidationDTO,
   type BoletoLayoutInput,
@@ -20,6 +21,7 @@ import { buildContracts, clientRows, parseBrDate, sourceStatus, usableSource, ty
 import { barcodeFromLinha, buildBarcode, freeFieldBB, linhaFromBarcode } from "./boleto-code";
 import { BOLETO_BANK_RULES } from "./boleto-banks";
 import { renderBoletosPdf, type BoletoPdfData } from "./boleto-pdf";
+import { examplePixCode, validPixCode } from "./boleto-pix";
 import { expandLayoutText, getSendMessage, layoutForBank, toLayoutInput } from "./boleto-layouts.service";
 
 // The banks with their own boleto rule (boleto-banks.ts). Each one only sends after its validation with real boletos.
@@ -80,6 +82,8 @@ interface BuiltBoleto {
   ourNumberPrinted: string;
   agencyCodePrinted: string | null;
   walletPrinted: string | null;
+  /** The PIX copia e cola the source brings for this boleto (checked); null = this boleto has no PIX. */
+  pix: string | null;
 }
 
 /** The boleto of one source row — or the reason it can't be generated. Nothing typed by a person goes in. */
@@ -106,7 +110,9 @@ export function buildBoletoFromRow(data: Row, map: ColumnMap): BuiltBoleto {
   const barcode = buildBarcode(bank, due, cents, parts.freeField);
   const linha = linhaFromBarcode(barcode);
   if (barcodeFromLinha(linha) !== barcode) throw new Error("A linha digitável não passou na conferência dos dígitos");
-  return { bank, due, cents, ourNumber, barcode, linha, ourNumberPrinted: parts.ourNumberPrinted, agencyCodePrinted: parts.agencyCodePrinted, walletPrinted: parts.walletPrinted };
+  // A source synced before this column existed has it unmapped: the script's column name still finds it.
+  const pix = validPixCode(data[map.pixCode ?? DATA_SOURCE_ROLES.pixCode.column]);
+  return { bank, due, cents, ourNumber, barcode, linha, ourNumberPrinted: parts.ourNumberPrinted, agencyCodePrinted: parts.agencyCodePrinted, walletPrinted: parts.walletPrinted, pix };
 }
 
 const withoutLeadingZeros = (value: string) => value.replace(/^0+/, "");
@@ -240,8 +246,16 @@ function previewItem(p: SelectedParcel, today: Date): BoletoPreviewItemDTO {
     value: formatMoney(p.boleto.cents),
     overdue: p.boleto.due < today,
     linha: p.boleto.linha,
+    pix: p.boleto.pix,
   };
 }
+
+// A boleto without PIX never mentions it: lines of the instructions or the send message that talk about PIX go away.
+const PIX_LINE = /\bpix\b/i;
+function withoutPixLines(text: string, hasPix: boolean): string {
+  return hasPix ? text : text.split("\n").filter((line) => !PIX_LINE.test(line)).join("\n");
+}
+const pixLines = (lines: string[], hasPix: boolean) => (hasPix ? lines : lines.filter((line) => !PIX_LINE.test(line)));
 
 function todayStart() {
   const now = new Date();
@@ -256,7 +270,10 @@ export async function previewBoletos(conversation: ConversationForData & { conta
   return {
     items,
     // Dados › Mensagem de envio: the plural one when several boletos go in the PDF.
-    message: fillBoletoSendMessage(await getSendMessage(), { clientName, boletos: parcels.map((p, i) => ({ due: items[i].due, cents: p.boleto.cents })) }),
+    message: withoutPixLines(
+      fillBoletoSendMessage(await getSendMessage(), { clientName, boletos: parcels.map((p, i) => ({ due: items[i].due, cents: p.boleto.cents })) }),
+      items.some((item) => item.pix)
+    ),
     warnings: items.filter((i) => i.overdue).map((i) => `Boleto vencido em ${i.due} — o banco pode cobrar juros ou recusar`),
   };
 }
@@ -308,8 +325,9 @@ export async function prepareBoletos(
       payerDocument: col(p.data, "cpf"),
       payerAddress: col(p.data, "payerAddress"),
       payerLocality: [col(p.data, "payerZip"), col(p.data, "payerCity")].filter(Boolean).join("   ") || null,
-      instructions: expandLayoutText(group.layout.settings.instructions, instructions, fill),
-      demonstrative: expandLayoutText(group.layout.settings.demonstrative, instructions, fill),
+      instructions: pixLines(expandLayoutText(group.layout.settings.instructions, instructions, fill), Boolean(p.boleto.pix)),
+      demonstrative: pixLines(expandLayoutText(group.layout.settings.demonstrative, instructions, fill), Boolean(p.boleto.pix)),
+      pix: p.boleto.pix,
     });
   }
   const pdf = await renderBoletosPdf([...groups.values()]);
@@ -365,8 +383,10 @@ export async function previewLayoutPdf(layout: BoletoLayoutInput): Promise<Buffe
       payerDocument: "000.000.000-00",
       payerAddress: "RUA DOS EXEMPLOS, 100 - CENTRO",
       payerLocality: "78000-000   CIDADE EXEMPLO",
-      instructions: expandLayoutText(layout.settings.instructions, instructions, fill),
-      demonstrative: expandLayoutText(layout.settings.demonstrative, instructions, fill),
+      instructions: pixLines(expandLayoutText(layout.settings.instructions, instructions, fill), i === 0),
+      demonstrative: pixLines(expandLayoutText(layout.settings.demonstrative, instructions, fill), i === 0),
+      // The first boleto with a fictitious PIX, the others without: the preview shows both ways.
+      pix: i === 0 ? examplePixCode(cents) : null,
     };
   });
   return renderBoletosPdf([{ layout, boletos }]);

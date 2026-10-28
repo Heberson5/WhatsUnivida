@@ -467,11 +467,11 @@ export async function usableSource(conversation: Pick<ConversationForData, "what
 // system (parcelas para suspender): never as a plain line.
 const PANEL_ROLES_SHOWN_ELSEWHERE: DataSourceRole[] = [
   "contract", "plan", "contractStatus", "cancelDate", "cancelReason", "beneficiaries", "suspensionThreshold", "document", "parcelDue", "daysLate", "parcelValue", "fine",
-  "interest", "updatedValue", "paymentMethod", "boletoDue", "boletoValue", "ourNumber", "bankCode", "agency", "account", "agreement",
+  "interest", "updatedValue", "paymentMethod", "boletoDue", "boletoValue", "ourNumber", "pixCode", "bankCode", "agency", "account", "agreement",
   "wallet", "walletVariation", "post", "payeeName", "payeeDocument",
 ];
 // Bookkeeping columns of the spreadsheet script: the panel already shows the client chosen and the beneficiaries counted.
-const PANEL_HIDDEN_COLUMN = /^(clientes_neste_telefone|(quantidade|qtd|qtde)_(de_)?beneficiarios)$/;
+const PANEL_HIDDEN_COLUMN = /^(clientes_neste_telefone|(quantidade|qtd|qtde)_(de_)?beneficiarios|qr_code_boleto)$/;
 // A contract's own columns go inside its card; the rest is about the person.
 const CONTRACT_COLUMN = /contrato|plano|vencimento|parcela|atraso|adesao/;
 
