@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedDemo } from "./seed-demo";
 
 const prisma = new PrismaClient();
 
@@ -103,6 +104,10 @@ async function main() {
     }
     console.log(`Admin provisionado a partir de variaveis de ambiente: ${email}${forceReset ? " (senha redefinida)" : ""}`);
   }
+
+  // WhatsUnivida: conversas, grupos, chat interno e contatos de exemplo para
+  // apresentação. SEED_DEMO=false pula esta parte.
+  if (process.env.SEED_DEMO !== "false") await seedDemo(prisma);
 
   console.log("Seed completed.");
 }

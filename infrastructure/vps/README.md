@@ -110,3 +110,25 @@ Fica guardado num volume Docker próprio (`app_downloads`, veja
 `docker-compose.yml`), separado da imagem do `web` — sobrevive a qualquer
 `git pull` + rebuild seguinte, sem precisar reenviar o arquivo de novo.
 Só repita o `docker cp` acima se gerar uma versão nova do `.apk`.
+
+## WhatsUnivida — porta 8085, domínio e dados de demonstração
+
+Esta cópia publica o container `web` na porta **8085** do host
+(`docker-compose.yml`) e usa `WEB_APP_URL=https://whatsunivida.sauberlich.com.br`
+por padrão. Aponte o DNS de `whatsunivida.sauberlich.com.br` para a VPS e
+configure o proxy do host (nginx/Caddy) para encaminhar o domínio para
+`http://127.0.0.1:8085`, incluindo os cabeçalhos de WebSocket (`Upgrade` e
+`Connection`) para o `/socket.io`.
+
+O seed (opção **[21]**, ou `docker compose exec api npx tsx prisma/seed.ts`)
+também cria dados de exemplo para apresentação (`prisma/seed-demo.ts`):
+conexões "Central Univida (Demonstração)" e "Comercial Univida (Demonstração)",
+contatos com etiquetas, conversas na fila, em atendimento, transferidas e
+encerradas, 3 grupos do WhatsApp, respostas rápidas e o chat interno (#Geral
+com enquete e mensagem fixada, grupo "Financeiro & Cobrança" e uma conversa
+direta). Usuários de exemplo: `gestora@`, `ana@`, `carlos@`, `juliana@` e
+`usuario@exemplo.com`, todos com a senha `***REMOVIDO***`. Os números são fictícios e
+as conexões de demonstração nunca são pareadas — conecte o WhatsApp real numa
+conexão nova em **Configurações**. Para rodar o seed sem os dados de exemplo,
+use `SEED_DEMO=false`. Roda uma vez só: se a conexão de demonstração já
+existir, não cria nada de novo.
