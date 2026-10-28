@@ -11,6 +11,21 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.27.3",
+    date: "28 out 2026",
+    name: "Áudio gravado chega com os tracinhos",
+    summary: "O áudio gravado pelo atendente chega ao cliente com os tracinhos do volume, como um áudio gravado no próprio WhatsApp, e não mais com uma linha reta.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Áudio chegava com uma linha reta no lugar dos tracinhos",
+        text: "O áudio gravado no atendimento chegava ao cliente como mensagem de voz, tocando normalmente, mas sem os tracinhos do volume: faltava no sistema a parte que desenha esses tracinhos a partir do áudio. Agora eles vão junto em cada áudio gravado, inclusive nos grupos. Os áudios enviados antes continuam com a linha reta.",
+        where: "Atendimento › gravar áudio",
+      },
+    ],
+  },
+  {
     version: "2.27.2",
     date: "28 out 2026",
     name: "Áudios longos e arquivos acima de 1 MB",

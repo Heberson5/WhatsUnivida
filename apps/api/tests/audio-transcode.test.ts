@@ -38,4 +38,26 @@ describe("transcodeToOggOpus", () => {
   it("rejects input that isn't audio at all, instead of silently passing it through", async () => {
     await expect(transcodeToOggOpus(Buffer.from("not an audio file"))).rejects.toThrow();
   });
+
+  it("the converted voice note gets WhatsApp's waveform bars — Baileys draws them only with audio-decode installed", async () => {
+    // 1 s loud, then 1 s almost silent: the bars must follow the volume, not come out flat.
+    const webm = execFileSync("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+      "-af", "volume='if(lt(t,1),1,0.05)':eval=frame",
+      "-c:a", "libopus", "-f", "webm", "pipe:1",
+    ]);
+    const ogg = await transcodeToOggOpus(webm);
+
+    // The same call Baileys makes for a ptt message; without audio-decode it returns undefined and the
+    // customer sees a straight line instead of the bars.
+    const { getAudioWaveform } = await import("@whiskeysockets/baileys");
+    const waveform = await getAudioWaveform(ogg);
+
+    expect(waveform).toBeInstanceOf(Uint8Array);
+    expect(waveform!.length).toBe(64);
+    const loud = Math.min(...waveform!.slice(4, 28));
+    const quiet = Math.max(...waveform!.slice(36, 60));
+    expect(loud).toBeGreaterThan(quiet * 5);
+  });
 });
