@@ -11,6 +11,21 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.27.2",
+    date: "28 out 2026",
+    name: "Áudios longos e arquivos acima de 1 MB",
+    summary: "Áudios de quase 1 minuto ou mais e arquivos acima de 1 MB voltaram a ser enviados.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Áudio de quase 1 minuto não era enviado",
+        text: "O servidor que recebe as conexões seguras (HTTPS) na frente do sistema aceitava só 1 MB por envio, e um áudio gravado de cerca de 1 minuto passa disso: aparecia \"Arquivo muito grande para o servidor aceitar\". Ele passou a aceitar até 300 MB, como o resto do sistema. Agora o limite é o do próprio sistema, 25 MB por arquivo — mais de 20 minutos de áudio. O mesmo limite barrava anexos acima de 1 MB e a importação da lista de clientes em Fontes de dados.",
+        where: "Atendimento › gravar áudio / anexar arquivo",
+      },
+    ],
+  },
+  {
     version: "2.27.1",
     date: "28 out 2026",
     name: "Boleto com QR Code do PIX",
