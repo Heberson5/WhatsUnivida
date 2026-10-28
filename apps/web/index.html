@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" id="app-favicon" type="image/png" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>WhatsUnivida</title>
+
+    <!-- Lets the app be added to the home screen (Android/iOS) or installed
+         as a desktop app (Chrome/Edge "Install" button) and open without
+         browser chrome (address bar/tabs), like a native app — see PROMPT:
+         "abrir em layout de aplicativo" and "acrescente aplicativo para
+         computador também". The manifest link points at the API instead of
+         a static file so an admin's app name/icon (Configurações) takes
+         effect on the next install without a rebuild — see
+         settings.routes.ts's GET /branding and /manifest.webmanifest.
+         manifest.webmanifest covers Android/Chrome/Edge/desktop; the
+         apple-* tags cover iOS/Safari, which ignores the web manifest for
+         this — see useBranding, which keeps id="app-apple-touch-icon" and
+         id="app-apple-title" in sync with the same saved app icon/name. -->
+    <link rel="manifest" href="/api/settings/manifest.webmanifest" />
+    <meta name="theme-color" content="#0097B4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta id="app-apple-title" name="apple-mobile-web-app-title" content="WhatsUnivida" />
+    <link id="app-apple-touch-icon" rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

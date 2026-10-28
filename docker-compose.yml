@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whatsunivida
+      POSTGRES_PASSWORD: whatsunivida
+      POSTGRES_DB: whatsunivida
+    # No host port published: only the api container needs to reach this
+    # (over the compose network, by service name — see DATABASE_URL below),
+    # and this stack is meant to run on a public VPS where exposing Postgres
+    # to the internet would be a real, needless risk. For a local psql
+    # session use `docker compose exec postgres psql -U whatsunivida`.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsunivida"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Same reasoning as postgres above — internal-only.
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://whatsunivida:whatsunivida@postgres:5432/whatsunivida
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a random secret in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a random secret in .env}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?set a random secret in .env}
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-mock}
+      WHATSAPP_AUTH_DIR: /data/whatsapp-sessions
+      # Left "silent" (the default) normally — Baileys logs every raw
+      # protocol frame at debug level, far too noisy to run permanently.
+      # Set WHATSAPP_LOG_LEVEL=warn in .env and redeploy to temporarily
+      # surface actual Signal-protocol/session errors (e.g. decryption
+      # failures) that never reach this app's own logs at all, since they
+      # happen entirely inside Baileys — needed to diagnose anything at the
+      # WhatsApp-protocol level instead of guessing from the outside.
+      WHATSAPP_LOG_LEVEL: ${WHATSAPP_LOG_LEVEL:-silent}
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:8085}
+      UPLOAD_DIR: /data/uploads
+      # Left false (the default) on purpose: this stack still publishes the
+      # api container's port directly (see `ports` below), so a client could
+      # reach it without going through the nginx container and spoof
+      # X-Forwarded-For. Only set TRUST_PROXY=true once that direct port
+      # mapping is removed and nginx is the sole path to the API.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    volumes:
+      - api_uploads:/data/uploads
+      - whatsapp_sessions:/data/whatsapp-sessions
+    # No host port published: the web container's nginx already proxies
+    # /api, /uploads and /socket.io to this service internally (see
+    # infrastructure/docker/nginx.conf) — the browser never needs to reach
+    # it directly, so it stays off the public internet. If you need to
+    # reach it directly for debugging, use `docker compose exec api sh` or
+    # temporarily add back `ports: ["127.0.0.1:4000:4000"]` (loopback-only)
+    # and an SSH tunnel, rather than publishing it to 0.0.0.0.
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8085:80"
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_uploads:
+  whatsapp_sessions:

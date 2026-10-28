@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+FROM node:20-bookworm-slim AS base
+WORKDIR /repo
+# ffmpeg: transcodes a recorded voice note to OGG/Opus before it reaches
+# WhatsApp — see apps/api/src/lib/audio-transcode.ts.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ffmpeg && rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
+COPY package.json package-lock.json* ./
+COPY packages/types/package.json packages/types/package.json
+COPY packages/whatsapp/package.json packages/whatsapp/package.json
+COPY apps/api/package.json apps/api/package.json
+RUN npm ci
+
+FROM deps AS build
+COPY packages/types packages/types
+COPY packages/whatsapp packages/whatsapp
+COPY apps/api apps/api
+RUN npm run build -w packages/types \
+ && npm run build -w packages/whatsapp \
+ && npm run prisma:generate -w apps/api \
+ && npm run build -w apps/api
+
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/package.json ./package.json
+COPY --from=build /repo/packages/types ./packages/types
+COPY --from=build /repo/packages/whatsapp ./packages/whatsapp
+COPY --from=build /repo/apps/api/dist ./apps/api/dist
+COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
+COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
+
+WORKDIR /repo/apps/api
+EXPOSE 4000
+# exec (not a plain `node ...` after `&&`) replaces the shell with the node
+# process so it becomes PID 1 and receives SIGTERM directly from `docker
+# stop`/`compose up --force-recreate` on every deploy — needed for
+# server.ts's graceful-shutdown handler (which cleanly ends any live
+# WhatsApp connections) to actually run instead of the process just being
+# killed out from under a still-running shell wrapper.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]

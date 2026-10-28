@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: whatsunivida
+          POSTGRES_PASSWORD: whatsunivida
+          POSTGRES_DB: whatsunivida_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U whatsunivida"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared packages
+        run: |
+          npm run build -w packages/types
+          npm run build -w packages/whatsapp
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate -w apps/api
+
+      - name: Apply test database migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://whatsunivida:whatsunivida@localhost:5432/whatsunivida_test
+
+      - name: Lint (api)
+        run: npm run lint -w apps/api
+
+      - name: Lint (web)
+        run: npm run lint -w apps/web
+
+      - name: Test (api)
+        run: npm run test -w apps/api
+
+      - name: Test (web)
+        run: npm run test -w apps/web
+
+      - name: Build (api)
+        run: npm run build -w apps/api
+
+      - name: Build (web)
+        run: npm run build -w apps/web

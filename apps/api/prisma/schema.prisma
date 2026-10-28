@@ -1,0 +1,633 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity / RBAC
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AgentPresence {
+  ONLINE
+  AWAY
+  OFFLINE
+}
+
+model User {
+  id            String        @id @default(uuid())
+  fullName      String
+  displayName   String
+  email         String        @unique
+  passwordHash  String
+  role          Role          @default(AGENT)
+  status        UserStatus    @default(ACTIVE)
+  presence      AgentPresence @default(OFFLINE)
+  photoUrl      String?
+  themePreference String      @default("AUTO") // LIGHT | DARK | AUTO
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lastAccessAt  DateTime?
+
+  // Where this user works — drives which STATE/MUNICIPAL holidays block
+  // their access automatically (a NATIONAL holiday always applies
+  // regardless of these). Both null = no city on file, so only NATIONAL
+  // holidays (if any apply) affect this user. See PROMPT: "no cadastro do
+  // usuário, indicar qual cidade trabalha".
+  workState     String?       // UF, e.g. "MT" — IBGE 2-letter code
+  workCity      String?       // município name, as returned by the IBGE API for workState
+
+  // Per-weekday allowed access window — see PROMPT: "horário que é
+  // permitido acessar... pode variar, portanto precisa ser por cada dia da
+  // semana". A day left out/blank means unrestricted (24h) for that
+  // weekday specifically, not "no access" — see accessSchedule.ts for the
+  // shape this JSON actually holds ({ MON?: {start,end}, TUE?: ..., ... },
+  // HH:mm strings) and resolveAccessWindow, the single place that reads it.
+  accessSchedule Json?
+
+  // An agent's "home" WhatsApp connection: which queue they see and can
+  // accept from. Required in practice for role=AGENT (enforced in the
+  // users service, not the DB, since ADMIN/MANAGER never need one — they
+  // see every connection through oversight). A transferred conversation
+  // can still land on an agent regardless of this value — see
+  // conversations.service.ts `transferConversation`.
+  whatsappConnection      WhatsAppConnection?      @relation(fields: [whatsappConnectionId], references: [id])
+  whatsappConnectionId    String?
+
+  passwordResetTokens     PasswordResetToken[]
+  refreshTokens           RefreshToken[]
+  assignedConversations   Conversation[]           @relation("AssignedAgent")
+  assignmentsFrom         ConversationAssignment[]  @relation("AssignmentFromAgent")
+  assignmentsTo           ConversationAssignment[]  @relation("AssignmentToAgent")
+  transfersInitiated      ConversationTransfer[]    @relation("TransferInitiatedBy")
+  transfersFrom           ConversationTransfer[]    @relation("TransferFromAgent")
+  transfersTo             ConversationTransfer[]    @relation("TransferToAgent")
+  messages                Message[]                 @relation("SentByAgent")
+  messageReactions        MessageReaction[]
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  // Connections this user (a MANAGER, in practice) personally created —
+  // owning a connection grants full view/edit/receive access to it with no
+  // separate grant row needed. See PROMPT: "conexões que foram cadastradas
+  // pelos gestores".
+  createdConnections      WhatsAppConnection[]     @relation("ConnectionCreatedBy")
+  // Explicit ADMIN-granted access to a connection this user did NOT create
+  // — see ManagerConnectionAccess.
+  connectionGrants        ManagerConnectionAccess[]
+
+  @@index([role])
+  @@index([status])
+  @@index([whatsappConnectionId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp connection
+// ---------------------------------------------------------------------------
+
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  QR_PENDING
+  CODE_PENDING
+  CONNECTED
+}
+
+// One row per connected WhatsApp number/session. An organization using
+// several numbers (e.g. "Suporte", "Vendas") creates one named connection
+// per number here; each is backed by its own WhatsAppProvider instance
+// (see apps/api/src/modules/whatsapp/whatsapp.service.ts) so they connect,
+// disconnect, and hold their own QR code independently of one another.
+model WhatsAppConnection {
+  id              String                   @id @default(uuid())
+  name            String                   @unique
+  // Distinguishes this connection's conversations at a glance — every
+  // conversation card is tinted with its originating connection's color, so
+  // an agent can tell them apart even after a cross-connection transfer.
+  color           String                   @default("#0097B4")
+  // Conexao de demonstracao: usa o simulador (MockWhatsAppProvider) mesmo com
+  // WHATSAPP_PROVIDER=baileys, para que o sistema possa ser apresentado com
+  // dados de exemplo sem tocar em nenhum numero real. Conexoes reais criadas
+  // pela tela de Configuracoes ficam com false e usam o provedor do ambiente.
+  isDemo          Boolean                  @default(false)
+  status          WhatsAppConnectionStatus @default(DISCONNECTED)
+  connectedNumber String?
+  // The phone number this connection was FIRST successfully linked to — set
+  // once and kept forever after, unlike connectedNumber (which clears on
+  // every disconnect, even a transient one). Lets a later reconnect/re-pair
+  // attempt be checked against the original number so this connection's
+  // conversation history never ends up mixed with a different real-world
+  // phone number — see PROMPT: "reconectar somente no mesmo número que já
+  // estava antes".
+  linkedNumber    String?
+  lastConnectedAt DateTime?
+  lastQrAt        DateTime?
+  // Whoever ran POST /connections to create this row — a MANAGER who
+  // created a connection themselves gets full view/edit/receive access to
+  // it automatically, with no ManagerConnectionAccess grant needed. Null
+  // for a connection created before this field existed, or created
+  // directly by an ADMIN with no meaningful "owner" concept for it.
+  createdByUser   User?                    @relation("ConnectionCreatedBy", fields: [createdByUserId], references: [id])
+  createdByUserId String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  agents        User[]
+  contacts      Contact[]
+  conversations Conversation[]
+  quickReplies  QuickReply[]
+  managerGrants ManagerConnectionAccess[]
+
+  @@index([status])
+}
+
+// An ADMIN-granted exception to a MANAGER's default connection visibility
+// (which is otherwise limited to connections they personally created — see
+// WhatsAppConnection.createdByUserId). One row per (manager, connection)
+// pair the admin has explicitly opted in, with two independent grants —
+// see PROMPT: "designar qual conexão os gestores poderão ver/editar e
+// também poderão receber novas conversas de quais conexões". `manager`
+// is expected to be a Role.MANAGER user; enforced in the service layer,
+// not the DB, same precedent as User.whatsappConnectionId being AGENT-only.
+model ManagerConnectionAccess {
+  id                      String             @id @default(uuid())
+  manager                 User               @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  managerId               String
+  whatsappConnection      WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id], onDelete: Cascade)
+  whatsappConnectionId    String
+  // View/edit the connection itself (Configurações, and counted toward the
+  // connection filters in Gestão/Dashboard/Relatórios).
+  canManage               Boolean            @default(false)
+  // Eligible to see and accept this connection's queue in Atendimento.
+  canReceiveConversations Boolean            @default(false)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@unique([managerId, whatsappConnectionId])
+}
+
+// Canned messages an agent can drop into the composer by typing "/" followed
+// by the shortcut — see QuickReply routes/service. Scoped to one WhatsApp
+// connection (not global) so, e.g., "Vendas" and "Suporte" can each curate
+// their own set without stepping on each other's shortcuts.
+model QuickReply {
+  id                    String             @id @default(uuid())
+  name                  String
+  // Stored without the leading "/" (e.g. "boasvindas", not "/boasvindas") —
+  // the slash is purely a UI trigger, added back only when displayed.
+  shortcut              String
+  text                  String
+  whatsappConnection    WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id], onDelete: Cascade)
+  whatsappConnectionId  String
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([whatsappConnectionId, shortcut])
+}
+
+// ---------------------------------------------------------------------------
+// Contacts / Conversations
+// ---------------------------------------------------------------------------
+
+model Contact {
+  id                   String   @id @default(uuid())
+  // Scoped per connection, not globally: the same phone number talking to
+  // two different connected WhatsApp numbers is two separate customer
+  // relationships (different business/department), so it's two Contact rows.
+  whatsappConnection   WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id])
+  whatsappConnectionId String
+  phone                String
+  name                 String?
+  photoUrl             String?
+  // WhatsApp's raw chat id (e.g. "<n>@lid" or "<n>@s.whatsapp.net") as first
+  // learned for this contact — WhatsApp's @lid privacy migration means the
+  // SAME chat can report this id in either form across different events
+  // (an inbound customer message vs. one echoed from the linked phone
+  // itself, say), and only some of those events also reveal the real phone
+  // number alongside it. Persisting whichever chat id we saw first gives a
+  // stable key to recognize "this is the same chat" by even on a later
+  // event whose own chatId came back unresolved (@lid) with no phone
+  // number attached at all — see findOrCreateContact.
+  providerChatId       String?
+  firstConversationAt  DateTime @default(now())
+  lastInteractionAt    DateTime @default(now())
+
+  conversations Conversation[]
+
+  @@unique([phone, whatsappConnectionId])
+  @@unique([providerChatId, whatsappConnectionId])
+  @@index([phone])
+}
+
+enum ConversationStatus {
+  NEW
+  WAITING
+  IN_PROGRESS
+  TRANSFERRED
+  CLOSED
+  ABANDONED
+  // A still-unassigned (NEW/WAITING) conversation was read directly on the
+  // linked phone instead of through this app — see PROMPT: "quando aberto
+  // no celular, deve sair da fila". Left with no assigned agent (the phone
+  // gives no way to know which one), so it leaves the queue without being
+  // attributed to anyone; still visible in Gestão. A further message from
+  // the same contact starts a brand-new conversation, same precedent as
+  // CLOSED (see findActiveConversationForContact).
+  HANDLED_EXTERNALLY
+}
+
+model Conversation {
+  id               String              @id @default(uuid())
+  // Denormalized from contact.whatsappConnectionId at creation time — kept
+  // directly on the conversation (rather than only reachable via a join)
+  // so the queue, oversight, dashboard, and report filters can filter by
+  // connection with a plain WHERE instead of joining through Contact every time.
+  whatsappConnection   WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id])
+  whatsappConnectionId String
+  contact          Contact             @relation(fields: [contactId], references: [id])
+  contactId        String
+  status           ConversationStatus  @default(WAITING)
+  assignedAgent    User?               @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  assignedAgentId  String?
+
+  enteredQueueAt   DateTime            @default(now())
+  acceptedAt       DateTime?
+  firstResponseAt  DateTime?
+  closedAt         DateTime?
+  closedByUserId   String?
+
+  // Reset to null on accept/transfer; set to now() when the assigned agent
+  // opens the conversation. Unread badge = inbound messages newer than this.
+  assignedAgentReadAt DateTime?
+
+  // Set on transfer only when the receiving agent is not online at that
+  // moment; cleared the moment that agent logs in, or once the deadline is
+  // processed. A background sweep (see conversations.service.ts
+  // `revertExpiredTransfers`) reassigns the conversation back to whoever
+  // transferred it if this passes with no login in between.
+  pendingTransferDeadline DateTime?
+
+  lastMessageAt    DateTime            @default(now())
+  lastMessageDirection String?
+
+  // optimistic-lock version, used together with a conditional UPDATE to
+  // guarantee only one agent can accept a conversation (see conversations
+  // service `acceptConversation`).
+  version          Int                 @default(0)
+
+  messages         Message[]
+  assignments      ConversationAssignment[]
+  transfers        ConversationTransfer[]
+  events           ConversationEvent[]
+
+  createdAt        DateTime            @default(now())
+
+  @@index([status])
+  @@index([assignedAgentId])
+  @@index([contactId])
+  @@index([enteredQueueAt])
+  @@index([whatsappConnectionId])
+  @@index([pendingTransferDeadline])
+}
+
+model ConversationAssignment {
+  id              String   @id @default(uuid())
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  conversationId  String
+  fromAgent       User?    @relation("AssignmentFromAgent", fields: [fromAgentId], references: [id])
+  fromAgentId     String?
+  toAgent         User     @relation("AssignmentToAgent", fields: [toAgentId], references: [id])
+  toAgentId       String
+  reason          String   // ACCEPT | TRANSFER | REOPEN | MENTION
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+model ConversationTransfer {
+  id              String   @id @default(uuid())
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  conversationId  String
+  fromAgent       User     @relation("TransferFromAgent", fields: [fromAgentId], references: [id])
+  fromAgentId     String
+  toAgent         User     @relation("TransferToAgent", fields: [toAgentId], references: [id])
+  toAgentId       String
+  initiatedBy     User     @relation("TransferInitiatedBy", fields: [initiatedById], references: [id])
+  initiatedById   String
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+model ConversationEvent {
+  id              String   @id @default(uuid())
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  conversationId  String
+  type            String   // CREATED | ACCEPTED | TRANSFERRED | CLOSED | REOPENED | ACCEPT_CONFLICT | HANDLED_EXTERNALLY
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  LOCATION
+  CONTACT
+  // A WhatsApp poll — read-only here: only the question/options (sent in
+  // plaintext) are shown. Votes (pollUpdateMessage) are end-to-end
+  // encrypted against the poll's own key and are not decoded/tallied.
+  POLL
+  // WhatsApp's "Evento" message — what a Portuguese-speaking user calls a
+  // "lembrete" (reminder): a shareable calendar-style invite with a name,
+  // optional description/location/join link and a start time.
+  EVENT
+  SYSTEM
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Message {
+  id                    String            @id @default(uuid())
+  conversation          Conversation      @relation(fields: [conversationId], references: [id])
+  conversationId        String
+  direction             MessageDirection
+  type                  MessageType
+  status                MessageStatus     @default(PENDING)
+  body                  String?
+  providerMessageId     String?           @unique
+  senderAgent           User?             @relation("SentByAgent", fields: [senderAgentId], references: [id])
+  senderAgentId         String?
+  replyToMessage        Message?          @relation("MessageReplies", fields: [replyToMessageId], references: [id])
+  replyToMessageId      String?
+  replies               Message[]         @relation("MessageReplies")
+
+  // A reply to a WhatsApp Status/Story ("respondendo a um story") instead of
+  // to another message in this conversation — the story itself is never
+  // fetched or stored anywhere (WhatsApp doesn't keep it once it expires,
+  // and there's no way to look one up afterward), so this carries only the
+  // small preview WhatsApp embeds directly inside the reply: its text, or a
+  // low-res thumbnail for a media story. See extractQuotedStory in
+  // BaileysWhatsAppProvider.ts.
+  isStoryReply          Boolean           @default(false)
+  storyReplyText        String?
+  storyReplyThumbnail   String? // base64 JPEG — WhatsApp's own embedded low-res preview, not a fetched/stored file
+
+  // Link-preview card (WhatsApp Web parity) — populated when this TEXT
+  // message's body contains a URL and a preview was generated, either by
+  // the sender's own phone (inbound / device-sent) or, for a message sent
+  // through this app, by Baileys' getUrlInfo helper on send. See
+  // linkPreviewUrl (the literal URL the card refers to) as its href.
+  linkPreviewTitle       String?
+  linkPreviewDescription String?
+  linkPreviewUrl         String?
+  linkPreviewThumbnail   String? // base64 JPEG
+
+  createdAt             DateTime          @default(now())
+  deliveredAt           DateTime?
+  readAt                DateTime?
+
+  // ADMIN-only "excluir mensagem" — soft delete local to this app only:
+  // deleted messages are simply excluded from listMessages, but the row
+  // (and any attachment) is kept for audit purposes. Never propagated to
+  // WhatsApp — there is no revoke/delete call to Baileys anywhere in this
+  // flow, so the customer's own WhatsApp app and any other linked device
+  // (phone, WhatsApp Web/Desktop) keep the message exactly as it was.
+  deletedAt             DateTime?
+  deletedByUserId       String?
+
+  attachments MessageAttachment[]
+  reactions   MessageReaction[]
+
+  @@index([conversationId, createdAt])
+  @@index([providerMessageId])
+}
+
+model MessageAttachment {
+  id         String      @id @default(uuid())
+  message    Message     @relation(fields: [messageId], references: [id])
+  messageId  String
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String
+  kind       MessageType
+  latitude   Float?
+  longitude  Float?
+  vcard      String?
+  // POLL only.
+  pollQuestion String?
+  pollOptions  Json?
+  // EVENT only — location reuses latitude/longitude above (WhatsApp's
+  // EventMessage carries an optional plain LocationMessage the same shape
+  // as a standalone one).
+  eventName        String?
+  eventDescription String?
+  eventStartAt     DateTime?
+  eventJoinLink    String?
+  createdAt  DateTime    @default(now())
+
+  @@index([messageId])
+}
+
+model MessageReaction {
+  id         String   @id @default(uuid())
+  message    Message  @relation(fields: [messageId], references: [id])
+  messageId  String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  fromCustomer Boolean @default(false)
+  emoji      String
+  createdAt  DateTime @default(now())
+
+  @@unique([messageId, userId, fromCustomer])
+  @@index([messageId])
+}
+
+// ---------------------------------------------------------------------------
+// Cross-cutting
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  ipAddress  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  type       String
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, readAt])
+}
+
+// One row per (role, permission) an admin has explicitly toggled away from
+// its hardcoded default (see PERMISSION_DEFINITIONS in @whatsunivida/types)
+// — an empty table reproduces today's fixed role checks exactly. ADMIN never
+// gets a row here: it always has every permission, checked directly in code,
+// so the platform can never lock its own admins out of the permissions
+// screen that controls this table.
+model RolePermission {
+  id         String   @id @default(uuid())
+  role       Role
+  permission String
+  allowed    Boolean
+  updatedAt  DateTime @updatedAt
+
+  @@unique([role, permission])
+}
+
+// ---------------------------------------------------------------------------
+// Feriados — bloqueio de acesso automático por horário/feriado (see PROMPT:
+// "cadastro de feriados... nacional, estadual... ou municipal", "no cadastro
+// do usuário, indicar qual cidade trabalha").
+// ---------------------------------------------------------------------------
+
+enum HolidayScope {
+  NATIONAL
+  STATE
+  MUNICIPAL
+}
+
+enum HolidaySource {
+  // Typed by an admin in Configurações — an automatic sync must never
+  // overwrite or delete this row, and must never be treated as "already
+  // covered" by it either (see @@unique below: source is part of the key,
+  // so a MANUAL row and an AUTO row for the literal same
+  // scope/state/city/date/name can coexist rather than colliding).
+  MANUAL
+  // Written by the sync job (BrasilAPI for NATIONAL, a municipal provider
+  // for MUNICIPAL) — safe to re-upsert on every sync run.
+  AUTO
+}
+
+// One row per city (not a join table to several cities) — a holiday that
+// applies to 3 cities is 3 rows. Denormalized on purpose: every enforcement
+// check is a single flat WHERE (scope=NATIONAL OR (STATE AND state=?) OR
+// (MUNICIPAL AND state=? AND city=?)) with no join, and the per-city AUTO
+// sync naturally writes one row per city it fetched anyway.
+model Holiday {
+  id         String        @id @default(uuid())
+  date       DateTime      @db.Date
+  name       String
+  scope      HolidayScope
+  // Required for STATE and MUNICIPAL, null for NATIONAL.
+  state      String?
+  // Required for MUNICIPAL only.
+  city       String?
+  source     HolidaySource
+  // The calendar year `date` falls in — movable holidays (Sexta-feira
+  // Santa etc.) get a new row every year, and this is what
+  // HolidaySyncCursor and the once-per-city-per-year sync cap key off.
+  year       Int
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  // Lets an AUTO sync re-run safely (upsert instead of insert) without ever
+  // duplicating a row it already wrote, while a MANUAL entry for the exact
+  // same date/name/place is a distinct row (source is part of the key) —
+  // see PROMPT: "ao atualizar automaticamente não irá apagar o cadastro
+  // manual e nem duplicar caso traga do automático".
+  @@unique([scope, state, city, date, name, source])
+  @@index([scope, state, city, year])
+  @@index([date])
+}
+
+// Marks "this scope/state/city has already been auto-synced for this
+// year" — the once-per-city-per-year cap from PROMPT: "dentro do mesmo ano
+// não irá realizar outra consulta de cidades que já foram consultadas...
+// Só no próximo ano que irá atualizar". Checked (and written) instead of
+// inferring from Holiday rows directly, so a city that legitimately has
+// zero holidays this year still counts as "synced" and isn't re-queried
+// every month.
+model HolidaySyncCursor {
+  id        String       @id @default(uuid())
+  scope     HolidayScope
+  state     String?
+  city      String?
+  year      Int
+  syncedAt  DateTime     @default(now())
+
+  @@unique([scope, state, city, year])
+}

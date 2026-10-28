@@ -1,0 +1,4 @@
+# Windows batch files need real CRLF line endings — cmd.exe misparses
+# LF-only .bat files (drops leading characters off many lines unpredictably).
+# Force CRLF on checkout regardless of the cloning machine's core.autocrlf.
+*.bat text eol=crlf
