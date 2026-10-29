@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { normalizeContactName } from "@whatsatendende/types";
 import { contactContractsOf } from "../../lib/contact-contracts";
 import type { Prisma } from "@prisma/client";
-import { COLUMN_SCREENS, DEFAULT_PHONE_SETTINGS, brazilianPhoneVariants, normalizeTypedPhone } from "@whatsatendende/types";
+import { COLUMN_SCREENS, CONTACT_NO_TAG, DEFAULT_PHONE_SETTINGS, brazilianPhoneVariants, normalizeTypedPhone } from "@whatsatendende/types";
 import type {
   ContactDetailDTO,
   ContactImportResultDTO,
@@ -29,7 +29,8 @@ import { getPhoneSettings } from "../phone-numbers/phone-settings.service";
 
 export interface ContactFilters {
   search?: string;
-  tagId?: string;
+  /** Any of these labels; CONTACT_NO_TAG among them also brings the contacts with no label. */
+  tagIds?: string[];
   connectionIds?: string[];
 }
 
@@ -62,6 +63,11 @@ function toListItem(row: ContactRow): ContactListItemDTO {
   };
 }
 
+function tagConditions(tagIds: string[]): Prisma.ContactWhereInput[] {
+  const ids = tagIds.filter((id) => id !== CONTACT_NO_TAG);
+  return [...(ids.length ? [{ tags: { some: { tagId: { in: ids } } } }] : []), ...(tagIds.includes(CONTACT_NO_TAG) ? [{ tags: { none: {} } }] : [])];
+}
+
 function buildWhere(filters: ContactFilters): Prisma.ContactWhereInput {
   const search = filters.search?.trim();
   const digits = search?.replace(/\D/g, "");
@@ -69,7 +75,7 @@ function buildWhere(filters: ContactFilters): Prisma.ContactWhereInput {
     // WhatsApp groups are not contacts: they live in Atendimento's Grupos tab.
     isGroup: false,
     ...(filters.connectionIds && { whatsappConnectionId: { in: filters.connectionIds } }),
-    ...(filters.tagId && { tags: { some: { tagId: filters.tagId } } }),
+    ...(filters.tagIds?.length && { AND: [{ OR: tagConditions(filters.tagIds) }] }),
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },
@@ -101,8 +107,8 @@ function orderByFor({ field, dir }: ContactSort): Prisma.ContactOrderByWithRelat
 // (C on the server's Postgres image) would put every capital first and every accent after "z".
 const ptCollator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
 
-type TextSortField = "name" | "contract" | "connection";
-const TEXT_SORT_FIELDS: ContactSortField[] = ["name", "contract", "connection"];
+type TextSortField = "name" | "contract" | "connection" | "tags";
+const TEXT_SORT_FIELDS: ContactSortField[] = ["name", "contract", "connection", "tags"];
 
 /** One page of contacts ordered by a text column (name, contract, connection) in Portuguese order; contacts with no value go last. */
 async function listContactsByText(where: Prisma.ContactWhereInput, page: number, pageSize: number, sort: ContactSort) {
@@ -115,10 +121,20 @@ async function listContactsByText(where: Prisma.ContactWhereInput, page: number,
       lastInteractionAt: true,
       whatsappConnection: { select: { name: true } },
       metaConnection: { select: { name: true } },
+      tags: { select: { tag: { select: { name: true } } } },
     },
   });
+  // Etiquetas: by the label names in alphabetical order ("Cliente VIP, Inadimplente"); no label goes last.
+  const tagText = (k: (typeof keys)[number]) => k.tags.map((t) => t.tag.name).sort(ptCollator.compare).join(", ");
   const text = (k: (typeof keys)[number]) =>
-    (sort.field === "name" ? k.name : sort.field === "contract" ? k.contractNumber : (k.whatsappConnection?.name ?? k.metaConnection?.name ?? null))?.trim() || null;
+    (sort.field === "name"
+      ? k.name
+      : sort.field === "contract"
+        ? k.contractNumber
+        : sort.field === "tags"
+          ? tagText(k)
+          : (k.whatsappConnection?.name ?? k.metaConnection?.name ?? null)
+    )?.trim() || null;
   const sign = sort.dir === "asc" ? 1 : -1;
   keys.sort((a, b) => {
     const ta = text(a);
@@ -180,7 +196,7 @@ export async function getContactDetail(id: string, connectionIds: string[] | und
   };
 }
 
-export async function updateContact(id: string, input: { name?: string; firstName?: string | null; tagIds?: string[] }, userId: string) {
+export async function updateContact(id: string, input: { name?: string; firstName?: string | null; contractNumber?: string | null; tagIds?: string[] }, userId: string) {
   if (input.tagIds) {
     const count = await prisma.tag.count({ where: { id: { in: input.tagIds } } });
     if (count !== new Set(input.tagIds).size) throw Errors.badRequest("Uma ou mais etiquetas são inválidas");
@@ -188,6 +204,7 @@ export async function updateContact(id: string, input: { name?: string; firstNam
   await prisma.$transaction([
     ...(input.name !== undefined ? [prisma.contact.update({ where: { id }, data: { name: input.name } })] : []),
     ...(input.firstName !== undefined ? [prisma.contact.update({ where: { id }, data: { firstName: input.firstName?.trim() || null } })] : []),
+    ...(input.contractNumber !== undefined ? [prisma.contact.update({ where: { id }, data: { contractNumber: input.contractNumber?.trim() || null } })] : []),
     ...(input.tagIds
       ? [
           prisma.contactTag.deleteMany({ where: { contactId: id, tagId: { notIn: input.tagIds } } }),

@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { AUTO_MESSAGE_KINDS, COLUMN_SCREENS, CONTACT_SORT_FIELDS, PERMISSION, mergeColumnView } from "@whatsatendende/types";
+import { AUTO_MESSAGE_KINDS, COLUMN_SCREENS, CONTACT_NO_TAG, CONTACT_SORT_FIELDS, PERMISSION, mergeColumnView } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth } from "../../middleware/auth";
 import { isPermissionAllowed, requirePermission } from "../../lib/permissions";
@@ -28,13 +28,15 @@ async function visibleConnectionIds(req: Request, requested?: string[]): Promise
 
 const filtersSchema = z.object({
   search: z.string().trim().max(120).optional(),
-  tagId: z.string().uuid().optional(),
+  // One label or several (comma or repeated), and "none" for contacts with no label.
+  tagId: z.union([z.string(), z.array(z.string())]).optional(),
   connectionId: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
 async function parseFilters(req: Request): Promise<service.ContactFilters> {
   const query = filtersSchema.parse(req.query);
-  return { search: query.search, tagId: query.tagId, connectionIds: await visibleConnectionIds(req, parseListParam(query.connectionId)) };
+  const tagIds = parseListParam(query.tagId)?.filter((id) => id === CONTACT_NO_TAG || z.string().uuid().safeParse(id).success);
+  return { search: query.search, tagIds, connectionIds: await visibleConnectionIds(req, parseListParam(query.connectionId)) };
 }
 
 const pageSchema = z.object({
@@ -219,6 +221,8 @@ contactsRouter.get(
 const updateSchema = z.object({
   name: z.string().trim().max(120).optional(),
   firstName: z.string().trim().max(60).nullable().optional(),
+  // The contract typed by hand (same field as Atendimento › Dados do cliente); empty clears it.
+  contractNumber: z.string().trim().max(200).nullable().optional(),
   tagIds: z.array(z.string().uuid()).max(50).optional(),
 });
 

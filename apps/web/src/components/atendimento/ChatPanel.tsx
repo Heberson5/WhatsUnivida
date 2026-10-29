@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlarmClock, ArrowLeft, ArrowRightLeft, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, FileText, Lock, MessageSquareOff, Mic, PanelRight, Paperclip, Phone, Pin, PinOff, Search, Smartphone, StickyNote, X as CloseIcon } from "lucide-react";
+import { AlarmClock, ArrowLeft, ArrowRightLeft, CalendarClock, CheckCircle2, FileText, Lock, MessageSquareOff, Mic, PanelRight, Paperclip, Phone, Pin, PinOff, Smartphone, StickyNote } from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
 import { PERMISSION, type ConversationListItemDTO, type ConversationNoteDTO, type MessageDTO, type PaginatedResult, type QuickReplyDTO, type TemplateContextDTO } from "@whatsatendende/types";
@@ -27,11 +27,7 @@ import { useAgentExtras } from "../../hooks/useAgentExtras";
 import { useCustomerTyping } from "../../store/typing-store";
 import { WhenPicker } from "./WhenPicker";
 import { NoReturnStatus, useNoReturnHold, useNoReturnSettings } from "./NoReturn";
-
-/** Lowercase without accents, so "aviso" also finds "Avíso" and "nao" finds "não". */
-function foldForSearch(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
+import { ConversationSearchBar, ConversationSearchButton, useConversationSearch } from "./ConversationSearch";
 
 async function fetchMessages(conversationId: string, cursor?: string) {
   // 100 (the API's own max) rather than a smaller page, since every page
@@ -121,10 +117,7 @@ export function ChatPanel({
   // (the effect below auto-loads all of it right after opening a
   // conversation, so by the time an agent deliberately opens search it's
   // realistically already there).
-  const [searchOpen, setSearchOpen] = useState(false);
   const [forwarding, setForwarding] = useState<MessageDTO | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [matchIndex, setMatchIndex] = useState(0);
   const messageElementsRef = useRef(new Map<string, HTMLDivElement>());
 
   const notesQuery = useQuery({
@@ -192,8 +185,7 @@ export function ChatPanel({
     setCursor(undefined);
     // A search stays scoped to the conversation it was opened on — switching
     // away leaves it open otherwise, quietly searching the wrong messages.
-    setSearchOpen(false);
-    setSearchQuery("");
+    search.close();
     // Opening a conversation clears its unread badge.
     markReadMutation.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,38 +229,7 @@ export function ChatPanel({
     return () => observer.disconnect();
   }, []);
 
-  const searchMatches = useMemo(() => {
-    const normalized = foldForSearch(searchQuery.trim());
-    if (!normalized) return [];
-    return messages.filter((m) => m.body && foldForSearch(m.body).includes(normalized));
-  }, [messages, searchQuery]);
-
-  // A fresh search starts at the most recent match — the one an agent is
-  // most likely looking for — rather than the oldest. Keyed off the query
-  // (not searchMatches itself) so it only jumps on a deliberate new search,
-  // not every time the underlying message list changes mid-search.
-  useEffect(() => {
-    setMatchIndex(Math.max(0, searchMatches.length - 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (!searchOpen) return;
-    const current = searchMatches[matchIndex];
-    if (!current) return;
-    messageElementsRef.current.get(current.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [searchOpen, searchMatches, matchIndex]);
-
-  function goToMatch(direction: 1 | -1) {
-    if (searchMatches.length === 0) return;
-    setMatchIndex((i) => (i + direction + searchMatches.length) % searchMatches.length);
-  }
-
-  function closeSearch() {
-    setSearchOpen(false);
-    setSearchQuery("");
-    setMatchIndex(0);
-  }
+  const search = useConversationSearch(messages, (id) => messageElementsRef.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 
   // While the conversation stays open, any further inbound message is
   // immediately marked read too — the agent is already looking at it live.
@@ -354,7 +315,7 @@ export function ChatPanel({
   // also running the live WhatsApp connection.
   // While the agent is searching, older pages load without the pacing delay
   // so the search reaches messages that weren't on screen yet as fast as possible.
-  const searching = searchOpen && searchQuery.trim().length > 0;
+  const searching = search.searching;
   useEffect(() => {
     if (!cursor) return;
     const timer = setTimeout(() => loadOlder(), searching ? 0 : 300);
@@ -627,7 +588,7 @@ export function ChatPanel({
             onDelete={(m) => deleteMessageMutation.mutate(m.id)}
             onForward={setForwarding}
             onStartConversation={onConversationStarted ? (phone, name) => startConversationMutation.mutate({ phone, name }) : undefined}
-            highlighted={flashedId === message.id || (searchOpen && searchMatches[matchIndex]?.id === message.id)}
+            highlighted={flashedId === message.id || search.currentId === message.id}
           />
         </div>
       ),
@@ -697,14 +658,7 @@ export function ChatPanel({
           )}
         </div>
         <div className="relative ms-auto flex shrink-0 gap-1.5 sm:gap-2">
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="focus-ring flex items-center gap-1.5 rounded-card border border-border p-1.5 text-muted hover:bg-surface-alt sm:px-2"
-            aria-label="Pesquisar nesta conversa"
-            title="Pesquisar nesta conversa"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </button>
+          <ConversationSearchButton search={search} />
           {agentTools && (
             <button
               onClick={() => pinMutation.mutate(!pinned)}
@@ -809,45 +763,7 @@ export function ChatPanel({
         </div>
       </div>
 
-      {searchOpen && (
-        <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2 sm:px-4">
-          <Search className="h-4 w-4 shrink-0 text-muted" />
-          <input
-            autoFocus
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") goToMatch(e.shiftKey ? -1 : 1);
-              if (e.key === "Escape") closeSearch();
-            }}
-            placeholder="Pesquisar nesta conversa"
-            className="flex-1 min-w-0 bg-transparent text-sm focus:outline-none"
-          />
-          <span className="shrink-0 text-xs text-muted">
-            {searchQuery.trim() ? (searchMatches.length > 0 ? `${matchIndex + 1}/${searchMatches.length}` : "0/0") : ""}
-            {searching && cursor ? " · buscando em mensagens antigas..." : ""}
-          </span>
-          <button
-            onClick={() => goToMatch(-1)}
-            disabled={searchMatches.length === 0}
-            className="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-surface-alt disabled:opacity-40"
-            aria-label="Resultado anterior"
-          >
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => goToMatch(1)}
-            disabled={searchMatches.length === 0}
-            className="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-surface-alt disabled:opacity-40"
-            aria-label="Próximo resultado"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-          <button onClick={closeSearch} className="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-surface-alt" aria-label="Fechar pesquisa">
-            <CloseIcon className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      <ConversationSearchBar search={search} loadingOlder={Boolean(cursor)} />
 
       <PinnedContactNote conversationId={conversation.id} />
 

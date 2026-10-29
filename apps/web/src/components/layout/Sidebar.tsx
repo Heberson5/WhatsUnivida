@@ -217,7 +217,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
         )}
       >
         <div className={clsx("flex h-16 shrink-0 items-center", isCollapsed ? "justify-center px-3" : "gap-2.5 px-4")}>
-          {branding?.logoUrl ? (
+          {/* The App icon (Identidade visual) — the same square the phone shows — and the logo when there's no icon. */}
+          {branding?.appIconUrl ? (
+            <img src={branding.appIconUrl} alt={branding.appName ?? branding.companyName} className="h-8 w-8 shrink-0 rounded-lg object-cover shadow-sm" />
+          ) : branding?.logoUrl ? (
             <img src={branding.logoUrl} alt={branding.companyName} className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain ring-1 ring-side-border p-0.5" />
           ) : (
             <div

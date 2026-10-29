@@ -12,6 +12,7 @@ import { TimelineByDay, type TimelineEntry } from "../atendimento/TimelineByDay"
 import { InternalNoteCard } from "../atendimento/ChatPanel";
 import { TagChip } from "../../pages/contatos/contactFormat";
 import { ContactPhoto } from "../common/ContactPhoto";
+import { ConversationSearchBar, ConversationSearchButton, useConversationSearch } from "../atendimento/ConversationSearch";
 
 async function fetchMessages(conversationId: string, cursor?: string) {
   const res = await api.get<PaginatedResult<MessageDTO>>(`/messages/conversations/${conversationId}`, {
@@ -53,6 +54,10 @@ export function ReadOnlyConversationDrawer({
   // the loadOlder-style scroll-position restore in the [cursor] effect.
   const nearBottomRef = useRef(true);
   const { jumpToMessage, flashedId } = useJumpToMessage(contentRef);
+  // The magnifier, same as Atendimento's: the gestor finds a word in the conversation without scrolling it all.
+  const search = useConversationSearch(messages, (id) =>
+    contentRef.current?.querySelector<HTMLElement>(`[data-message-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+  );
 
   const queryClient = useQueryClient();
 
@@ -157,10 +162,10 @@ export function ReadOnlyConversationDrawer({
           container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
         });
       });
-    }, 300);
+    }, search.searching ? 0 : 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, conversation.id]);
+  }, [cursor, conversation.id, search.searching]);
 
   const isLoading = messagesQuery.isLoading;
   const displayName = contactDisplayName(conversation.contact, conversation.channel);
@@ -197,7 +202,7 @@ export function ReadOnlyConversationDrawer({
           <MessageBubble
             message={m}
             readOnly
-            highlighted={flashedId === m.id}
+            highlighted={flashedId === m.id || search.currentId === m.id}
             onJumpToMessage={jumpToMessage}
             onReply={() => undefined}
             onReact={() => undefined}
@@ -235,10 +240,15 @@ export function ReadOnlyConversationDrawer({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="focus-ring shrink-0 rounded-full p-1.5 text-muted hover:bg-surface-alt" aria-label="Fechar">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ConversationSearchButton search={search} />
+            <button onClick={onClose} className="focus-ring shrink-0 rounded-full p-1.5 text-muted hover:bg-surface-alt" aria-label="Fechar">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
+
+        <ConversationSearchBar search={search} loadingOlder={Boolean(cursor)} />
 
         {(panelQuery.data?.tags.length ?? 0) > 0 && (
           <div className="flex flex-wrap items-center gap-1 border-b border-border px-4 py-2" aria-label="Etiquetas do cliente">

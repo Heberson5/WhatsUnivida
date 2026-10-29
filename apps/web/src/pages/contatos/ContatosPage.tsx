@@ -1,12 +1,12 @@
 import { ContractChips } from "../../components/common/ContractChips";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, CaseSensitive, ChevronLeft, ChevronRight, Download, MessageSquarePlus, Search, Tags, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CaseSensitive, ChevronLeft, ChevronRight, Download, Filter, MessageSquarePlus, Search, Tags, Upload } from "lucide-react";
 import { PadronizarNomesModal } from "./PadronizarNomesModal";
 import clsx from "clsx";
 import { toast } from "sonner";
-import { COLUMN_SCREENS, PERMISSION, firstNameOf, type ContactListItemDTO, type ContactSortField, type ConversationListItemDTO, type TagDTO } from "@whatsatendende/types";
+import { COLUMN_SCREENS, CONTACT_NO_TAG, PERMISSION, firstNameOf, type ContactListItemDTO, type ContactSortField, type ConversationListItemDTO, type TagDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { ContactDrawer } from "./ContactDrawer";
@@ -66,6 +66,7 @@ const CONTACT_COLUMNS: Record<string, { sort?: Omit<SortColumn, "label">; classN
     render: (c) => c.connectionName ?? "-",
   },
   tags: {
+    sort: { field: "tags", firstDir: "asc", hint: { asc: "A a Z", desc: "Z a A" } },
     className: "px-4 py-3",
     render: (c) => (
       <div className="flex flex-wrap gap-1">
@@ -111,6 +112,103 @@ function SortHeader({ column, sort, onSort }: { column: SortColumn; sort: { fiel
   );
 }
 
+/**
+ * The Etiquetas header: orders by label like the other columns order by their value, and the funnel filters by one or
+ * several labels (any of them) or by "Sem etiqueta" — the same filter as the "Todas as etiquetas" box above the table.
+ */
+function TagsHeader({
+  column,
+  sort,
+  onSort,
+  tags,
+  selected,
+  onChange,
+}: {
+  column: SortColumn;
+  sort: { field: ContactSortField; dir: SortDir };
+  onSort: (field: ContactSortField, dir: SortDir) => void;
+  tags: TagDTO[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const active = sort.field === column.field;
+  const nextDir: SortDir = active ? (sort.dir === "asc" ? "desc" : "asc") : column.firstDir;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  const visible = tags.filter((t) => t.name.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <th className="px-4 py-3" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <div ref={rootRef} className="relative inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onSort(column.field, nextDir)}
+          className={clsx("focus-ring inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-[var(--color-text)]", active && "text-[var(--color-text)]")}
+          title={`Ordenar: ${column.hint[nextDir]}`}
+        >
+          {column.label}
+          <Icon className={clsx("h-3.5 w-3.5", !active && "opacity-40")} aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className={clsx("focus-ring relative rounded p-0.5 hover:text-[var(--color-text)]", selected.length ? "text-primary" : "opacity-60")}
+          title="Filtrar por etiqueta"
+          aria-label="Filtrar por etiqueta"
+          aria-expanded={open}
+        >
+          <Filter className="h-3.5 w-3.5" />
+          {selected.length > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold text-primary-fg">{selected.length}</span>
+          )}
+        </button>
+        {open && (
+          <div className="absolute left-0 top-7 z-20 w-60 rounded-card border border-border bg-surface p-2 normal-case tracking-normal shadow-elevated">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar etiqueta"
+              className="focus-ring mb-1.5 w-full rounded-lg border border-border bg-transparent px-2 py-1 text-xs font-normal text-[var(--color-text)]"
+            />
+            <div className="max-h-60 overflow-y-auto">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-[13px] font-normal text-[var(--color-text)] hover:bg-surface-alt">
+                <input type="checkbox" checked={selected.includes(CONTACT_NO_TAG)} onChange={() => toggle(CONTACT_NO_TAG)} />
+                <span className="italic text-muted">Sem etiqueta</span>
+              </label>
+              {visible.map((t) => (
+                <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-[13px] font-normal text-[var(--color-text)] hover:bg-surface-alt">
+                  <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} />
+                  <TagChip tag={t} />
+                </label>
+              ))}
+              {visible.length === 0 && <p className="px-1.5 py-1 text-xs font-normal text-muted">Nenhuma etiqueta encontrada.</p>}
+            </div>
+            <div className="mt-1.5 flex justify-between border-t border-border pt-1.5">
+              <button type="button" onClick={() => onChange([])} disabled={!selected.length} className="focus-ring rounded px-1.5 py-0.5 text-xs font-medium text-primary disabled:opacity-40">
+                Limpar
+              </button>
+              <button type="button" onClick={() => setOpen(false)} className="focus-ring rounded px-1.5 py-0.5 text-xs font-medium">
+                Fechar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </th>
+  );
+}
+
 /** Tela de Contatos: busca, etiquetas, histórico de conversas, importação e exportação em CSV. */
 export default function ContatosPage() {
   const permissions = useAuthStore((s) => s.permissions);
@@ -127,7 +225,8 @@ export default function ContatosPage() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [tagId, setTagId] = useState("");
+  // Labels filtered (any of them) — from the box above the table or the funnel in the Etiquetas header.
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [connectionId, setConnectionId] = useState("");
   const [page, setPage] = useState(1);
   const [openContactId, setOpenContactId] = useState<string | null>(null);
@@ -142,7 +241,7 @@ export default function ContatosPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const filters = { search: search || undefined, tagId: tagId || undefined, connectionId: connectionId || undefined };
+  const filters = { search: search || undefined, tagId: tagIds.length ? tagIds.join(",") : undefined, connectionId: connectionId || undefined };
   const { data, isLoading } = useQuery({
     queryKey: ["contacts", filters, page, sort],
     queryFn: async () =>
@@ -250,15 +349,18 @@ export default function ContatosPage() {
           />
         </label>
         <select
-          value={tagId}
+          value={tagIds.length === 1 ? tagIds[0] : tagIds.length > 1 ? "__many" : ""}
           onChange={(e) => {
-            setTagId(e.target.value);
+            if (e.target.value === "__many") return;
+            setTagIds(e.target.value ? [e.target.value] : []);
             setPage(1);
           }}
           aria-label="Filtrar por etiqueta"
           className="focus-ring rounded-card border border-border bg-surface px-3 py-2 text-sm"
         >
           <option value="">Todas as etiquetas</option>
+          {tagIds.length > 1 && <option value="__many">{tagIds.length} etiquetas</option>}
+          <option value={CONTACT_NO_TAG}>Sem etiqueta</option>
           {tags?.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -295,6 +397,18 @@ export default function ContatosPage() {
               </th>
               {columnView.visibleKeys.map((key) => {
                 const column = CONTACT_COLUMNS[key];
+                if (key === "tags" && column.sort)
+                  return (
+                    <TagsHeader
+                      key={key}
+                      column={{ ...column.sort, label: columnLabel(key) }}
+                      sort={sort}
+                      onSort={(field, dir) => (setSort({ field, dir }), setPage(1))}
+                      tags={tags ?? []}
+                      selected={tagIds}
+                      onChange={(ids) => (setTagIds(ids), setPage(1))}
+                    />
+                  );
                 return column.sort ? (
                   <SortHeader key={key} column={{ ...column.sort, label: columnLabel(key) }} sort={sort} onSort={(field, dir) => (setSort({ field, dir }), setPage(1))} />
                 ) : (

@@ -9,8 +9,9 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { STATUS_COLOR, STATUS_LABEL } from "../../lib/conversationStatus";
 import { useAuthStore } from "../../store/auth-store";
 import { formatContactPhone } from "./contactFormat";
+import { ContractChips } from "../../components/common/ContractChips";
 
-/** One contact: name and tags (editable with Contatos — editar) and every conversation they had. */
+/** One contact: name, contract and tags (editable with Contatos — editar) and every conversation they had. */
 export function ContactDrawer({ contactId, tags, onClose }: { contactId: string; tags: TagDTO[]; onClose: () => void }) {
   const queryClient = useQueryClient();
   const permissions = useAuthStore((s) => s.permissions);
@@ -24,16 +25,27 @@ export function ContactDrawer({ contactId, tags, onClose }: { contactId: string;
 
   const [name, setName] = useState("");
   const [firstName, setFirstName] = useState("");
+  const [contractNumber, setContractNumber] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
   useEffect(() => {
     if (!contact) return;
     setName(contact.name ?? "");
     setFirstName(contact.firstName ?? "");
+    setContractNumber(contact.contractNumber ?? "");
     setTagIds(contact.tags.map((t) => t.id));
   }, [contact]);
 
   const save = useMutation({
-    mutationFn: async () => (await api.patch<ContactDetailDTO>(`/contacts/${contactId}`, { name, firstName: firstName.trim() || null, tagIds })).data,
+    mutationFn: async () =>
+      (
+        await api.patch<ContactDetailDTO>(`/contacts/${contactId}`, {
+          name,
+          firstName: firstName.trim() || null,
+          // Contracts from the Fonte de dados are replaced at each upload — only a typed one is sent.
+          ...(fromDataSource ? {} : { contractNumber: contractNumber.trim() || null }),
+          tagIds,
+        })
+      ).data,
     onSuccess: (updated) => {
       queryClient.setQueryData(["contact", contactId], updated);
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -42,7 +54,13 @@ export function ContactDrawer({ contactId, tags, onClose }: { contactId: string;
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
 
-  const dirty = contact && (name !== (contact.name ?? "") || firstName !== (contact.firstName ?? "") || tagIds.join() !== contact.tags.map((t) => t.id).join());
+  const fromDataSource = (contact?.contracts?.length ?? 0) > 0;
+  const dirty =
+    contact &&
+    (name !== (contact.name ?? "") ||
+      firstName !== (contact.firstName ?? "") ||
+      (!fromDataSource && contractNumber.trim() !== (contact.contractNumber ?? "")) ||
+      tagIds.join() !== contact.tags.map((t) => t.id).join());
   const toggleTag = (id: string) => setTagIds((ids) => (ids.includes(id) ? ids.filter((t) => t !== id) : [...ids, id]));
 
   return (
@@ -89,6 +107,27 @@ export function ContactDrawer({ contactId, tags, onClose }: { contactId: string;
               />
               <span className="mt-1 block text-xs text-muted">Usado na tag {"{{primeiro_nome}}"} das respostas. Em branco, usa a primeira palavra do nome.</span>
             </label>
+
+            {fromDataSource ? (
+              <div>
+                <p className="mb-1 text-sm font-medium">Contrato</p>
+                <ContractChips contracts={contact.contracts!} detailed />
+                <span className="mt-1 block text-xs text-muted">Vem da lista de clientes da Fonte de dados e é atualizado a cada envio da lista — por isso não é editado aqui.</span>
+              </div>
+            ) : (
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium">Contrato</span>
+                <input
+                  value={contractNumber}
+                  onChange={(e) => setContractNumber(e.target.value)}
+                  disabled={!canEditar}
+                  maxLength={200}
+                  placeholder="Número do contrato"
+                  className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm disabled:opacity-70"
+                />
+                <span className="mt-1 block text-xs text-muted">O mesmo contrato de Atendimento › Dados do cliente. Em branco, o contato fica sem contrato.</span>
+              </label>
+            )}
 
             <div>
               <p className="mb-1.5 text-sm font-medium">Etiquetas</p>

@@ -119,7 +119,7 @@ describe("Contatos e etiquetas", () => {
     expect((await order("conversations", "desc")).slice(0, 2)).toEqual([bruno.id, carla.id]);
     expect(await order("firstConversationAt", "asc")).toEqual([ana.id, bruno.id, carla.id, semNome.id]);
     expect(await order("lastInteractionAt", "desc")).toEqual([ana.id, bruno.id, carla.id, semNome.id]);
-    expect((await request(app).get("/api/contacts").query({ sort: "tags" }).set("Authorization", `Bearer ${token}`)).status).toBe(400);
+    expect((await request(app).get("/api/contacts").query({ sort: "firstName" }).set("Authorization", `Bearer ${token}`)).status).toBe(400);
   });
 
   it("normaliza telefones com e sem DDI", () => {

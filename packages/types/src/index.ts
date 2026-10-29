@@ -2448,7 +2448,9 @@ export interface ContactListItemDTO {
 }
 
 /** Columns the Contatos list can be ordered by — text A–Z, numbers and dates in their own order. */
-export const CONTACT_SORT_FIELDS = ["name", "phone", "contract", "connection", "conversations", "firstConversationAt", "lastInteractionAt"] as const;
+export const CONTACT_SORT_FIELDS = ["name", "phone", "contract", "connection", "tags", "conversations", "firstConversationAt", "lastInteractionAt"] as const;
+/** In the Etiquetas column's filter: contacts with no label at all. */
+export const CONTACT_NO_TAG = "none";
 export type ContactSortField = (typeof CONTACT_SORT_FIELDS)[number];
 
 export interface ContactDetailDTO extends ContactListItemDTO {

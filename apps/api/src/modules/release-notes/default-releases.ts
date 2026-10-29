@@ -11,6 +11,49 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.28.1",
+    date: "29 out 2026",
+    name: "Pesquisa na conversa em Gestão, filtro de etiquetas e contrato em Contatos",
+    summary:
+      "A conversa aberta em Gestão ganhou a lupa para pesquisar um texto dentro dela. Em Contatos, a coluna Etiquetas passou a ordenar e filtrar como as outras, e o contrato digitado à mão pode ser corrigido no próprio contato. O menu lateral mostra o ícone do aplicativo.",
+    notes: [
+      {
+        type: "novo",
+        area: "gestao",
+        title: "Pesquisar dentro da conversa",
+        text: "A conversa aberta em Gestão tem a lupa, como no Atendimento: digite uma palavra e o sistema mostra quantas mensagens têm o texto (3/7) e leva até a mais recente, destacada. As setas, Enter e Shift+Enter passam para a próxima e a anterior, e Esc fecha. A busca ignora acentos e maiúsculas e também acha o nome dos PDFs enviados — o mesmo vale agora no Atendimento.",
+        steps: ["Em Gestão, clique em Visualizar na conversa.", "Clique na lupa ao lado do X e digite o texto."],
+        where: "Gestão › Visualizar › lupa",
+        images: [{ src: "/notas-de-versao/gestao-pesquisa.webp", caption: "\"boleto\" encontrado em 5 mensagens, na 5ª", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "contatos",
+        title: "Coluna Etiquetas: ordenar e filtrar",
+        text: "Um clique no título Etiquetas ordena os contatos pelos nomes das etiquetas, de A a Z ou de Z a A (quem não tem etiqueta fica no fim), como as outras colunas. O funil ao lado filtra por uma ou várias etiquetas ao mesmo tempo — aparece quem tem qualquer uma delas — e por Sem etiqueta, com busca para listas grandes. O filtro também vale na exportação em CSV, e a caixa Todas as etiquetas, acima da tabela, ganhou Sem etiqueta.",
+        where: "Contatos › coluna Etiquetas",
+        images: [{ src: "/notas-de-versao/contatos-filtro-etiquetas.webp", caption: "VIP e Sem etiqueta marcados no funil da coluna" }],
+      },
+      {
+        type: "correcao",
+        area: "contatos",
+        title: "Contrato digitado à mão podia ser corrigido só no Atendimento",
+        text: "O contrato digitado no Atendimento (Dados do cliente) não aparecia para edição no menu Contatos. Agora o contato tem o campo Contrato, para corrigir ou apagar. Quando o contrato vem da lista de clientes da Fonte de dados, ele aparece com as cores do contrato e continua sendo atualizado a cada envio da lista, sem edição.",
+        where: "Contatos › clique no contato",
+        requires: [PERMISSION.CONTATOS_EDITAR],
+        images: [{ src: "/notas-de-versao/contato-contrato.webp", caption: "O campo Contrato no contato", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Ícone do aplicativo no menu lateral",
+        text: "O topo do menu lateral passou a mostrar o ícone do aplicativo — o mesmo da tela inicial do celular e do computador, de Configurações › Identidade visual —, em vez da logo espremida num quadrado. Sem ícone do aplicativo cadastrado, continua aparecendo a logo.",
+        where: "Menu lateral",
+        images: [{ src: "/notas-de-versao/menu-icone-app.webp", caption: "O ícone do aplicativo no topo do menu", size: "small" }],
+      },
+    ],
+  },
+  {
     version: "2.28.0",
     date: "29 out 2026",
     name: "Pop Up, Comunicados e apresentação agendada",
