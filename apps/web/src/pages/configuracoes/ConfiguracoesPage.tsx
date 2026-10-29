@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, Palette, Phone, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
+import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
 import { PERMISSION, type Permission } from "@whatsatendende/types";
 import { BrandingPanel } from "./BrandingPanel";
 import { AppInstallPanel } from "./AppInstallPanel";
@@ -10,6 +10,7 @@ import { FilaSettingsPanel } from "./FilaSettingsPanel";
 import { NumerosTelefonePanel } from "./NumerosTelefonePanel";
 import { EmailSettingsPanel } from "./EmailSettingsPanel";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
+import { SmsSettingsPanel } from "./SmsSettingsPanel";
 import { NotasDeVersaoAdminPanel } from "./NotasDeVersaoAdminPanel";
 import { PermissionsPanel } from "./PermissionsPanel";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
@@ -17,7 +18,7 @@ import { VisoesColunasPanel } from "./VisoesColunasPanel";
 import { BackupPanel } from "./BackupPanel";
 import { useAuthStore } from "../../store/auth-store";
 
-type Tab = "branding" | "exportacoes" | "email" | "email-templates" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
+type Tab = "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
 
 // Grouped by subject in the left-hand section menu.
 const TABS: { key: Tab; label: string; group: string; icon: LucideIcon }[] = [
@@ -29,6 +30,7 @@ const TABS: { key: Tab; label: string; group: string; icon: LucideIcon }[] = [
   { key: "visoes", label: "Visões de colunas", group: "Aparência", icon: Columns3 },
   { key: "email", label: "E-mail", group: "E-mail", icon: Mail },
   { key: "email-templates", label: "Modelos de e-mail", group: "E-mail", icon: MailPlus },
+  { key: "sms", label: "SMS", group: "E-mail", icon: MessageSquareText },
   { key: "seguranca", label: "Segurança", group: "Segurança", icon: ShieldCheck },
   { key: "permissoes", label: "Permissões", group: "Segurança", icon: KeyRound },
   { key: "notas-de-versao", label: "Notas de versão", group: "Sistema", icon: Sparkles },
@@ -47,6 +49,7 @@ const TAB_PERMISSION: Partial<Record<Tab, Permission>> = {
   exportacoes: PERMISSION.CONFIGURACOES_IDENTIDADE_VISUALIZAR,
   email: PERMISSION.CONFIGURACOES_EMAIL_VISUALIZAR,
   "email-templates": PERMISSION.CONFIGURACOES_EMAIL_MODELOS_VISUALIZAR,
+  sms: PERMISSION.CONFIGURACOES_SMS_VISUALIZAR,
   feriados: PERMISSION.CONFIGURACOES_FERIADOS_VISUALIZAR,
   fila: PERMISSION.CONFIGURACOES_FILA_VISUALIZAR,
   telefone: PERMISSION.CONFIGURACOES_TELEFONE_VISUALIZAR,
@@ -128,6 +131,7 @@ export default function ConfiguracoesPage() {
         {activeTab === "exportacoes" && <ExportacoesPanel />}
         {activeTab === "email" && <EmailSettingsPanel />}
         {activeTab === "email-templates" && <EmailTemplatesPanel />}
+        {activeTab === "sms" && <SmsSettingsPanel />}
         {activeTab === "feriados" && <FeriadosPanel />}
         {activeTab === "fila" && <FilaSettingsPanel />}
         {activeTab === "telefone" && <NumerosTelefonePanel />}

@@ -29,11 +29,17 @@ export default defineConfig({
   // real value import fails to resolve — "X is not exported by ..." in a
   // production build, "does not provide an export named 'X'" in dev.
   optimizeDeps: {
-    include: ["@whatsatendende/types"],
+    include: [
+      "@whatsatendende/types",
+      "@whatsatendende/presentation/metrics",
+      "@whatsatendende/presentation/colors",
+      "@whatsatendende/presentation/shared",
+      "@whatsatendende/presentation/presentation",
+    ],
   },
   build: {
     commonjsOptions: {
-      include: [/packages\/types\/dist/, /node_modules/],
+      include: [/packages\/(types|presentation)\/dist/, /node_modules/],
     },
     rollupOptions: {
       output: {

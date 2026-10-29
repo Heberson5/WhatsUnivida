@@ -4,6 +4,8 @@ import type { Role } from "@prisma/client";
 
 export async function resetDatabase() {
   // Order matters: children before parents.
+  await prisma.announcement.deleteMany();
+  await prisma.reportSchedule.deleteMany();
   await prisma.messageReaction.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.groupReadState.deleteMany();

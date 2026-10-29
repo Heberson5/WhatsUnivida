@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Inbox, MessageSquare, MessageSquareOff, Presentation, Timer, Users } from "lucide-react";
 import { toast } from "sonner";
-import { PERMISSION, type ArrivalsByHourDTO, type AutoMessageBlocksReportDTO, type PresenceByHourDTO, type SatisfactionOverviewDTO, type SatisfactionReportDTO } from "@whatsatendende/types";
+import { PERMISSION, type AnnouncementStatsDTO, type ArrivalsByHourDTO, type AutoMessageBlocksReportDTO, type PresenceByHourDTO, type SatisfactionOverviewDTO, type SatisfactionReportDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { PeriodFilter, type PeriodValue } from "../../components/common/PeriodFilter";
@@ -21,6 +21,8 @@ import { useBranding } from "../../hooks/useBranding";
 import { useExportBranding } from "../../hooks/useExportBranding";
 import { NEUTRAL_SERIES_COLOR } from "../../lib/chart-theme";
 import { exportDashboardPptx } from "../../lib/exportDashboardPptx";
+import { AnnouncementsCard } from "../../components/dashboard/AnnouncementsCard";
+import { useBoardName } from "../../hooks/useAnnouncements";
 
 interface AgentOption {
   id: string;
@@ -198,6 +200,18 @@ export default function DashboardPage() {
         })
       ).data,
   });
+  // Pop Up › Avisos in the period: reading and "ciente" — Gestor and Administrador (it names who hasn't confirmed).
+  const boardName = useBoardName();
+  const { data: announcementStats, isLoading: isAnnouncementStatsLoading } = useQuery({
+    queryKey: ["announcements", "dashboard", period],
+    enabled: canExportPresentation,
+    queryFn: async () =>
+      (
+        await api.get<AnnouncementStatsDTO>("/dashboard/announcements", {
+          params: { period: period.period, from: period.from, to: period.to, tzOffsetMinutes: new Date().getTimezoneOffset() },
+        })
+      ).data,
+  });
   const savedArrivalsRange: HourRange | null =
     user?.arrivalsChartStartHour != null && user?.arrivalsChartEndHour != null ? { start: user.arrivalsChartStartHour, end: user.arrivalsChartEndHour } : null;
   const [activeArrivalsRange, setActiveArrivalsRange] = useState<HourRange | null>(savedArrivalsRange);
@@ -286,6 +300,7 @@ export default function DashboardPage() {
         arrivalsByHour: arrivalsByHour ?? null,
         arrivalsHourRange: activeArrivalsRange,
         autoMessageBlocks,
+        announcements: announcementStats ?? null,
       });
     } catch (err) {
       toast.error(`Não foi possível gerar a apresentação: ${getApiErrorMessage(err, "erro inesperado")}`);
@@ -473,6 +488,8 @@ export default function DashboardPage() {
           </section>
 
           {satisfaction?.byAgent && satisfaction.totals.answered > 0 && <SatisfactionDetailSection overview={satisfaction} />}
+
+          {canExportPresentation && <AnnouncementsCard stats={announcementStats} isLoading={isAnnouncementStatsLoading} boardName={boardName} />}
 
           {satisfaction?.byAgent && satisfaction.totals.sent > 0 && (
             <SeriesChartCard

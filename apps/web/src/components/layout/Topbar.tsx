@@ -13,6 +13,7 @@ import { disconnectSocket } from "../../lib/socket";
 import { InstallAppButton } from "./InstallAppButton";
 import { InternalChatButton } from "../internal-chat/InternalChatButton";
 import { NotificationBell } from "./NotificationBell";
+import { ComunicadosButton } from "./ComunicadosButton";
 
 const PRESENCE_LABEL: Record<string, string> = { ONLINE: "Online", AWAY: "Ausente", OFFLINE: "Offline" };
 const PRESENCE_DOT: Record<string, string> = { ONLINE: "bg-green-500", AWAY: "bg-amber-500", OFFLINE: "bg-gray-400" };
@@ -147,6 +148,7 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
           )}
         </div>
         <InternalChatButton />
+        <ComunicadosButton />
         <NotificationBell />
         <InstallAppButton />
         <div className="hidden items-center gap-0.5 rounded-full border border-border p-1 sm:flex">

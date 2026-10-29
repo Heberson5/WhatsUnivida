@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Area, Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ArrivalsByHourDTO } from "@whatsatendende/types";
+import { arrivalsSummary } from "@whatsatendende/presentation/shared";
 import { ChartTypeMenu } from "./ChartTypeMenu";
 import { SERIES_KIND_OPTIONS, type SeriesKind } from "./SeriesChartCard";
 import { HourRangeMenu, formatHour, type HourRange } from "./HourRangeMenu";
@@ -14,14 +15,8 @@ const ONLINE_LABEL = "Atendentes online (média)";
 
 const formatDecimal = (value: number) => value.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
-/** The figures above the chart: the busiest hour, the total and the share outside the hours. */
-export function arrivalsSummary(data: ArrivalsByHourDTO | undefined) {
-  const hours = data?.hours ?? [];
-  const total = hours.reduce((sum, h) => sum + h.inside + h.outside, 0);
-  const outside = hours.reduce((sum, h) => sum + h.outside, 0);
-  const peak = hours.reduce<ArrivalsByHourDTO["hours"][number] | null>((best, h) => (h.inside + h.outside > (best ? best.inside + best.outside : 0) ? h : best), null);
-  return { total, peakHour: peak?.hour ?? null, outsideShare: total ? Math.round((outside / total) * 100) : 0 };
-}
+// The figures above the chart: the busiest hour, the total and the share outside the hours (also on the slide).
+export { arrivalsSummary };
 
 /**
  * "Conversas que chegam ao longo do dia": new conversations opened by the customer per hour, inside/outside their

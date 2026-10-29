@@ -1,0 +1,43 @@
+{
+  "name": "@whatsatendende/presentation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Dashboard's PowerPoint presentation — built the same way in the browser (download) and on the server (scheduled e-mail).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./metrics": {
+      "types": "./dist/metrics.d.ts",
+      "default": "./dist/metrics.js"
+    },
+    "./colors": {
+      "types": "./dist/colors.d.ts",
+      "default": "./dist/colors.js"
+    },
+    "./shared": {
+      "types": "./dist/shared.d.ts",
+      "default": "./dist/shared.js"
+    },
+    "./presentation": {
+      "types": "./dist/presentation.d.ts",
+      "default": "./dist/presentation.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@whatsatendende/types": "^0.1.0"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1",
+    "pptxgenjs": "^4.0.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

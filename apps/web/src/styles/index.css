@@ -413,3 +413,19 @@ button.shadow-soft:not(:disabled):hover {
   .bday-confetti i { display: none; }
   .bday-cake { animation: none; }
 }
+
+/* Pop Up › Avisos: the "stories" pop-up and the Comunicados board. */
+@keyframes story-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes story-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.story-in { animation: story-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.story-fade { animation: story-fade 0.45s ease both; }
+.ticker-track { animation: ticker 24s linear infinite; }
+.ticker-track:hover { animation-play-state: paused; }
+.board-tile { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+.board-tile:hover { transform: translateY(-3px); box-shadow: 0 14px 30px -14px rgb(15 23 42 / 0.35); }
+@media (prefers-reduced-motion: reduce) {
+  .story-in, .story-fade { animation: none; }
+  .ticker-track { animation: none; }
+  .board-tile, .board-tile:hover { transition: none; transform: none; }
+}

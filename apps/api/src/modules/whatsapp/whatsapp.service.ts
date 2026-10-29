@@ -1492,6 +1492,16 @@ export async function sendAutomatedText(connectionId: string, messageId: string,
   return sendWithTimeoutGuard(messageId, "text", () => sendToContact(connectionId, contactPhone, (chatId) => getProvider(connectionId).sendText(chatId, text, {})));
 }
 
+/**
+ * A notice from the system to a number that isn't a conversation (the alert of a failed scheduled presentation): sent
+ * through the chosen connection, not stored as a message. Throws when the connection is off or WhatsApp refuses it.
+ */
+export async function sendSystemNotice(connectionId: string, phone: string, text: string): Promise<void> {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) throw Errors.badRequest(`Número de WhatsApp inválido: ${phone}`);
+  await sendToContact(connectionId, digits.length <= 11 ? `55${digits}` : digits, (chatId) => getProvider(connectionId).sendText(chatId, text, {}));
+}
+
 /** Whether this connection is the API Oficial (Cloud API) — its flow menus go as buttons/lists. */
 export function isOfficialConnection(connectionId: string): boolean {
   return providers.get(connectionId) instanceof CloudApiWhatsAppProvider;

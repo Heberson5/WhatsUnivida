@@ -225,6 +225,9 @@ model RefreshToken {
   // Last time the person actually used the system (mouse, keyboard, touch) in this session — reported by the
   // browser, not by background requests. Ends the session after the inactivity limit of Configurações › Sessão.
   lastActivityAt DateTime  @default(now())
+  // The login this token descends from (null = this row is the login itself): kept across every refresh, so Pop Up ›
+  // Avisos counts one showing per login, not one per token renewal or page reload.
+  loginId        String?
 
   @@index([userId])
 }
@@ -1978,4 +1981,205 @@ model BirthdayGreeting {
   sentAt         DateTime     @default(now())
 
   @@unique([contactId, personKey, year])
+}
+
+// ---------------------------------------------------------------------------
+// Pop Up › Avisos and the Comunicados board: notices shown after login (pop-up
+// in "stories" style, or grouped into the board when there are many) and kept
+// as a history that can be duplicated. A deleted notice goes to the Lixeira
+// (deletedAt) and is purged after the days configured there.
+// ---------------------------------------------------------------------------
+
+enum AnnouncementKind {
+  INFO
+  IMPORTANT
+  URGENT
+  CELEBRATION
+  NEWS
+}
+
+enum AnnouncementLayout {
+  COVER
+  POSTER
+  TEXT
+}
+
+enum AnnouncementDisplay {
+  POPUP_AND_BOARD
+  BOARD_ONLY
+}
+
+enum AnnouncementRecurrence {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model Announcement {
+  id          String                 @id @default(uuid())
+  title       String
+  body        String
+  kind        AnnouncementKind       @default(INFO)
+  layout      AnnouncementLayout     @default(COVER)
+  display     AnnouncementDisplay    @default(POPUP_AND_BOARD)
+  category    String?
+  requireAck  Boolean                @default(false)
+  pinned      Boolean                @default(false)
+  linkUrl     String?
+  linkLabel   String?
+  /// Calendar days (YYYY-MM-DD) — the notice has no time of day, only the day it shows.
+  startDate   String
+  endDate     String?
+  recurrence  AnnouncementRecurrence @default(ONCE)
+  /// { all: true } or { roles: Role[], connectionIds: string[], userIds: string[] } — anyone matching any list.
+  audience    Json
+  /// [{ storageKey, fileName, mimeType, sizeBytes, width, height }] — images first is the cover.
+  images      Json                   @default("[]")
+  /// [{ storageKey, fileName, mimeType, sizeBytes }] — PDFs.
+  attachments Json                   @default("[]")
+  paused      Boolean                @default(false)
+  deletedAt   DateTime?
+  deletedById String?
+  createdById String
+  updatedById String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  receipts   AnnouncementReceipt[]
+  deliveries AnnouncementDelivery[]
+  reactions  AnnouncementReaction[]
+
+  @@index([deletedAt, startDate])
+}
+
+/// One per person: when they first opened it and when they confirmed "Li e estou ciente".
+model AnnouncementReceipt {
+  id             String       @id @default(uuid())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  announcementId String
+  userId         String
+  readAt         DateTime?
+  ackAt          DateTime?
+  remindedAt     DateTime?
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+}
+
+/// How many times the pop-up was shown to a person on a day (at most 2) and in which login sessions.
+model AnnouncementDelivery {
+  id             String       @id @default(uuid())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  announcementId String
+  userId         String
+  day            String
+  count          Int          @default(0)
+  sessionIds     String[]
+  lastShownAt    DateTime     @default(now())
+
+  @@unique([announcementId, userId, day])
+}
+
+model AnnouncementReaction {
+  id             String       @id @default(uuid())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  announcementId String
+  userId         String
+  emoji          String
+  createdAt      DateTime     @default(now())
+
+  @@unique([announcementId, userId, emoji])
+}
+
+// ---------------------------------------------------------------------------
+// Configurações › Modelos de e-mail › Agendamento da apresentação: the
+// Dashboard's PowerPoint sent by e-mail on a schedule. The file is built in
+// memory for each send and never stored; only the outcome is kept (runs).
+// ---------------------------------------------------------------------------
+
+enum ReportScheduleFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+enum ReportScheduleRunStatus {
+  SENT
+  PARTIAL
+  FAILED
+  RETRYING
+}
+
+model ReportSchedule {
+  id               String                  @id @default(uuid())
+  name             String
+  enabled          Boolean                 @default(true)
+  subject          String
+  title            String
+  bodyText         String
+  to               String[]
+  cc               String[]
+  frequency        ReportScheduleFrequency
+  /// "HH:mm", local time of tzOffsetMinutes.
+  time             String
+  tzOffsetMinutes  Int                     @default(240)
+  startDate        String
+  /// 0 = Sunday ... 6 = Saturday — weekly/custom-by-week days.
+  weekdays         Int[]
+  /// Day of month for monthly/yearly (null = the start date's day); 31 = the last day in shorter months.
+  monthDay         Int?
+  /// Yearly: the month (1-12, null = the start date's month).
+  month            Int?
+  customInterval   Int                     @default(1)
+  /// DAY | WEEK | MONTH — the unit of a CUSTOM schedule.
+  customUnit       String                  @default("DAY")
+  /// NEVER | AFTER | ON_DATE
+  endType          String                  @default("NEVER")
+  endAfter         Int?
+  endDate          String?
+  skipSaturday     Boolean                 @default(false)
+  skipSunday       Boolean                 @default(false)
+  /// Dashboard filters: AUTO (follows the frequency) or a relative period.
+  period           String                  @default("AUTO")
+  agentId          String?
+  connectionIds    String[]
+  /// Who hears about a failure: { emails: [], whatsapp: { connectionId, phones: [] } | null, sms: { phones: [] } | null }
+  alerts           Json                    @default("{}")
+  nextRunAt        DateTime?
+  /// The occurrence being retried after a failure (5 and 15 minutes later).
+  retryAt          DateTime?
+  retryAttempt     Int                     @default(0)
+  retryFor         DateTime?
+  runCount         Int                     @default(0)
+  lastRunAt        DateTime?
+  lastStatus       ReportScheduleRunStatus?
+  lastError        String?
+  createdById      String
+  updatedById      String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  runs ReportScheduleRun[]
+
+  @@index([enabled, nextRunAt])
+}
+
+model ReportScheduleRun {
+  id           String                  @id @default(uuid())
+  schedule     ReportSchedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId   String
+  scheduledFor DateTime
+  attempt      Int                     @default(1)
+  manual       Boolean                 @default(false)
+  status       ReportScheduleRunStatus
+  recipients   String[]
+  rejected     String[]
+  error        String?
+  createdAt    DateTime                @default(now())
+
+  @@index([scheduleId, createdAt])
 }

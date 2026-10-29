@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Send, Tag } from "lucide-react";
+import { CalendarClock, Send, Tag } from "lucide-react";
 import { PERMISSION } from "@whatsatendende/types";
 import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
+import { ReportSchedulesPanel } from "./ReportSchedulesPanel";
 
 type EmailTemplateType = "PASSWORD_RESET" | "USER_WELCOME" | "USER_DEACTIVATED" | "PASSWORD_CHANGED";
 
@@ -49,6 +50,12 @@ export function EmailTemplatesPanel() {
   const queryClient = useQueryClient();
   const canEditar = useAuthStore((s) => s.permissions?.[PERMISSION.CONFIGURACOES_EMAIL_MODELOS_EDITAR]);
   const [type, setType] = useState<EmailTemplateType>("PASSWORD_RESET");
+  // The last tab: the Dashboard's presentation e-mailed on a schedule (Gestor/Administrador).
+  // Opened straight from the failure notification (?agendamento=1).
+  const [showSchedules, setShowSchedules] = useState(() => new URLSearchParams(window.location.search).get("agendamento") === "1");
+  const role = useAuthStore((s) => s.user?.role);
+  const canViewSchedules = useAuthStore((s) => s.permissions?.[PERMISSION.CONFIGURACOES_AGENDAMENTO_VISUALIZAR]);
+  const canSeeSchedules = (role === "ADMIN" || role === "MANAGER") && Boolean(canViewSchedules);
 
   const { data } = useQuery({
     queryKey: ["email-templates"],
@@ -134,13 +141,29 @@ export function EmailTemplatesPanel() {
         {(Object.keys(TYPE_LABEL) as EmailTemplateType[]).map((t) => (
           <button
             key={t}
-            onClick={() => setType(t)}
-            className={`rounded-card px-3 py-1.5 text-sm font-medium ${type === t ? "bg-primary text-primary-fg" : "text-muted hover:bg-surface-alt"}`}
+            onClick={() => {
+              setType(t);
+              setShowSchedules(false);
+            }}
+            className={`rounded-card px-3 py-1.5 text-sm font-medium ${type === t && !showSchedules ? "bg-primary text-primary-fg" : "text-muted hover:bg-surface-alt"}`}
           >
             {TYPE_LABEL[t]}
           </button>
         ))}
+        {canSeeSchedules && (
+          <button
+            onClick={() => setShowSchedules(true)}
+            className={`flex items-center gap-1.5 rounded-card px-3 py-1.5 text-sm font-medium ${showSchedules ? "bg-primary text-primary-fg" : "text-muted hover:bg-surface-alt"}`}
+          >
+            <CalendarClock className="h-4 w-4" /> Agendamento da apresentação
+          </button>
+        )}
       </div>
+
+      {showSchedules ? (
+        <ReportSchedulesPanel />
+      ) : (
+        <>
 
       <div className="shadow-soft grid gap-6 rounded-card border border-border bg-surface p-6 lg:grid-cols-2">
         <div className="space-y-4">
@@ -257,6 +280,8 @@ export function EmailTemplatesPanel() {
         </div>
       </div>
       {canEditar && <UnsavedChangesBar dirty={dirty} saving={saveMutation.isPending} onSave={() => saveMutation.mutate()} onDiscard={resetToSaved} />}
+        </>
+      )}
     </div>
   );
 }

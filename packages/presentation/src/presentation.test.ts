@@ -1,7 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
 import PptxGen from "pptxgenjs";
 import JSZip from "jszip";
-import { buildDashboardPresentation, buildHighlights, fitBars, relativeChange, type DashboardSnapshot, type PresentationInput } from "./dashboardPresentation";
+import { buildDashboardPresentation, buildHighlights, fitBars, relativeChange, type DashboardSnapshot, type PresentationInput } from "./presentation";
 
 const NOW = new Date(2026, 9, 8, 17, 42);
 const PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

@@ -406,6 +406,11 @@ export function renderEmailTemplateHtml(type: EmailTemplateType, config: Pick<Em
   return baseTemplateHtml(escapeHtml(config.title), renderBodyParagraphs(config.bodyText) + buttonHtml);
 }
 
+/** The same layout for an e-mail whose text isn't one of the fixed templates (Agendamento da apresentação, alerts). */
+export function renderCustomEmailHtml(title: string, bodyText: string): string {
+  return baseTemplateHtml(escapeHtml(title), renderBodyParagraphs(bodyText));
+}
+
 // Shared table-based layout (works in Outlook/Gmail/etc, unlike flexbox/grid
 // e-mail markup) — {{logo_html}}/{{empresa}}/{{cor_primaria}}/{{ano}} are
 // always resolved from Configurações > Identidade visual at send time (see

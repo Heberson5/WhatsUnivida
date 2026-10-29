@@ -9,6 +9,7 @@ FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY packages/types/package.json packages/types/package.json
 COPY packages/whatsapp/package.json packages/whatsapp/package.json
+COPY packages/presentation/package.json packages/presentation/package.json
 COPY apps/api/package.json apps/api/package.json
 # mkdir guarantees this always exists for the runtime stage's COPY below,
 # even on a lockfile where npm hoists every apps/api dependency to the root
@@ -18,9 +19,11 @@ RUN npm ci && mkdir -p apps/api/node_modules
 FROM deps AS build
 COPY packages/types packages/types
 COPY packages/whatsapp packages/whatsapp
+COPY packages/presentation packages/presentation
 COPY apps/api apps/api
 RUN npm run build -w packages/types \
  && npm run build -w packages/whatsapp \
+ && npm run build -w packages/presentation \
  && npm run prisma:generate -w apps/api \
  && npm run build -w apps/api
 
@@ -36,6 +39,8 @@ COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /repo/package.json ./package.json
 COPY --from=build /repo/packages/types ./packages/types
 COPY --from=build /repo/packages/whatsapp ./packages/whatsapp
+# The Dashboard's PowerPoint, built by the server for Agendamento da apresentação.
+COPY --from=build /repo/packages/presentation ./packages/presentation
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json

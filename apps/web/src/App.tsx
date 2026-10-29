@@ -24,6 +24,8 @@ import AuditoriaPage from "./pages/auditoria/AuditoriaPage";
 import MeuPerfilPage from "./pages/perfil/MeuPerfilPage";
 import LandingPagePage from "./pages/landing-page/LandingPagePage";
 import NotasDeVersaoPage from "./pages/notas-de-versao/NotasDeVersaoPage";
+import PopUpPage from "./pages/popup/PopUpPage";
+import ComunicadosPage from "./pages/comunicados/ComunicadosPage";
 
 // Where "/" lands depends on what this user's role can actually reach —
 // picks the first permitted destination in this priority order rather than
@@ -94,6 +96,12 @@ export default function App() {
             <Route path="/respostas" element={<RespostasPage />} />
           </Route>
           <Route path="/respostas-rapidas" element={<Navigate to="/respostas" replace />} />
+          <Route element={<PermissionRoute permission={PERMISSION.POPUP_ACESSAR} />}>
+            <Route path="/popup" element={<PopUpPage />} />
+          </Route>
+          <Route element={<PermissionRoute permission={PERMISSION.COMUNICADOS_VER} />}>
+            <Route path="/comunicados" element={<ComunicadosPage />} />
+          </Route>
           <Route element={<PermissionRoute permission={PERMISSION.ETIQUETAS_VISUALIZAR} />}>
             <Route path="/etiquetas" element={<EtiquetasPage />} />
           </Route>

@@ -20,6 +20,8 @@ const TYPE_ICON: Record<string, typeof MessageSquare> = { MESSAGE: MessageSquare
 function entityPath(notification: NotificationDTO): string | null {
   if (notification.entityType === "Conversation" && notification.entityId) return `/atendimento?open=${notification.entityId}`;
   if (notification.entityType === "Group" && notification.entityId) return `/atendimento?grupo=${notification.entityId}`;
+  if (notification.entityType === "Announcement" && notification.entityId) return `/comunicados?aviso=${notification.entityId}`;
+  if (notification.entityType === "ReportSchedule") return "/configuracoes?secao=email-templates&agendamento=1";
   return null;
 }
 

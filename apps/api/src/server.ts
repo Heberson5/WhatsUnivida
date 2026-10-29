@@ -21,6 +21,9 @@ import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { fireDueReminders, sendDueScheduledMessages } from "./modules/agent-tools/agent-tools.service";
 import { abandonIdleFlowSessions, dispatchWaitingTransfers } from "./modules/flows/flow-engine.service";
+import { processDueSchedules, refreshNextRuns } from "./modules/report-schedules/report-schedules.service";
+import { purgeExpiredTrash } from "./modules/announcements/announcements.service";
+import { todayKey } from "./modules/announcements/announcement-days";
 
 const AGENT_TOOLS_SWEEP_INTERVAL_MS = 20_000;
 
@@ -36,6 +39,9 @@ const HOLIDAY_SYNC_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // is just how often it's cheap to check whether it's due yet. See PROMPT:
 // "notificações a cada um minuto quando tem conversas na fila".
 const QUEUE_REMINDER_CHECK_INTERVAL_MS = 60 * 1000;
+
+// Agendamento da apresentação: sends and their retries are due on the minute.
+const REPORT_SCHEDULE_SWEEP_INTERVAL_MS = 60 * 1000;
 
 // Sessions left without use past Configurações › Sessão's limit (see endIdleSessions).
 const IDLE_SESSION_SWEEP_INTERVAL_MS = 60 * 1000;
@@ -159,6 +165,31 @@ async function main() {
   }, AGENT_TOOLS_SWEEP_INTERVAL_MS);
   agentToolsTimer.unref();
 
+  // Agendamento da apresentação, plus the Pop Up's clock: at midnight the notices of the new day pop up live for whoever
+  // is logged in (the day is the company's, UTC-4), and once a day the Lixeira drops what is past its days and the
+  // schedules re-read the holidays.
+  let reportSweepRunning = false;
+  let lastDay = todayKey(240);
+  const reportScheduleTimer = setInterval(() => {
+    const today = todayKey(240);
+    if (today !== lastDay) {
+      lastDay = today;
+      realtimeEvents.announcementsChanged();
+      purgeExpiredTrash().catch((err) => logger.error({ err }, "failed to empty the Pop Up trash"));
+      refreshNextRuns().catch((err) => logger.error({ err }, "failed to refresh the scheduled presentations"));
+    }
+    if (reportSweepRunning) return;
+    reportSweepRunning = true;
+    processDueSchedules()
+      .catch((err) => logger.error({ err }, "failed to send the scheduled presentations"))
+      .finally(() => {
+        reportSweepRunning = false;
+      });
+  }, REPORT_SCHEDULE_SWEEP_INTERVAL_MS);
+  reportScheduleTimer.unref();
+  purgeExpiredTrash().catch((err) => logger.error({ err }, "failed to empty the Pop Up trash"));
+  refreshNextRuns().catch((err) => logger.error({ err }, "failed to refresh the scheduled presentations"));
+
   httpServer.listen(env.PORT, () => {
     logger.info(`API listening on port ${env.PORT} (env=${env.NODE_ENV}, whatsapp=${env.WHATSAPP_PROVIDER})`);
   });
@@ -175,6 +206,7 @@ async function main() {
     clearInterval(closingMessageTimer);
     clearInterval(autoMessagesTimer);
     clearInterval(agentToolsTimer);
+    clearInterval(reportScheduleTimer);
     httpServer.close();
     // Every deploy sends this signal to the outgoing container — ending
     // each WhatsApp connection's socket cleanly here (rather than letting

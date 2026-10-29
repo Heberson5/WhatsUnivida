@@ -25,6 +25,9 @@ import { quickRepliesRouter } from "./modules/quick-replies/quick-replies.routes
 import { closingMessagesRouter } from "./modules/closing-messages/closing-messages.routes";
 import { queueWaitMessagesRouter } from "./modules/queue-wait-messages/queue-wait-messages.routes";
 import { birthdayMessagesRouter } from "./modules/birthdays/birthdays.routes";
+import { announcementsRouter } from "./modules/announcements/announcements.routes";
+import { reportSchedulesRouter } from "./modules/report-schedules/report-schedules.routes";
+import { smsRouter } from "./modules/sms/sms.routes";
 import { backupRouter } from "./modules/backup/backup.routes";
 import { autoMessageTemplatesRouter } from "./modules/auto-message-templates/auto-message-templates.routes";
 import { satisfactionRouter } from "./modules/satisfaction/satisfaction.routes";
@@ -131,6 +134,8 @@ export function createApp() {
   app.use("/uploads/contacts", express.static(path.join(env.UPLOAD_DIR, "contacts")));
   app.use("/uploads/message-templates", express.static(path.join(env.UPLOAD_DIR, "message-templates")));
   app.use("/uploads/release-notes", express.static(path.join(env.UPLOAD_DIR, "release-notes")));
+  // Pop Up › Avisos: images and PDFs of the notices (random names).
+  app.use("/uploads/announcements", express.static(path.join(env.UPLOAD_DIR, "announcements")));
 
   app.get("/api/health", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
@@ -146,6 +151,7 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/reports", reportsRouter);
   app.use("/api/settings/backup", backupRouter);
+  app.use("/api/settings/sms", smsRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/audit-logs", auditRouter);
   app.use("/api/whatsapp", whatsappRouter);
@@ -156,6 +162,8 @@ export function createApp() {
   app.use("/api/closing-messages", closingMessagesRouter);
   app.use("/api/queue-wait-messages", queueWaitMessagesRouter);
   app.use("/api/birthday-messages", birthdayMessagesRouter);
+  app.use("/api/announcements", announcementsRouter);
+  app.use("/api/report-schedules", reportSchedulesRouter);
   app.use("/api/auto-message-templates", autoMessageTemplatesRouter);
   app.use("/api/satisfaction-survey", satisfactionRouter);
   app.use("/api/work-schedules", workSchedulesRouter);

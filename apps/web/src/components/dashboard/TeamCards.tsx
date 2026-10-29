@@ -5,27 +5,13 @@ import { useNow } from "../../hooks/useNow";
 import { formatMinutes } from "../common/StatCard";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import type { TeamData } from "@whatsatendende/presentation/shared";
 
 // A pause running longer than this is highlighted in red.
 const LONG_PAUSE_MINUTES = 30;
 
-export interface TeamData {
-  now: {
-    online: number;
-    paused: number;
-    offline: number;
-    pausedUsers: { userId: string; name: string; photoUrl: string | null; reasonName: string | null; since: string | null }[];
-  };
-  agents: {
-    agentId: string;
-    agentName: string;
-    photoUrl: string | null;
-    presence: "ONLINE" | "AWAY" | "OFFLINE";
-    pauseReasonName: string | null;
-    onlineMs: number;
-    pausedMs: number;
-  }[];
-}
+// Shared with the presentation, which turns the same team data into slides.
+export type { TeamData };
 
 export interface AgentConversationStats {
   agentId: string;

@@ -22,6 +22,7 @@ import {
   Contact,
   Tag,
   Database,
+  Megaphone,
 } from "lucide-react";
 import { PERMISSION, type ConversationListItemDTO, type GroupsSummaryDTO, type Permission, type WhatsAppConnectionStatus } from "@whatsatendende/types";
 import { api } from "../../lib/api";
@@ -56,6 +57,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: PERMISSION.DASHBOARD_ACESSAR, group: "Análise" },
   { to: "/relatorios", label: "Relatórios", icon: FileBarChart, permission: PERMISSION.RELATORIOS_ACESSAR, group: "Análise" },
   { to: "/respostas", label: "Respostas", icon: Slash, permission: PERMISSION.RESPOSTAS_RAPIDAS_GERENCIAR, group: "Automação" },
+  { to: "/popup", label: "Pop Up", icon: Megaphone, permission: PERMISSION.POPUP_ACESSAR, group: "Automação" },
   { to: "/fluxo", label: "Fluxo", icon: Workflow, permission: PERMISSION.FLUXO_VISUALIZAR, group: "Automação" },
   { to: "/etiquetas", label: "Etiquetas", icon: Tag, permission: PERMISSION.ETIQUETAS_VISUALIZAR, group: "Automação" },
   { to: "/dados", label: "Dados", icon: Database, permission: PERMISSION.FONTES_DADOS_VER, group: "Automação" },

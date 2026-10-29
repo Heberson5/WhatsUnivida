@@ -47,6 +47,19 @@ export const realtimeEvents = {
     getIO()?.emit("queue:updated");
     getIO()?.emit("contact:tags");
   },
+  /**
+   * Pop Up › Avisos changed (a notice published, edited, paused, deleted, or the day turned): open screens re-ask for
+   * their pending pop-ups and the Comunicados board — live, without waiting for the next login. With `userIds`, only those
+   * people (a "Lembrar pendentes").
+   */
+  announcementsChanged: (userIds?: string[]) => {
+    if (!userIds) return void getIO()?.emit("announcements:changed");
+    for (const userId of userIds) getIO()?.to(ROOMS.user(userId)).emit("announcements:changed");
+  },
+  /** Someone confirmed a notice — Pop Up › Avisos and the Dashboard card refresh their numbers. */
+  announcementReceiptsChanged: () => {
+    getIO()?.to(ROOMS.oversight()).emit("announcements:receipts");
+  },
   /** Identidade visual or Exportações changed — every open screen re-reads its colors/logo without a reload. */
   brandingChanged: () => {
     getIO()?.emit("branding:updated");

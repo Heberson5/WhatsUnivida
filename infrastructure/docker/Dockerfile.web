@@ -3,13 +3,16 @@ FROM node:20-bookworm-slim AS deps
 WORKDIR /repo
 COPY package.json package-lock.json* ./
 COPY packages/types/package.json packages/types/package.json
+COPY packages/presentation/package.json packages/presentation/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN npm ci
 
 FROM deps AS build
 COPY packages/types packages/types
+COPY packages/presentation packages/presentation
 COPY apps/web apps/web
 RUN npm run build -w packages/types \
+ && npm run build -w packages/presentation \
  && npm run build -w apps/web
 
 FROM nginx:1.27-alpine AS runtime

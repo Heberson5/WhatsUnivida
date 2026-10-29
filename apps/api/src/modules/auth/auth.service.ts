@@ -249,6 +249,7 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
       // A refresh is the browser renewing its token, not the person using the system.
       lastActivityAt: stored.lastActivityAt,
+      loginId: stored.loginId ?? stored.id,
     },
   });
 

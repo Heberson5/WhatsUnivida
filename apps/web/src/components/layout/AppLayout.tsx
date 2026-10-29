@@ -8,6 +8,7 @@ import { AppUpdateBanner } from "./AppUpdateBanner";
 import { NewVersionModal } from "./NewVersionModal";
 import { CommandPalette } from "./CommandPalette";
 import { WhatsNewModal } from "./WhatsNewModal";
+import { AnnouncementsHost } from "../announcements/AnnouncementsHost";
 import { useAuthStore } from "../../store/auth-store";
 import { useActiveConversationStore } from "../../store/active-conversation-store";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket";
@@ -35,6 +36,8 @@ export const TITLES: Record<string, string> = {
   "/fluxo": "Fluxo",
   "/etiquetas": "Etiquetas",
   "/notas-de-versao": "Notas de versão",
+  "/popup": "Pop Up",
+  "/comunicados": "Comunicados",
 };
 
 export function AppLayout() {
@@ -136,6 +139,8 @@ export function AppLayout() {
       {/* The shortcut search (Ctrl K) is for managers and administrators — see Topbar. */}
       {(role === "MANAGER" || role === "ADMIN") && <CommandPalette />}
       <WhatsNewModal />
+      {/* Pop Up › Avisos: after login, and live while logged in. */}
+      <AnnouncementsHost />
     </div>
   );
 }

@@ -258,6 +258,11 @@ export function useSocketEvents(activeConversationId: string | null) {
     socket.on("abandoned:updated", onAbandoned);
     socket.on("reminder:due", onReminderDue);
     socket.on("branding:updated", onBrandingUpdated);
+    // Pop Up › Avisos: a notice was published/edited (or the day turned) — the pending pop-ups, the Comunicados board
+    // and its badge re-ask the server, so a notice shows live for whoever is logged in.
+    const onAnnouncementsChanged = () => queryClient.invalidateQueries({ queryKey: ["announcements"] });
+    socket.on("announcements:changed", onAnnouncementsChanged);
+    socket.on("announcements:receipts", onAnnouncementsChanged);
 
     return () => {
       socket.off("queue:updated", onQueueUpdated);
@@ -294,6 +299,8 @@ export function useSocketEvents(activeConversationId: string | null) {
       socket.off("agent:extras", onAgentExtras);
       socket.off("abandoned:updated", onAbandoned);
       socket.off("reminder:due", onReminderDue);
+      socket.off("announcements:changed", onAnnouncementsChanged);
+      socket.off("announcements:receipts", onAnnouncementsChanged);
     };
   }, [queryClient, activeConversationId, accessToken, navigate]);
 

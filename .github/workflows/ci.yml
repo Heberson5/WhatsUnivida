@@ -40,6 +40,7 @@ jobs:
         run: |
           npm run build -w packages/types
           npm run build -w packages/whatsapp
+          npm run build -w packages/presentation
 
       - name: Generate Prisma client
         run: npm run prisma:generate -w apps/api
@@ -55,6 +56,9 @@ jobs:
 
       - name: Lint (web)
         run: npm run lint -w apps/web
+
+      - name: Test (presentation)
+        run: npm run test -w packages/presentation
 
       - name: Test (api)
         run: npm run test -w apps/api

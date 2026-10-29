@@ -8,7 +8,7 @@ import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { fillAutoMessageTags, AGENT_EXAMPLE, CLIENT_EXAMPLE_NAME } from "../../lib/auto-message-tags";
 import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
-import { ReplyMediaField, captionTooLong, saveReplyMediaOrWarn, type ReplyMediaChange } from "./ReplyMediaField";
+import { ReplyMediaField, captionTooLong, saveReplyMediaOrWarn, type ReplyMediaChange } from "../respostas/ReplyMediaField";
 
 const BASE = "/birthday-messages";
 
@@ -35,7 +35,7 @@ const TAGS: Record<BirthdayKind, { tag: string; label: string }[]> = {
   ],
 };
 
-/** Respostas › Aniversários: the message the birthday pop-up suggests, for the client and for a beneficiary. */
+/** Pop Up › Aniversários: the message the birthday pop-up suggests, for the client and for a beneficiary. */
 export function AniversariosTab() {
   const permissions = useAuthStore((s) => s.permissions);
   const canEdit = Boolean(permissions?.[PERMISSION.RESPOSTAS_ANIVERSARIO_EDITAR]);

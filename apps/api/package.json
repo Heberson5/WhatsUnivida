@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@whatsatendende/presentation": "^0.1.0",
     "@whatsatendende/types": "^0.1.0",
     "@whatsatendende/whatsapp": "^0.1.0",
     "bcryptjs": "^2.4.3",
@@ -44,6 +45,7 @@
     "pg": "^8.23.1",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
+    "pptxgenjs": "^4.0.1",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
     "uuid": "^11.0.3",

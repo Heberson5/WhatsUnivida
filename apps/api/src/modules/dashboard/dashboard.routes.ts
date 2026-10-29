@@ -10,6 +10,8 @@ import { resolveAllowedConnectionIds } from "../../lib/connection-access";
 import { getArrivalsByHour, getDashboard, getPresenceByHour, getTeam, getWordCloud } from "./dashboard.service";
 import { getSatisfactionSummary } from "../satisfaction/satisfaction.service";
 import { getSatisfactionOverview } from "../satisfaction/satisfaction-report.service";
+import { stats as announcementStats } from "../announcements/announcements.service";
+import { Errors } from "../../lib/http-error";
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth, requirePermission(PERMISSION.DASHBOARD_ACESSAR));
@@ -96,5 +98,19 @@ dashboardRouter.get(
     const connectionIds = await resolveAllowedConnectionIds(req.auth!, parseListParam(query.connectionId));
     const withDetail = req.auth!.role === "ADMIN" || req.auth!.role === "MANAGER";
     res.json(await getSatisfactionOverview({ from, to, agentId: query.agentId, connectionIds, tzOffsetMinutes: query.tzOffsetMinutes }, withDetail));
+  })
+);
+
+/**
+ * Dashboard › Comunicados: the notices of Pop Up › Avisos that showed in the period, with reading and "ciente" — Gestor
+ * and Administrador only (it names who hasn't confirmed). Notices aren't tied to a connection, so only the period applies.
+ */
+dashboardRouter.get(
+  "/announcements",
+  asyncHandler(async (req, res) => {
+    if (req.auth!.role !== "ADMIN" && req.auth!.role !== "MANAGER") throw Errors.forbidden();
+    const query = querySchema.parse(req.query);
+    const { from, to } = resolvePeriod(query.period, query.from, query.to, query.tzOffsetMinutes);
+    res.json(await announcementStats(from, to, query.tzOffsetMinutes));
   })
 );

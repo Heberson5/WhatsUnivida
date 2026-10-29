@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareWithPrevious, describePeriod, formatMinutes, npsDelta, npsZone, percentOf } from "./dashboardMetrics";
+import { compareWithPrevious, describePeriod, formatMinutes, npsDelta, npsZone, percentOf } from "./metrics";
 
 // Thursday 8 Oct 2026, 17:42 local time.
 const NOW = new Date(2026, 9, 8, 17, 42);

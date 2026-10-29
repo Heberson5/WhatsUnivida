@@ -1299,8 +1299,23 @@ export const PERMISSION = {
   RESPOSTAS_ESPERA_ADICIONAR: "respostas_espera.adicionar",
   RESPOSTAS_ESPERA_EDITAR: "respostas_espera.editar",
   RESPOSTAS_ESPERA_EXCLUIR: "respostas_espera.excluir",
+  // Kept under their original keys (saved permissions carry over) — the tab now lives in Pop Up › Aniversários.
   RESPOSTAS_ANIVERSARIO_VISUALIZAR: "respostas_aniversario.visualizar",
   RESPOSTAS_ANIVERSARIO_EDITAR: "respostas_aniversario.editar",
+  // Pop Up (Automação): the menu itself, Avisos (notices after login) and the Lixeira of deleted notices.
+  POPUP_ACESSAR: "popup.acessar",
+  POPUP_AVISOS_VISUALIZAR: "popup_avisos.visualizar",
+  POPUP_AVISOS_ADICIONAR: "popup_avisos.adicionar",
+  POPUP_AVISOS_EDITAR: "popup_avisos.editar",
+  POPUP_AVISOS_EXCLUIR: "popup_avisos.excluir",
+  POPUP_LIXEIRA_GERENCIAR: "popup_lixeira.gerenciar",
+  // The Comunicados board (the newspaper icon in the top bar) — every notice meant for the person.
+  COMUNICADOS_VER: "comunicados.ver",
+  // Configurações › Modelos de e-mail › Agendamento da apresentação, and Configurações › SMS.
+  CONFIGURACOES_AGENDAMENTO_VISUALIZAR: "configuracoes.agendamento.visualizar",
+  CONFIGURACOES_AGENDAMENTO_EDITAR: "configuracoes.agendamento.editar",
+  CONFIGURACOES_SMS_VISUALIZAR: "configuracoes.sms.visualizar",
+  CONFIGURACOES_SMS_EDITAR: "configuracoes.sms.editar",
   // Standalone top-level menu (not nested under CONFIGURACOES_GERENCIAR) —
   // see PROMPT: "planeje um novo menu chamado landing page". Single record
   // to edit (no list), so only visualizar/editar.
@@ -1516,6 +1531,38 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     description: "Editar os modelos dos e-mails automáticos do sistema (redefinição de senha, boas-vindas, etc).",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.CONFIGURACOES_AGENDAMENTO_VISUALIZAR,
+    group: "Configurações",
+    label: "Configurações — Agendamento da apresentação (visualizar)",
+    description: "Ver os envios agendados da apresentação do Dashboard (Modelos de e-mail) e o histórico de cada um.",
+    editableRoles: ["MANAGER"],
+    defaultAllowed: { MANAGER: true },
+  },
+  {
+    key: PERMISSION.CONFIGURACOES_AGENDAMENTO_EDITAR,
+    group: "Configurações",
+    label: "Configurações — Agendamento da apresentação (editar)",
+    description: "Criar, mudar, duplicar e excluir os envios agendados, enviar agora e baixar a prévia da apresentação.",
+    editableRoles: ["MANAGER"],
+    defaultAllowed: { MANAGER: true },
+  },
+  {
+    key: PERMISSION.CONFIGURACOES_SMS_VISUALIZAR,
+    group: "Configurações",
+    label: "Configurações — SMS (visualizar)",
+    description: "Ver o provedor de SMS configurado (sem as senhas e chaves).",
+    editableRoles: ["MANAGER"],
+    defaultAllowed: { MANAGER: false },
+  },
+  {
+    key: PERMISSION.CONFIGURACOES_SMS_EDITAR,
+    group: "Configurações",
+    label: "Configurações — SMS (editar)",
+    description: "Escolher o provedor de SMS, as credenciais e enviar o SMS de teste.",
+    editableRoles: ["MANAGER"],
+    defaultAllowed: { MANAGER: false },
   },
   {
     key: PERMISSION.CONFIGURACOES_FERIADOS_VISUALIZAR,
@@ -2052,19 +2099,75 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   },
   {
     key: PERMISSION.RESPOSTAS_ANIVERSARIO_VISUALIZAR,
-    group: "Respostas",
-    label: "Respostas — Aniversários (visualizar)",
+    group: "Pop Up",
+    label: "Pop Up — Aniversários (visualizar)",
     description: "Ver as mensagens de aniversário do cliente e do beneficiário (aba Aniversários).",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: true },
   },
   {
     key: PERMISSION.RESPOSTAS_ANIVERSARIO_EDITAR,
-    group: "Respostas",
-    label: "Respostas — Aniversários (editar)",
+    group: "Pop Up",
+    label: "Pop Up — Aniversários (editar)",
     description: "Mudar o texto, a imagem e ligar ou desligar as mensagens de aniversário.",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_ACESSAR,
+    group: "Pop Up",
+    label: "Pop Up — acessar o menu",
+    description: "Ver o menu Pop Up em Automação (Aniversários, Avisos e Lixeira — cada aba tem a sua permissão).",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_AVISOS_VISUALIZAR,
+    group: "Pop Up",
+    label: "Pop Up — Avisos (visualizar)",
+    description: "Ver os avisos cadastrados, o histórico e quem leu e confirmou cada um.",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_AVISOS_ADICIONAR,
+    group: "Pop Up",
+    label: "Pop Up — Avisos (adicionar)",
+    description: "Criar um aviso novo ou duplicar um aviso do histórico.",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_AVISOS_EDITAR,
+    group: "Pop Up",
+    label: "Pop Up — Avisos (editar)",
+    description: "Mudar um aviso, pausar e retomar, lembrar quem ainda não confirmou e o nome da central de Comunicados.",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_AVISOS_EXCLUIR,
+    group: "Pop Up",
+    label: "Pop Up — Avisos (excluir)",
+    description: "Mandar um aviso para a Lixeira.",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.POPUP_LIXEIRA_GERENCIAR,
+    group: "Pop Up",
+    label: "Pop Up — Lixeira",
+    description: "Restaurar ou excluir de vez os avisos da Lixeira e mudar por quantos dias eles ficam lá.",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: false, MANAGER: true },
+  },
+  {
+    key: PERMISSION.COMUNICADOS_VER,
+    group: "Pop Up",
+    label: "Comunicados — receber e ler",
+    description: "Receber os avisos depois do login e abrir a central de Comunicados (ícone de jornal na barra superior).",
+    editableRoles: ["AGENT", "MANAGER"],
+    defaultAllowed: { AGENT: true, MANAGER: true },
   },
   {
     key: PERMISSION.LANDING_PAGE_VISUALIZAR,
@@ -2427,7 +2530,7 @@ export interface PreviousConversationDetailDTO {
 
 export type ReleaseNoteType = "novo" | "melhoria" | "correcao";
 
-export type ReleaseNoteArea = "geral" | "atendimento" | "gestao" | "contatos" | "dashboard" | "usuarios" | "respostas" | "fluxo" | "dados" | "conexoes" | "configuracoes" | "landingPage" | "administracao";
+export type ReleaseNoteArea = "geral" | "atendimento" | "gestao" | "contatos" | "dashboard" | "usuarios" | "respostas" | "popup" | "fluxo" | "dados" | "conexoes" | "configuracoes" | "landingPage" | "administracao";
 
 export interface ReleaseNoteImageDTO {
   /** Address of the screenshot: /notas-de-versao/… (shipped with the system) or /uploads/release-notes/… (sent in Configurações). */
@@ -2482,6 +2585,7 @@ export const RELEASE_NOTE_AREAS: Record<ReleaseNoteArea, { label: string; requir
   dashboard: { label: "Dashboard e Relatórios", requires: [PERMISSION.DASHBOARD_ACESSAR] },
   usuarios: { label: "Usuários", requires: [PERMISSION.USUARIOS_VISUALIZAR] },
   respostas: { label: "Respostas", requires: [PERMISSION.RESPOSTAS_RAPIDAS_GERENCIAR] },
+  popup: { label: "Pop Up", requires: [PERMISSION.POPUP_ACESSAR] },
   fluxo: { label: "Fluxo", requires: [PERMISSION.FLUXO_VISUALIZAR] },
   dados: { label: "Dados", requires: [PERMISSION.FONTES_DADOS_VER] },
   conexoes: { label: "Conexões", requires: [PERMISSION.CONEXOES_GERENCIAR] },
@@ -3359,4 +3463,354 @@ export function fillBirthdayTags(text: string, person: Pick<BirthdayTodayDTO, "n
     .replace(/\{\{\s*aniversariante\s*\}\}/gi, person.name)
     .replace(/\{\{\s*parentesco\s*\}\}/gi, (person.relation ?? "beneficiário").toLowerCase())
     .replace(/\{\{\s*idade\s*\}\}/gi, String(person.age));
+}
+
+// ---------------------------------------------------------------------------
+// Pop Up › Avisos and the Comunicados board.
+// ---------------------------------------------------------------------------
+
+export type AnnouncementKind = "INFO" | "IMPORTANT" | "URGENT" | "CELEBRATION" | "NEWS";
+export type AnnouncementLayout = "COVER" | "POSTER" | "TEXT";
+export type AnnouncementDisplay = "POPUP_AND_BOARD" | "BOARD_ONLY";
+export type AnnouncementRecurrence = "ONCE" | "DAILY" | "WEEKLY" | "MONTHLY";
+export type AnnouncementStatus = "ACTIVE" | "SCHEDULED" | "ENDED" | "PAUSED";
+
+export const ANNOUNCEMENT_KIND_LABEL: Record<AnnouncementKind, string> = {
+  INFO: "Informativo",
+  IMPORTANT: "Importante",
+  URGENT: "Urgente",
+  CELEBRATION: "Comemoração",
+  NEWS: "Novidade",
+};
+
+export const ANNOUNCEMENT_RECURRENCE_LABEL: Record<AnnouncementRecurrence, string> = {
+  ONCE: "Só no dia de início",
+  DAILY: "1 vez por dia",
+  WEEKLY: "1 vez por semana",
+  MONTHLY: "1 vez por mês",
+};
+
+/** A person sees the pop-up of a notice at most this many times on each day it shows (each login, or live, counts once). */
+export const ANNOUNCEMENT_MAX_SHOWS_PER_DAY = 2;
+/** Up to this many pending notices open as pop-ups; more than this, they're grouped in a single "Você tem N novidades". */
+export const ANNOUNCEMENT_POPUP_LIMIT = 2;
+export const ANNOUNCEMENT_REACTIONS = ["👍", "❤️", "👏"] as const;
+
+export interface AnnouncementAudience {
+  all: boolean;
+  roles: Role[];
+  connectionIds: string[];
+  userIds: string[];
+}
+
+export interface AnnouncementFileDTO {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number | null;
+  height?: number | null;
+}
+
+export interface AnnouncementInput {
+  title: string;
+  body: string;
+  kind: AnnouncementKind;
+  layout: AnnouncementLayout;
+  display: AnnouncementDisplay;
+  category: string | null;
+  requireAck: boolean;
+  pinned: boolean;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  startDate: string;
+  endDate: string | null;
+  recurrence: AnnouncementRecurrence;
+  audience: AnnouncementAudience;
+}
+
+/** A notice as the people who receive it see it (pop-up and Comunicados). */
+export interface AnnouncementDTO extends AnnouncementInput {
+  id: string;
+  images: AnnouncementFileDTO[];
+  attachments: AnnouncementFileDTO[];
+  createdAt: string;
+  authorName: string | null;
+  readAt: string | null;
+  ackAt: string | null;
+  reactions: { emoji: string; count: number; mine: boolean }[];
+  /** Whether it shows today (in its date range and recurrence) — older ones are the board's "Anteriores". */
+  showsToday: boolean;
+}
+
+/** A notice in Pop Up › Avisos — with its state and the reading numbers. */
+export interface AnnouncementAdminDTO extends AnnouncementDTO {
+  paused: boolean;
+  status: AnnouncementStatus;
+  deletedAt: string | null;
+  audienceCount: number;
+  readCount: number;
+  ackCount: number;
+  updatedAt: string;
+  /** The next day it shows (YYYY-MM-DD), null once it has ended. */
+  nextDay: string | null;
+}
+
+export interface AnnouncementReceiptRowDTO {
+  userId: string;
+  name: string;
+  role: Role;
+  readAt: string | null;
+  ackAt: string | null;
+  shownCount: number;
+}
+
+export interface AnnouncementBoardSettingsDTO {
+  /** "Comunicados" — what the board is called in the top bar and its page. */
+  name: string;
+  /** Days a deleted notice stays in the Lixeira before it is removed for good. */
+  trashDays: number;
+}
+
+/** Dashboard › Comunicados card and the presentation's slide — Gestor and Administrador. */
+export interface AnnouncementStatsDTO {
+  published: number;
+  audience: number;
+  readRate: number | null;
+  ackRate: number | null;
+  items: {
+    id: string;
+    title: string;
+    kind: AnnouncementKind;
+    startDate: string;
+    audience: number;
+    read: number;
+    acked: number;
+    requireAck: boolean;
+    /** Who hasn't confirmed yet (requireAck only), by name. */
+    pendingNames: string[];
+  }[];
+  /** Readings per day of the period (YYYY-MM-DD), for the evolution chart. */
+  readsByDay: { day: string; reads: number; acks: number }[];
+}
+
+// ---------------------------------------------------------------------------
+// Agendamento da apresentação (Configurações › Modelos de e-mail).
+// ---------------------------------------------------------------------------
+
+export type ReportScheduleFrequency = "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "YEARLY" | "CUSTOM";
+export type ReportScheduleRunStatus = "SENT" | "PARTIAL" | "FAILED" | "RETRYING";
+export type ReportSchedulePeriod = "AUTO" | "yesterday" | "last7days" | "last15days" | "lastMonth" | "month" | "lastYear" | "year" | "all";
+
+export const REPORT_SCHEDULE_FREQUENCY_LABEL: Record<ReportScheduleFrequency, string> = {
+  DAILY: "Diário",
+  WEEKLY: "Semanal",
+  BIWEEKLY: "Quinzenal",
+  MONTHLY: "Mensal",
+  YEARLY: "Anual",
+  CUSTOM: "Personalizado",
+};
+
+export const REPORT_SCHEDULE_PERIOD_LABEL: Record<ReportSchedulePeriod, string> = {
+  AUTO: "Automático (acompanha a frequência)",
+  yesterday: "Dia anterior",
+  last7days: "Últimos 7 dias",
+  last15days: "Últimos 15 dias",
+  lastMonth: "Mês anterior",
+  month: "Mês atual até hoje",
+  lastYear: "Ano anterior",
+  year: "Ano atual até hoje",
+  all: "Todo o período",
+};
+
+export interface ReportScheduleAlerts {
+  emails: string[];
+  whatsapp: { connectionId: string; phones: string[] } | null;
+  sms: { phones: string[] } | null;
+}
+
+export interface ReportScheduleInput {
+  name: string;
+  enabled: boolean;
+  subject: string;
+  title: string;
+  bodyText: string;
+  to: string[];
+  cc: string[];
+  frequency: ReportScheduleFrequency;
+  time: string;
+  tzOffsetMinutes: number;
+  startDate: string;
+  weekdays: number[];
+  monthDay: number | null;
+  month: number | null;
+  customInterval: number;
+  customUnit: "DAY" | "WEEK" | "MONTH";
+  endType: "NEVER" | "AFTER" | "ON_DATE";
+  endAfter: number | null;
+  endDate: string | null;
+  skipSaturday: boolean;
+  skipSunday: boolean;
+  period: ReportSchedulePeriod;
+  agentId: string | null;
+  connectionIds: string[];
+  alerts: ReportScheduleAlerts;
+}
+
+export interface ReportScheduleDTO extends ReportScheduleInput {
+  id: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: ReportScheduleRunStatus | null;
+  lastError: string | null;
+  runCount: number;
+  createdByName: string | null;
+  updatedAt: string;
+}
+
+export interface ReportScheduleRunDTO {
+  id: string;
+  scheduledFor: string;
+  createdAt: string;
+  attempt: number;
+  manual: boolean;
+  status: ReportScheduleRunStatus;
+  recipients: string[];
+  rejected: string[];
+  error: string | null;
+}
+
+/** Returned with a save: other schedules that send on the same day to someone in common — a warning, never a block. */
+export interface ReportScheduleConflictDTO {
+  scheduleId: string;
+  name: string;
+  day: string;
+  recipients: string[];
+}
+
+export interface ReportScheduleSaveResultDTO {
+  schedule: ReportScheduleDTO;
+  conflicts: ReportScheduleConflictDTO[];
+  externalRecipients: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Configurações › SMS — one provider at a time; the option to warn by SMS only
+// shows once a test SMS went through (verifiedAt).
+// ---------------------------------------------------------------------------
+
+export type SmsProviderId = "ZENVIA" | "TWILIO" | "COMTELE" | "MOBIZON" | "TOTALVOICE" | "SMSDEV" | "VONAGE" | "AWS_SNS" | "GENERIC_HTTP";
+
+export interface SmsProviderField {
+  key: string;
+  label: string;
+  secret?: boolean;
+  placeholder?: string;
+  help?: string;
+  multiline?: boolean;
+  options?: { value: string; label: string }[];
+}
+
+export const SMS_PROVIDERS: Record<SmsProviderId, { label: string; site: string; fields: SmsProviderField[] }> = {
+  ZENVIA: {
+    label: "Zenvia",
+    site: "zenvia.com",
+    fields: [
+      { key: "token", label: "API Token (X-API-TOKEN)", secret: true },
+      { key: "from", label: "Remetente (nome da conta de SMS)", placeholder: "minha-conta" },
+    ],
+  },
+  TWILIO: {
+    label: "Twilio",
+    site: "twilio.com",
+    fields: [
+      { key: "accountSid", label: "Account SID", placeholder: "ACxxxxxxxx" },
+      { key: "authToken", label: "Auth Token", secret: true },
+      { key: "from", label: "Número remetente (ou Messaging Service SID)", placeholder: "+15551234567" },
+    ],
+  },
+  COMTELE: {
+    label: "Comtele",
+    site: "comtele.com.br",
+    fields: [{ key: "authKey", label: "Chave de autenticação (auth-key)", secret: true }],
+  },
+  MOBIZON: {
+    label: "Mobizon",
+    site: "mobizon.com.br",
+    fields: [
+      { key: "apiKey", label: "Chave da API", secret: true },
+      { key: "apiServer", label: "Servidor da API", placeholder: "api.mobizon.com.br" },
+      { key: "from", label: "Remetente (opcional)" },
+    ],
+  },
+  TOTALVOICE: {
+    label: "TotalVoice",
+    site: "totalvoice.com.br",
+    fields: [{ key: "accessToken", label: "Access-Token", secret: true }],
+  },
+  SMSDEV: {
+    label: "SMSDev",
+    site: "smsdev.com.br",
+    fields: [{ key: "key", label: "Chave da API", secret: true }],
+  },
+  VONAGE: {
+    label: "Vonage (Nexmo)",
+    site: "vonage.com",
+    fields: [
+      { key: "apiKey", label: "API Key" },
+      { key: "apiSecret", label: "API Secret", secret: true },
+      { key: "from", label: "Remetente", placeholder: "Empresa" },
+    ],
+  },
+  AWS_SNS: {
+    label: "Amazon SNS (AWS)",
+    site: "aws.amazon.com/sns",
+    fields: [
+      { key: "accessKeyId", label: "Access Key ID" },
+      { key: "secretAccessKey", label: "Secret Access Key", secret: true },
+      { key: "region", label: "Região", placeholder: "sa-east-1" },
+      { key: "senderId", label: "Sender ID (opcional)" },
+    ],
+  },
+  GENERIC_HTTP: {
+    label: "Outro provedor (HTTP genérico)",
+    site: "",
+    fields: [
+      { key: "url", label: "Endereço (URL) da API", placeholder: "https://api.provedor.com/sms/send" },
+      { key: "method", label: "Método", options: [{ value: "POST", label: "POST" }, { value: "GET", label: "GET" }] },
+      { key: "headers", label: "Cabeçalhos (um por linha, Nome: valor)", multiline: true, secret: true, placeholder: "Authorization: Bearer SEU_TOKEN" },
+      {
+        key: "body",
+        label: "Corpo da requisição",
+        multiline: true,
+        placeholder: '{"to": "{{numero}}", "message": "{{mensagem}}"}',
+        help: "Use {{numero}} (com DDI, só dígitos) e {{mensagem}}. Num GET, as tags também valem no endereço.",
+      },
+      {
+        key: "contentType",
+        label: "Tipo do corpo",
+        options: [
+          { value: "application/json", label: "JSON" },
+          { value: "application/x-www-form-urlencoded", label: "Formulário (x-www-form-urlencoded)" },
+          { value: "text/plain", label: "Texto" },
+        ],
+      },
+    ],
+  },
+};
+
+export interface SmsSettingsDTO {
+  enabled: boolean;
+  provider: SmsProviderId | null;
+  /** Secret fields come back as "" with `secretsSet[key]` telling whether one is saved. */
+  config: Record<string, string>;
+  secretsSet: Record<string, boolean>;
+  verifiedAt: string | null;
+  lastError: string | null;
+}
+
+/** Whether the alert of a failed send can go by SMS — what the schedule form asks before showing the option. */
+export interface SmsAvailabilityDTO {
+  available: boolean;
+  providerLabel: string | null;
 }
