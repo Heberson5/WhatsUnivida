@@ -68,8 +68,9 @@ const PRESENCE_DOT: Record<QueueUserOption["presence"], string> = { ONLINE: "bg-
 const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 /**
- * "Atendida por": in the queue, only the marked users see customers with this tag — while one of them is online; with
- * nobody of them online (or all paused) the customer goes to everyone. Gestor/Administrador only, like Bloqueia.
+ * "Atendida por": a new conversation of a customer with this tag goes straight to the least busy marked user online; in
+ * the queue, only they see the customer. With nobody of them online (or all paused) the customer goes to everyone.
+ * Gestor/Administrador only, like Bloqueia.
  */
 function QueueUsersPicker({ value, onChange, users, disabled }: { value: string[]; onChange: (v: string[]) => void; users: QueueUserOption[]; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -295,8 +296,8 @@ export default function EtiquetasPage() {
         <p className="text-sm text-muted">
           Etiquetas que os atendentes escolhem no painel do cliente durante o atendimento. Em <strong>Bloqueia</strong>, escolha as mensagens automáticas
           que os clientes com a etiqueta não recebem — por exemplo, funcionários sem pesquisa de satisfação. O que for bloqueado fica registrado em
-          Relatórios › Mensagens bloqueadas. Em <strong>Atendida por</strong>, escolha quem atende esses clientes: na fila, só eles os veem enquanto
-          algum estiver online.
+          Relatórios › Mensagens bloqueadas. Em <strong>Atendida por</strong>, escolha quem atende esses clientes: a conversa nova vai direto para um deles que estiver online,
+          e na fila só eles os veem. Com todos offline ou em pausa, o cliente vai para a fila de todos.
         </p>
         {canAdd && (
           <form

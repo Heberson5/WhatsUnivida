@@ -4,6 +4,7 @@ import { CONVERSATION_UNDO_WINDOW_MS, brazilianPhoneVariants } from "@whatsatend
 import { prisma } from "../../lib/prisma";
 import { endFlowSession, flowIdsWithPerson, noteAbandonedReason } from "../flows/flow-engine.service";
 import { blockingTag, recordBlocked, CONTACT_CARD_TAGS } from "../../lib/auto-messages";
+import { designatedAgentFor } from "../../lib/queue-routing";
 import { getClosedMessageForConnection } from "../work-schedules/work-schedules.service";
 import { scheduleCloseFollowUp, type HeldClosingMessage } from "../satisfaction/satisfaction.service";
 import { Errors } from "../../lib/http-error";
@@ -170,9 +171,17 @@ export async function findOrCreateContact(
     }
   }
 
-  const existing = await prisma.contact.findUnique({
-    where: { phone_whatsappConnectionId: { phone, whatsappConnectionId: connectionId } },
-  });
+  // The same customer saved under the other form of a Brazilian mobile (with/without the 9) — a list import, a contact
+  // typed by hand — is that contact, with its tags and history: WhatsApp just told us which form the account really
+  // has, so the saved one moves to it (see phoneOfExistingContact).
+  const otherForm = brazilianPhoneVariants(phone).find((p) => p !== phone);
+  const existing =
+    (await prisma.contact.findUnique({ where: { phone_whatsappConnectionId: { phone, whatsappConnectionId: connectionId } } })) ??
+    (otherForm
+      ? await prisma.contact
+          .findUnique({ where: { phone_whatsappConnectionId: { phone: otherForm, whatsappConnectionId: connectionId } } })
+          .then((saved) => (saved ? prisma.contact.update({ where: { id: saved.id }, data: { phone } }).catch(() => saved) : null))
+      : null);
   if (existing) {
     return prisma.contact.update({
       where: { id: existing.id },
@@ -706,8 +715,11 @@ export async function findOrOpenConversationForInboundMessage(
   const returnedAfterNoReturn = lastConversation?.closeReason === NO_RETURN_CLOSE_REASON;
   const lastAgent = lastConversation?.assignedAgent;
   const mention = await findOnlineMention();
-  const mentionedAgent =
-    mention ?? (returnedAfterNoReturn && lastAgent?.presence === "ONLINE" && lastAgent.status === "ACTIVE" ? { id: lastAgent.id, displayName: lastAgent.displayName } : null);
+  const returnedTo = returnedAfterNoReturn && lastAgent?.presence === "ONLINE" && lastAgent.status === "ACTIVE" ? { id: lastAgent.id, displayName: lastAgent.displayName } : null;
+  // Etiquetas › "Atendida por": the customer goes straight to one of the tag's users who is online — no queue, no Fluxo.
+  const byTag =
+    mention || returnedTo ? null : await designatedAgentFor({ contactId, channel, whatsappConnectionId: channel === "WHATSAPP" ? connectionId : null });
+  const mentionedAgent = mention ?? returnedTo ?? byTag;
   const now = new Date();
 
   // An active Fluxo on this connection talks to the customer first (see
@@ -748,16 +760,23 @@ export async function findOrOpenConversationForInboundMessage(
   if (mentionedAgent) {
     await prisma.$transaction([
       prisma.conversationAssignment.create({
-        data: { conversationId: conversation.id, toAgentId: mentionedAgent.id, reason: mention ? "MENTION" : "REOPEN" },
+        data: { conversationId: conversation.id, toAgentId: mentionedAgent.id, reason: mention ? "MENTION" : byTag ? "TAG" : "REOPEN" },
       }),
       prisma.conversationEvent.create({
         data: {
           conversationId: conversation.id,
           type: "CREATED",
-          payload: mention ? { autoAssignedByMention: mentionedAgent.displayName } : { returnedAfterNoReturn: mentionedAgent.displayName },
+          payload: mention
+            ? { autoAssignedByMention: mentionedAgent.displayName }
+            : byTag
+              ? { autoAssignedByTag: byTag.tagName, agent: byTag.displayName }
+              : { returnedAfterNoReturn: mentionedAgent.displayName },
         },
       }),
     ]);
+    if (byTag) {
+      await prisma.conversationNote.create({ data: { conversationId: conversation.id, body: `Direcionada para ${byTag.displayName} pela etiqueta ${byTag.tagName}` } });
+    }
   } else {
     await prisma.conversationEvent.create({
       data: { conversationId: conversation.id, type: "CREATED" },

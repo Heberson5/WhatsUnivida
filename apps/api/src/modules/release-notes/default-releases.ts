@@ -11,6 +11,28 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.28.2",
+    date: "29 out 2026",
+    name: "Cliente com etiqueta vai direto para quem atende",
+    summary: "O cliente com uma etiqueta que tem Atendida por não espera mais na fila: a conversa nova vai direto para o atendente marcado que estiver online.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Atendida por: direto para o atendente, sem fila",
+        text: "Quando um cliente com etiqueta que tem Atendida por começa uma conversa, ela vai direto para o Meus do atendente marcado que estiver online, com o aviso de nova conversa e a nota \"Direcionada para ... pela etiqueta ...\", sem passar pela fila nem pelo Fluxo. Com mais de um marcado online, vai para o que tem menos conversas em andamento. Com todos offline ou em pausa, o cliente vai para a fila de todos, como antes. O cliente que pede um atendente pelo nome (@nome) continua indo para quem ele pediu.",
+        where: "Atendimento › Meus",
+      },
+      {
+        type: "correcao",
+        area: "contatos",
+        title: "Mesmo cliente com e sem o 9",
+        text: "Um contato salvo com o 9 (ou sem) que manda mensagem pelo número na outra forma passa a ser reconhecido como o mesmo cliente, com as etiquetas e o histórico dele, em vez de virar um contato novo.",
+        where: "Atendimento / Contatos",
+      },
+    ],
+  },
+  {
     version: "2.28.1",
     date: "29 out 2026",
     name: "Pesquisa na conversa em Gestão, filtro de etiquetas e contrato em Contatos",

@@ -3,6 +3,8 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { queueAnnouncementTargets } from "../src/lib/queue-routing";
+import * as conversationsService from "../src/modules/conversations/conversations.service";
+import * as flowsService from "../src/modules/flows/flows.service";
 import { resetDatabase, createTestConnection, createTestUser, createWaitingConversation, TEST_PASSWORD } from "./helpers";
 
 const app = createApp();
@@ -105,5 +107,102 @@ describe("Etiquetas › Atendida por: a fila só para os usuários designados", 
     await request(app).patch(`/api/contacts/tags/${tagId}`).set("Authorization", `Bearer ${adminToken}`).send({ queueUserIds: [] }).expect(200);
     expect(await sees(joao.token)).toBe(true);
     expect(adminId).toBeTruthy();
+  });
+});
+
+describe("Etiquetas › Atendida por: o cliente novo vai direto para quem atende", () => {
+  let connectionId: string;
+  let maria: { id: string };
+  let joao: { id: string };
+  let tagId: string;
+
+  const taggedContact = async (phone: string) => {
+    const contact = await prisma.contact.create({ data: { phone, whatsappConnectionId: connectionId } });
+    await prisma.contactTag.create({ data: { contactId: contact.id, tagId } });
+    return contact;
+  };
+
+  beforeEach(async () => {
+    await resetDatabase();
+    connectionId = (await createTestConnection("Suporte")).id;
+    maria = await createTestUser({ email: "maria-d@test.dev", role: "AGENT", displayName: "Maria", whatsappConnectionId: connectionId, presence: "ONLINE" });
+    joao = await createTestUser({ email: "joao-d@test.dev", role: "AGENT", displayName: "João", whatsappConnectionId: connectionId, presence: "ONLINE" });
+    tagId = (await prisma.tag.create({ data: { name: "Pós Funeral", queueUserIds: [maria.id] } })).id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("com a designada online, a conversa nova abre no Meus dela, sem passar pela fila, com a nota da etiqueta", async () => {
+    const contact = await taggedContact("5565988880001");
+    const { conversation, isNewConversation, autoAssignedAgentId } = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, contact.id, "Bom dia");
+
+    expect(isNewConversation).toBe(true);
+    expect(autoAssignedAgentId).toBe(maria.id);
+    expect(conversation.status).toBe("IN_PROGRESS");
+    expect(conversation.assignedAgentId).toBe(maria.id);
+    expect(conversation.acceptedAt).not.toBeNull();
+    expect((await prisma.conversationAssignment.findFirstOrThrow({ where: { conversationId: conversation.id } })).reason).toBe("TAG");
+    expect((await prisma.conversationNote.findMany({ where: { conversationId: conversation.id } })).map((n) => n.body)).toEqual([
+      "Direcionada para Maria pela etiqueta Pós Funeral",
+    ]);
+  });
+
+  it("vários designados online: vai para o que tem menos conversas em andamento", async () => {
+    await prisma.tag.update({ where: { id: tagId }, data: { queueUserIds: [maria.id, joao.id] } });
+    const busy = await prisma.contact.create({ data: { phone: "5565988880009", whatsappConnectionId: connectionId } });
+    await prisma.conversation.create({ data: { contactId: busy.id, whatsappConnectionId: connectionId, status: "IN_PROGRESS", assignedAgentId: maria.id } });
+
+    const contact = await taggedContact("5565988880002");
+    const { autoAssignedAgentId } = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, contact.id, "Oi");
+    expect(autoAssignedAgentId).toBe(joao.id);
+  });
+
+  it("designada pausada, offline ou de outra conexão: vai para a fila, como antes", async () => {
+    await prisma.user.update({ where: { id: maria.id }, data: { presence: "AWAY" } });
+    const paused = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, (await taggedContact("5565988880003")).id, "Oi");
+    expect(paused.autoAssignedAgentId).toBeNull();
+    expect(paused.conversation.status).toBe("NEW");
+
+    const other = await createTestConnection("Vendas");
+    await prisma.user.update({ where: { id: maria.id }, data: { presence: "ONLINE", whatsappConnectionId: other.id } });
+    const elsewhere = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, (await taggedContact("5565988880004")).id, "Oi");
+    expect(elsewhere.autoAssignedAgentId).toBeNull();
+    expect(elsewhere.conversation.status).toBe("NEW");
+  });
+
+  it("@menção do cliente vale mais que a etiqueta", async () => {
+    const contact = await taggedContact("5565988880005");
+    const { autoAssignedAgentId } = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, contact.id, "Quero falar com @João");
+    expect(autoAssignedAgentId).toBe(joao.id);
+  });
+
+  it("com um Fluxo ativo na conexão, o cliente com etiqueta vai direto para a designada, sem o Fluxo", async () => {
+    const adminId = (await createTestUser({ email: "admin-d@test.dev", role: "ADMIN" })).id;
+    const flow = await flowsService.createFlow({ name: "Univida", connectionIds: [connectionId] }, adminId);
+    await flowsService.saveFlowGraph(
+      flow.id,
+      [
+        { id: "s", type: "START", positionX: 0, positionY: 0, data: {} },
+        { id: "x", type: "TRANSFER_TO_AGENT", positionX: 100, positionY: 0, data: { name: "Fila", mode: "any", assignedAgentIds: [] } },
+      ],
+      [{ sourceNodeId: "s", targetNodeId: "x", sourceHandle: null }]
+    );
+    await flowsService.updateFlowMeta(flow.id, { active: true });
+
+    const { conversation, flowId } = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, (await taggedContact("5565988880006")).id, "Oi");
+    expect(flowId).toBeNull();
+    expect(conversation.assignedAgentId).toBe(maria.id);
+  });
+
+  it("contato salvo com o 9 e a mensagem chegando sem o 9: é o mesmo cliente, com a etiqueta", async () => {
+    const saved = await taggedContact("5565988880007");
+    const found = await conversationsService.findOrCreateContact(connectionId, "556588880007", "Cliente", "556588880007@s.whatsapp.net");
+    expect(found.id).toBe(saved.id);
+    expect(found.phone).toBe("556588880007");
+    expect(await prisma.contact.count({ where: { whatsappConnectionId: connectionId } })).toBe(1);
+    const { autoAssignedAgentId } = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, found.id, "Oi");
+    expect(autoAssignedAgentId).toBe(maria.id);
   });
 });

@@ -43,6 +43,29 @@ export async function queueAudiences(conversations: QueueRoutingConversation[]):
   return result;
 }
 
+/**
+ * A customer opening a new conversation goes straight to one of the users their tags name — the least busy of those
+ * who could take them from the queue right now (queueAudiences). Null: nobody of them is available, the queue as usual.
+ */
+export async function designatedAgentFor(
+  conversation: Omit<QueueRoutingConversation, "id">
+): Promise<{ id: string; displayName: string; tagName: string } | null> {
+  const audience = (await queueAudiences([{ id: "", ...conversation }])).get("");
+  if (!audience) return null;
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: [...audience] } },
+    select: { id: true, displayName: true, _count: { select: { assignedConversations: { where: { status: { in: ["IN_PROGRESS", "TRANSFERRED"] } } } } } },
+  });
+  const agent = candidates.sort((a, b) => a._count.assignedConversations - b._count.assignedConversations)[0];
+  if (!agent) return null;
+  const link = await prisma.contactTag.findFirst({
+    where: { contactId: conversation.contactId, tag: { queueUserIds: { has: agent.id } } },
+    select: { tag: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return { id: agent.id, displayName: agent.displayName, tagName: link?.tag.name ?? "" };
+}
+
 /** An attendant only takes WhatsApp customers of their own connection; gestor/administrador and Meta channels: any. */
 function canTakeFromQueue(user: { role: Role; whatsappConnectionId: string | null }, conversation: QueueRoutingConversation): boolean {
   if (user.role !== "AGENT" || conversation.channel !== "WHATSAPP") return true;
