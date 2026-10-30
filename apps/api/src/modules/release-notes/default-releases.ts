@@ -11,6 +11,28 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.29.0",
+    date: "29 out 2026",
+    name: "Encerrar conversa no chat interno",
+    summary: "A conversa individual do chat interno pode ser encerrada só para você ou para os dois. O administrador continua com o histórico, agora separado em Ativas e Histórico.",
+    notes: [
+      {
+        type: "novo",
+        area: "geral",
+        title: "Encerrar conversa individual",
+        text: "No topo da conversa com uma pessoa, o botão Encerrar conversa dá duas opções. Encerrar só para mim: a conversa e as mensagens somem da sua lista, e a outra pessoa continua com ela; se alguém escrever de novo, ela volta só com as mensagens novas. Encerrar para os dois: a conversa é apagada dos dois lados, a outra pessoa recebe o aviso e, se conversarem de novo, começa do zero.",
+        where: "Chat interno › conversa com uma pessoa",
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Chat interno: guias Ativas e Histórico",
+        text: "O acompanhamento do chat interno ganhou duas guias. Ativas mostra as conversas e grupos em uso. Histórico guarda as conversas encerradas para os dois e os grupos excluídos, com quem encerrou e quando, e todas as mensagens para leitura. Os filtros Todas, Grupos e Diretas valem nas duas guias.",
+        where: "Operação › Chat interno",
+      },
+    ],
+  },
+  {
     version: "2.28.2",
     date: "29 out 2026",
     name: "Cliente com etiqueta vai direto para quem atende",

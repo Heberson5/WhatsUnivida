@@ -336,6 +336,16 @@ internalChatRouter.put(
 );
 
 internalChatRouter.post(
+  "/rooms/:roomId/close",
+  asyncHandler(async (req, res) => {
+    const { forBoth } = z.object({ forBoth: z.boolean() }).parse(req.body);
+    await service.closeDirect(req.params.roomId, req.auth!.userId, forBoth);
+    if (forBoth) await writeAudit({ userId: req.auth!.userId, action: "INTERNAL_CHAT_DIRECT_CLOSED", entity: "ChatRoom", entityId: req.params.roomId, ipAddress: req.ip ?? null });
+    res.status(204).end();
+  })
+);
+
+internalChatRouter.post(
   "/rooms/:roomId/leave",
   asyncHandler(async (req, res) => {
     await service.leaveGroup(req.params.roomId, req.auth!.userId);

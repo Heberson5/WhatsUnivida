@@ -240,4 +240,59 @@ describe("Chat interno", () => {
     expect(finished.formerMembers).toEqual([expect.objectContaining({ name: "bia", removedByName: "duda" })]);
     expect((await oversightOf(group.id)).map((m: { body: string }) => m.body)).toContain("caio excluiu o grupo");
   });
+
+  const roomsOf = async (who: string) => ((await request(app).get("/api/internal-chat/rooms").set(as(who))).body as { id: string }[]).map((r) => r.id);
+  const close = (who: string, roomId: string, forBoth: boolean) => request(app).post(`/api/internal-chat/rooms/${roomId}/close`).set(as(who)).send({ forBoth });
+  const oversightRoom = async (roomId: string) =>
+    ((await request(app).get("/api/internal-chat/oversight/rooms").set(as("admin"))).body as { id: string }[]).find((r) => r.id === roomId) as Record<string, unknown> & { members: { name: string }[] };
+
+  it("encerrar só para mim: some para quem encerrou e volta, só com as novas, quando o outro escreve", async () => {
+    const dm = (await request(app).post("/api/internal-chat/direct").set(as("ana")).send({ userId: id.caio })).body;
+    await send("ana", dm.id, { body: "antes" }).expect(201);
+    await close("caio", dm.id, false).expect(204);
+    expect(await roomsOf("caio")).not.toContain(dm.id);
+    expect(await roomsOf("ana")).toContain(dm.id);
+    expect((await oversightRoom(dm.id)).deletedAt).toBeNull();
+
+    await send("ana", dm.id, { body: "depois" }).expect(201);
+    expect(await roomsOf("caio")).toContain(dm.id);
+    expect((await messagesOf("caio", dm.id)).map((m: { body: string }) => m.body)).toEqual(["depois"]);
+    expect((await messagesOf("ana", dm.id)).map((m: { body: string }) => m.body)).toEqual(["antes", "depois"]);
+
+    // Quem encerrou abre de novo pela lista de pessoas: a mesma conversa, sem o que já tinha sido apagado para ele.
+    await close("caio", dm.id, false).expect(204);
+    const reopened = (await request(app).post("/api/internal-chat/direct").set(as("caio")).send({ userId: id.ana })).body;
+    expect(reopened).toMatchObject({ id: dm.id, name: "ana" });
+    expect((await messagesOf("caio", dm.id)).map((m: { body: string }) => m.body)).toEqual([]);
+
+    // Os dois encerraram só para si: ninguém mais tem a conversa, e ela vai para o Histórico do administrador.
+    await close("caio", dm.id, false).expect(204);
+    await close("ana", dm.id, false).expect(204);
+    expect(await oversightRoom(dm.id)).toMatchObject({ deletedAt: expect.any(String), deletedByName: "ana" });
+    expect((await oversightRoom(dm.id)).members.map((m) => m.name).sort()).toEqual(["ana", "caio"]);
+  });
+
+  it("encerrar para os dois: some dos dois lados, a próxima começa do zero e o administrador guarda no Histórico", async () => {
+    const dm = (await request(app).post("/api/internal-chat/direct").set(as("ana")).send({ userId: id.duda })).body;
+    await send("ana", dm.id, { body: "assunto" }).expect(201);
+    expect((await close("bia", dm.id, true)).status).toBe(404);
+    await close("duda", dm.id, true).expect(204);
+    expect(await roomsOf("ana")).not.toContain(dm.id);
+    expect(await roomsOf("duda")).not.toContain(dm.id);
+    expect((await send("ana", dm.id, { body: "oi?" })).status).toBe(404);
+
+    const fresh = (await request(app).post("/api/internal-chat/direct").set(as("ana")).send({ userId: id.duda })).body;
+    expect(fresh.id).not.toBe(dm.id);
+    expect(await messagesOf("ana", fresh.id)).toEqual([]);
+
+    const closed = await oversightRoom(dm.id);
+    expect(closed).toMatchObject({ kind: "DIRECT", deletedAt: expect.any(String), deletedByName: "duda" });
+    expect(closed.members.map((m) => m.name).sort()).toEqual(["ana", "duda"]);
+    expect((await oversightOf(dm.id)).map((m: { body: string }) => m.body)).toEqual(["assunto", "duda encerrou a conversa"]);
+  });
+
+  it("grupo e #Geral não se encerram por aqui", async () => {
+    const general = (await request(app).get("/api/internal-chat/rooms").set(as("ana"))).body[0];
+    expect((await close("ana", general.id, true)).status).toBe(400);
+  });
 });

@@ -9,31 +9,33 @@ import { PersonAvatar, RoomIcon } from "../../components/internal-chat/ChatAvata
 import { ChatRoomView } from "../../components/internal-chat/ChatRoomView";
 import { typingLabel, useInternalChatStore } from "../../store/internal-chat-store";
 
-type Filter = "all" | "groups" | "direct" | "finished";
+type Tab = "active" | "history";
+type Filter = "all" | "groups" | "direct";
 
 /**
  * Gestão › Chat interno (administrador only): every conversation of the team as its members see it — plus what
- * disappeared for them (finished groups, temporary, deleted and edited messages). No sign to who is talking; each
- * conversation opened is audited.
+ * disappeared for them (temporary, deleted and edited messages). "Histórico" keeps the deleted groups and the direct
+ * conversations closed for both. No sign to who is talking; each conversation opened is audited.
  */
 export default function AcompanharChatPage() {
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("active");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const typing = useInternalChatStore((s) => s.typing);
   const { data: rooms } = useQuery({ queryKey: ["internal-chat-oversight"], queryFn: async () => (await api.get<ChatOversightRoomDTO[]>("/internal-chat/oversight/rooms")).data });
   const room = rooms?.find((r) => r.id === roomId);
-  const finished = (rooms ?? []).filter((r) => r.deletedAt).length;
+  const historyCount = (rooms ?? []).filter((r) => r.deletedAt).length;
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (rooms ?? []).filter((r) => {
+      if (Boolean(r.deletedAt) !== (tab === "history")) return false;
       if (filter === "groups" && r.kind === "DIRECT") return false;
       if (filter === "direct" && r.kind !== "DIRECT") return false;
-      if (filter === "finished" && !r.deletedAt) return false;
       return !q || r.name.toLowerCase().includes(q) || r.members.some((m) => m.name.toLowerCase().includes(q));
     });
-  }, [rooms, filter, search]);
+  }, [rooms, tab, filter, search]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -46,6 +48,28 @@ export default function AcompanharChatPage() {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className={clsx("flex w-full flex-col border-r border-border bg-surface md:w-80 md:shrink-0", roomId && "hidden md:flex")}>
+          <div className="flex border-b border-border" role="tablist">
+            {(
+              [
+                ["active", "Ativas"],
+                ["history", "Histórico"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={clsx(
+                  "flex-1 border-b-2 px-3 py-2 text-sm font-semibold",
+                  tab === key ? "border-primary text-primary" : "border-transparent text-muted hover:bg-surface-alt"
+                )}
+              >
+                {label}
+                {key === "history" && historyCount > 0 && <span className="ml-1.5 rounded-full bg-surface-alt px-1.5 text-[11px]">{historyCount}</span>}
+              </button>
+            ))}
+          </div>
           <div className="space-y-2 p-3">
             <label className="flex items-center gap-2 rounded-full bg-surface-alt px-3 py-1.5 text-sm text-muted">
               <Search className="h-4 w-4" />
@@ -57,7 +81,6 @@ export default function AcompanharChatPage() {
                   ["all", "Todas"],
                   ["groups", "Grupos"],
                   ["direct", "Diretas"],
-                  ["finished", "Finalizados"],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -66,13 +89,16 @@ export default function AcompanharChatPage() {
                   className={clsx("rounded-full border px-2.5 py-0.5 text-xs font-semibold", filter === key ? "border-primary bg-primary text-primary-fg" : "border-border text-muted hover:bg-surface-alt")}
                 >
                   {label}
-                  {key === "finished" && finished > 0 && <b className="ml-1">{finished}</b>}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {rooms?.length === 0 && <p className="p-4 text-sm text-muted">Nenhuma conversa ainda.</p>}
+            {rooms && visible.length === 0 && (
+              <p className="p-4 text-sm text-muted">
+                {tab === "history" ? "Nenhuma conversa encerrada ou grupo excluído ainda." : search.trim() || filter !== "all" ? "Nenhuma conversa encontrada." : "Nenhuma conversa ainda."}
+              </p>
+            )}
             {visible.map((r) => {
               const live = typingLabel(typing[r.id] ? Object.values(typing[r.id]) : undefined);
               return (
@@ -98,7 +124,9 @@ export default function AcompanharChatPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-semibold">{r.name}</span>
-                      {r.deletedAt && <span className="shrink-0 rounded-full bg-danger-soft px-1.5 text-[10.5px] font-bold text-danger">finalizado</span>}
+                      {r.deletedAt && (
+                        <span className="shrink-0 rounded-full bg-danger-soft px-1.5 text-[10.5px] font-bold text-danger">{r.kind === "DIRECT" ? "encerrada" : "excluído"}</span>
+                      )}
                       {r.autoDeleteSeconds && <Timer className="h-3 w-3 shrink-0 text-warning" />}
                     </span>
                     <span className={clsx("block truncate text-xs", live ? "font-semibold italic text-success" : "text-muted")}>

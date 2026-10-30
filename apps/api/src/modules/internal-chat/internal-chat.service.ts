@@ -134,7 +134,9 @@ async function toRoomDTO(room: RoomWithMembers, me: ChatMember, users: Users, ro
     prisma.chatMessage.count({ where: { AND: [unreadWhere, { mentions: { hasSome: [me.userId, MENTION_ALL] } }] } }),
     activePins(room.id, users),
   ]);
-  const peer = room.kind === "DIRECT" ? (members.find((m) => m.userId !== me.userId) ?? null) : null;
+  // A direct conversation keeps showing who it is with, even while they closed it for themselves.
+  const peerMember = room.kind === "DIRECT" ? room.members.find((m) => m.userId !== me.userId) : undefined;
+  const peer = peerMember ? toMemberDTO(peerMember, room, users) : null;
   const isOwner = room.ownerId === me.userId;
   const manager = room.kind === "GROUP" && (isOwner || me.isAdmin);
   return {
@@ -360,6 +362,15 @@ async function systemLine(room: RoomWithMembers, body: string) {
   void notifyOversight("internal-chat:message", { roomId: room.id });
 }
 
+/** A direct conversation someone closed only for themselves comes back to them with the next message (closeDirect). */
+async function reopenDirect(room: RoomWithMembers): Promise<RoomWithMembers> {
+  const away = room.kind === "DIRECT" ? room.members.filter((m) => m.leftAt) : [];
+  if (!away.length) return room;
+  await prisma.chatMember.updateMany({ where: { id: { in: away.map((m) => m.id) } }, data: { leftAt: null } });
+  realtimeEvents.internalChat(away.map((m) => m.userId), "internal-chat:rooms", {});
+  return prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id }, include: { members: true } });
+}
+
 export interface NewChatMessage {
   body?: string | null;
   conversationId?: string | null;
@@ -399,7 +410,7 @@ async function afterSend(room: RoomWithMembers, userId: string, message: ChatMes
 }
 
 export async function sendMessage(roomId: string, userId: string, input: NewChatMessage): Promise<ChatMessageDTO> {
-  const { room } = await memberOrThrow(roomId, userId);
+  const room = await reopenDirect((await memberOrThrow(roomId, userId)).room);
   if (!input.body?.trim() && !input.attachment && !input.conversationId) throw Errors.badRequest("Mensagem vazia");
   if (input.conversationId && !(await prisma.conversation.findUnique({ where: { id: input.conversationId }, select: { id: true } }))) {
     throw Errors.badRequest("Conversa do cliente nao encontrada");
@@ -499,7 +510,7 @@ export async function react(messageId: string, userId: string, emoji: string | n
 }
 
 export async function createPoll(roomId: string, userId: string, input: { question: string; options: string[]; multiple: boolean }) {
-  const { room } = await memberOrThrow(roomId, userId);
+  const room = await reopenDirect((await memberOrThrow(roomId, userId)).room);
   const options = [...new Set(input.options.map((o) => o.trim()).filter(Boolean))];
   if (options.length < 2) throw Errors.badRequest("A enquete precisa de pelo menos 2 opcoes diferentes");
   const message = await prisma.chatMessage.create({
@@ -616,7 +627,8 @@ export async function messageInfo(messageId: string, userId: string | null): Pro
 
 /** "Chamar a atenção": the receiver's screen shakes. Direct conversations, or a group's owner/admins calling one member. */
 export async function nudge(roomId: string, userId: string, targetId?: string) {
-  const { member, room } = await memberOrThrow(roomId, userId);
+  const { member, room: current } = await memberOrThrow(roomId, userId);
+  const room = await reopenDirect(current);
   const others = activeMembers(room).filter((m) => m.userId !== userId);
   let target: string | undefined;
   if (room.kind === "DIRECT") target = others[0]?.userId;
@@ -689,8 +701,10 @@ export async function openDirect(userId: string, peerId: string, role: Role = "A
   const peer = await prisma.user.findUnique({ where: { id: peerId } });
   if (!peer || peer.status !== "ACTIVE") throw Errors.badRequest("Pessoa nao encontrada");
   const existing = await prisma.chatRoom.findFirst({
-    where: { kind: "DIRECT", AND: [{ members: { some: { userId } } }, { members: { some: { userId: peerId } } }] },
+    where: { kind: "DIRECT", deletedAt: null, AND: [{ members: { some: { userId } } }, { members: { some: { userId: peerId } } }] },
   });
+  // Closed only for me: it comes back, without what I had cleared.
+  if (existing) await prisma.chatMember.updateMany({ where: { roomId: existing.id, userId, leftAt: { not: null } }, data: { leftAt: null } });
   const room = existing ?? (await prisma.chatRoom.create({ data: { kind: "DIRECT", members: { create: [{ userId }, { userId: peerId }] } } }));
   return getRoom(room.id, userId, role);
 }
@@ -820,6 +834,34 @@ export async function leaveGroup(roomId: string, userId: string) {
   realtimeEvents.internalChat([userId], "internal-chat:rooms", {});
 }
 
+/**
+ * Direct conversation › "Encerrar conversa". Only for me: it leaves my list, with what was said so far, and comes back
+ * with the new messages when either of us writes again. For both: it is gone on both sides (the next conversation starts
+ * empty) and the other person is told. Once nobody has it open, Gestão keeps it in Histórico, like a deleted group.
+ */
+export async function closeDirect(roomId: string, userId: string, forBoth: boolean) {
+  const { room } = await memberOrThrow(roomId, userId);
+  if (room.kind !== "DIRECT") throw Errors.badRequest("So conversas individuais podem ser encerradas");
+  const now = new Date();
+  const name = await displayName(userId);
+  const memberIds = activeMembers(room).map((m) => m.userId);
+  if (!forBoth && memberIds.length > 1) {
+    await prisma.chatMember.update({ where: { roomId_userId: { roomId, userId } }, data: { leftAt: now, historyFrom: now, pinnedAt: null, mutedUntil: null } });
+    realtimeEvents.internalChat([userId], "internal-chat:rooms", {});
+    void notifyOversight("internal-chat:rooms", {});
+    return;
+  }
+  if (forBoth) await prisma.chatMessage.create({ data: { roomId, body: `${name} encerrou a conversa`, createdAt: now } });
+  await prisma.$transaction([
+    prisma.chatMember.updateMany({ where: { roomId, leftAt: null }, data: { leftAt: now, removedById: forBoth ? userId : null, pinnedAt: null, mutedUntil: null } }),
+    prisma.chatRoom.update({ where: { id: roomId }, data: { deletedAt: now, deletedById: userId } }),
+  ]);
+  realtimeEvents.internalChat([userId], "internal-chat:rooms", {});
+  const others = memberIds.filter((id) => id !== userId);
+  if (others.length) realtimeEvents.internalChat(others, "internal-chat:rooms", { deletedRoomId: roomId, closedByName: name });
+  void notifyOversight("internal-chat:rooms", {});
+}
+
 /** Direct conversation: "mensagens autoexplosivas" for the messages sent from now on. */
 export async function setAutoDelete(roomId: string, userId: string, seconds: number | null) {
   const { room } = await memberOrThrow(roomId, userId);
@@ -859,9 +901,11 @@ export async function oversightRooms(): Promise<ChatOversightRoomDTO[]> {
     const last = await prisma.chatMessage.findFirst({ where: { roomId: room.id }, orderBy: { createdAt: "desc" } });
     const members = activeMembers(room).map((m) => toMemberDTO(m, room, users));
     // A deleted group: show who was in it at the end, not an empty list.
-    const shown = room.deletedAt ? room.members.filter((m) => m.leftAt?.getTime() === room.deletedAt!.getTime()).map((m) => toMemberDTO(m, room, users)) : members;
+    // A closed direct conversation: both people, whoever closed it first.
+    const endedWith = (m: ChatMember) => room.kind === "DIRECT" || m.leftAt?.getTime() === room.deletedAt!.getTime();
+    const shown = room.deletedAt ? room.members.filter(endedWith).map((m) => toMemberDTO(m, room, users)) : members;
     const formerMembers: ChatFormerMemberDTO[] = room.members
-      .filter((m) => m.leftAt && !(room.deletedAt && m.leftAt.getTime() === room.deletedAt.getTime()))
+      .filter((m) => m.leftAt && !(room.deletedAt && endedWith(m)))
       .map((m) => ({ userId: m.userId, name: nameOf(users, m.userId) ?? "", leftAt: m.leftAt!.toISOString(), removedByName: nameOf(users, m.removedById) }));
     result.push({
       id: room.id,

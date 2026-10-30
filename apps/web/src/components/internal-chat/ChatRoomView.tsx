@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import clsx from "clsx";
-import { ArrowDown, ArrowLeft, Bell, BellOff, Eye, History, Pin, PinOff, Settings2, Star, Timer, Trash2, X, Zap } from "lucide-react";
+import { ArrowDown, ArrowLeft, Bell, BellOff, Eye, History, MessageSquareX, Pin, PinOff, Settings2, Star, Timer, Trash2, X, Zap } from "lucide-react";
 import {
   chatDurationLabel,
   type ChatFormerMemberDTO,
@@ -66,7 +66,7 @@ export function ChatRoomView(props: Props) {
   const [pinFor, setPinFor] = useState<ChatMessageDTO | null>(null);
   const [deleteFor, setDeleteFor] = useState<ChatMessageDTO | null>(null);
   const [editsFor, setEditsFor] = useState<ChatMessageDTO | null>(null);
-  const [dialog, setDialog] = useState<"settings" | "autodelete" | "mute" | "nudge" | null>(null);
+  const [dialog, setDialog] = useState<"settings" | "autodelete" | "mute" | "nudge" | "close" | null>(null);
   const [pinIndex, setPinIndex] = useState(0);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -177,6 +177,16 @@ export function ChatRoomView(props: Props) {
   });
   const favoriteMutation = useMutation({ mutationFn: (favorite: boolean) => api.put(`/internal-chat/rooms/${room.id}/favorite`, { favorite }), onSuccess: refresh, onError });
   const muteMutation = useMutation({ mutationFn: (until: string | null) => api.put(`/internal-chat/rooms/${room.id}/mute`, { until }), onSuccess: () => (refresh(), setDialog(null)), onError });
+  const closeMutation = useMutation({
+    mutationFn: (forBoth: boolean) => api.post(`/internal-chat/rooms/${room.id}/close`, { forBoth }),
+    onSuccess: (_, forBoth) => {
+      toast.success(forBoth ? "Conversa encerrada para os dois." : "Conversa encerrada para você.");
+      setDialog(null);
+      refresh();
+      onBack();
+    },
+    onError,
+  });
 
   const { data: myConversations } = useQuery({
     queryKey: ["mine"],
@@ -281,6 +291,11 @@ export function ChatRoomView(props: Props) {
                 <Timer className={clsx("h-4 w-4", room.autoDeleteSeconds && "text-warning")} />
               </HeaderButton>
             )}
+            {room.kind === "DIRECT" && (
+              <HeaderButton label="Encerrar conversa" className="text-danger" onClick={() => setDialog("close")}>
+                <MessageSquareX className="h-4 w-4" />
+              </HeaderButton>
+            )}
             {room.kind === "GROUP" && (
               <HeaderButton label="Dados do grupo" onClick={() => setDialog("settings")}>
                 <Settings2 className="h-4 w-4" />
@@ -293,7 +308,8 @@ export function ChatRoomView(props: Props) {
       {deletedRoom && (
         <div className="flex items-center gap-2 border-b border-border bg-danger-soft px-4 py-2 text-xs font-semibold text-danger">
           <Trash2 className="h-4 w-4 shrink-0" />
-          Grupo finalizado: excluído por {props.mode === "oversight" ? props.room.deletedByName : ""} em {format(new Date(deletedRoom), "dd/MM/yyyy 'às' HH:mm")}. Os integrantes saíram na hora. Só leitura.
+          {room.kind === "DIRECT" ? "Conversa encerrada" : "Grupo finalizado: excluído"} por {props.mode === "oversight" ? props.room.deletedByName : ""} em{" "}
+          {format(new Date(deletedRoom), "dd/MM/yyyy 'às' HH:mm")}. {room.kind === "DIRECT" ? "Saiu da lista dos dois." : "Os integrantes saíram na hora."} Só leitura.
         </div>
       )}
       {pin && (
@@ -492,6 +508,28 @@ export function ChatRoomView(props: Props) {
                   {m.name}
                 </button>
               ))}
+          </div>
+        </ChatDialog>
+      )}
+      {dialog === "close" && (
+        <ChatDialog title="Encerrar conversa" icon={<MessageSquareX className="h-4 w-4 text-danger" />} onClose={() => setDialog(null)}>
+          <div className="grid gap-2">
+            <button
+              disabled={closeMutation.isPending}
+              onClick={() => closeMutation.mutate(false)}
+              className="rounded-card border border-border px-3 py-2 text-left hover:bg-surface-alt disabled:opacity-60"
+            >
+              <span className="block text-sm font-semibold">Encerrar só para mim</span>
+              <span className="block text-xs text-muted">Some da sua lista, com as mensagens. {peer?.name ?? "A outra pessoa"} continua com a conversa; se alguém escrever de novo, ela volta só com as novas.</span>
+            </button>
+            <button
+              disabled={closeMutation.isPending}
+              onClick={() => closeMutation.mutate(true)}
+              className="rounded-card border border-danger px-3 py-2 text-left hover:bg-danger-soft disabled:opacity-60"
+            >
+              <span className="block text-sm font-semibold text-danger">Encerrar para os dois</span>
+              <span className="block text-xs text-muted">A conversa é apagada para você e para {peer?.name ?? "a outra pessoa"}, que recebe o aviso. Se conversarem de novo, começa do zero.</span>
+            </button>
           </div>
         </ChatDialog>
       )}
