@@ -11,6 +11,7 @@ import {
   type ChatRoomDTO,
   type ConversationListItemDTO,
 } from "@whatsatendende/types";
+import { EmojiPicker } from "../common/EmojiPicker";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { contactDisplayName } from "../../lib/contact-display";
 import { formatAudioTime } from "./ChatAudioPlayer";
@@ -20,30 +21,6 @@ import { ChatDialog } from "./ChatDialogs";
 const TYPING_THROTTLE_MS = 3_000;
 const MAX_TEXTAREA_LINES = 10;
 const WAVEFORM_BARS = 40;
-
-const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
-  { label: "Sorrisos", emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "😉", "😊", "😇", "🥰", "😍", "😘", "😋", "😜", "🤪", "🤔", "🤨", "😐", "🙄", "😏", "😴", "😎", "🥳", "🤗", "🤭", "😬", "😮‍💨"] },
-  { label: "Emoções", emojis: ["😢", "😭", "😤", "😠", "😡", "🤯", "😱", "😨", "😰", "😥", "🥺", "😳", "🥹", "😮", "😯", "😲"] },
-  { label: "Gestos", emojis: ["👍", "👎", "👏", "🙌", "🙏", "👋", "🤝", "💪", "✌️", "🤞", "👌", "✋", "🤙", "👆", "👉", "👀", "🫡", "🫶"] },
-  { label: "Corações", emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💕", "💖", "💗"] },
-  { label: "Trabalho", emojis: ["✅", "❌", "⚠️", "❓", "❗", "📌", "📎", "📄", "📊", "📅", "⏰", "☕", "💡", "🔥", "🎉", "🎂", "🚀", "💰", "📞", "✉️"] },
-];
-
-const RECENT_KEY = "internal-chat:recent-emojis";
-function recentEmojis(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-function rememberEmoji(e: string) {
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify([e, ...recentEmojis().filter((x) => x !== e)].slice(0, 16)));
-  } catch {
-    /* private window: nothing to remember */
-  }
-}
 
 export interface ChatComposerHandle {
   addFiles: (files: File[]) => void;
@@ -76,6 +53,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(function ChatC
   const [mentioned, setMentioned] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const lastTypingSent = useRef(0);
 
@@ -363,22 +350,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(function ChatC
         )}
 
         {panel === "emoji" && (
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-border bg-surface p-2">
-            {[{ label: "Recentes", emojis: recentEmojis() }, ...EMOJI_GROUPS]
-              .filter((g) => g.emojis.length)
-              .map((g) => (
-                <div key={g.label}>
-                  <p className="px-1 text-[10.5px] font-bold uppercase tracking-wider text-muted">{g.label}</p>
-                  <div className="flex flex-wrap">
-                    {g.emojis.map((e) => (
-                      <button key={e} type="button" onClick={() => (rememberEmoji(e), setText((t) => t + e))} className="rounded-lg p-1 text-xl hover:bg-surface-alt">
-                        {e}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
+          <EmojiPicker className="h-72" onPick={insertEmoji} />
         )}
         {panel === "link" && (
           <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-surface p-1">

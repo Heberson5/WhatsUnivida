@@ -11,6 +11,57 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.30.0",
+    date: "30 out 2026",
+    name: "Alerta do corretor, emojis novos e exclusão no chat interno",
+    summary:
+      "Ao enviar para o cliente, o sistema avisa se a mensagem tem erros. Os emojis ficaram iguais em todos os computadores, com painel completo e mais ações na conversa. O administrador pode excluir mensagens e chats do chat interno.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Alerta de erros ao enviar para o cliente",
+        text: "O painel de sugestões saiu de cima da caixa de texto. Agora, ao clicar em enviar, se a mensagem tiver erros aparece um alerta com cada um deles: dá para aplicar a correção, voltar e corrigir ou clicar em Enviar mesmo assim. Nada sai antes disso. Vale para as mensagens e legendas digitadas para o cliente; notas internas, grupos, chat interno e respostas rápidas sem alteração não passam pelo alerta. O sublinhado vermelho do Windows continua funcionando. Alguns erros de gramática podem passar sem aviso.",
+        where: "Atendimento › Responder",
+      },
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Configurações do corretor",
+        text: "Administrador e gestor escolhem se o corretor fica ligado, o que gera alerta (ortografia, gramática, abreviações e informalidade, maiúsculas e pontuação) e os termos da empresa que nunca geram alerta.",
+        where: "Configurações › Corretor",
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Emojis iguais em todos os computadores e painel completo",
+        text: "Os emojis agora têm o mesmo desenho colorido em qualquer computador, inclusive os mais novos e as bandeiras no Windows 10 (desenhos do Twemoji, licença CC-BY 4.0). O painel ficou completo, no atendimento e no chat interno, com categorias, pesquisa em português, recentes e tons de pele, e o emoji entra onde está o cursor.",
+        where: "Atendimento e Chat interno",
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Mais ações na mensagem do cliente",
+        text: "Reaja com qualquer emoji pelo botão +. O novo menu da mensagem traz Responder, Reagir, Copiar e Encaminhar. Dois cliques na mensagem, ou arrastar para a direita no celular, também respondem.",
+        where: "Atendimento › conversa",
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Chat interno: apagar a qualquer momento e #Geral automático",
+        text: "Quem enviou pode apagar a própria mensagem a qualquer momento, e fica \"Mensagem apagada\" para os participantes. Quem responde continua vendo a citação como foi escrita. O #Geral agora acompanha os usuários: novo entra na hora, inativado sai, reativado volta.",
+        where: "Chat interno",
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Excluir mensagens e chats do chat interno",
+        text: "O administrador pode excluir de vez uma mensagem ou um chat inteiro, com os arquivos, nas guias Ativas e Histórico. A mensagem que os participantes viam vira \"Mensagem apagada\"; a que já estava apagada some. O chat inteiro some para todos, e o #Geral não pode ser excluído, só as mensagens dele. Não dá para desfazer; a auditoria guarda só quem excluiu e quando.",
+        where: "Operação › Chat interno",
+      },
+    ],
+  },
+  {
     version: "2.29.0",
     date: "29 out 2026",
     name: "Encerrar conversa no chat interno",

@@ -24,6 +24,7 @@ import { abandonIdleFlowSessions, dispatchWaitingTransfers } from "./modules/flo
 import { processDueSchedules, refreshNextRuns } from "./modules/report-schedules/report-schedules.service";
 import { purgeExpiredTrash } from "./modules/announcements/announcements.service";
 import { todayKey } from "./modules/announcements/announcement-days";
+import { syncGeneralMembers } from "./modules/internal-chat/internal-chat.service";
 
 const AGENT_TOOLS_SWEEP_INTERVAL_MS = 20_000;
 
@@ -65,6 +66,7 @@ async function main() {
 
   // The release notes shipped with this version — each one copied into the database once (see syncDefaultReleaseNotes).
   await syncDefaultReleaseNotes().catch((err) => logger.error({ err }, "failed to copy the shipped release notes"));
+  await syncGeneralMembers().catch((err) => logger.error({ err }, "failed to sync #Geral with the users"));
   await fillShippedNoteImages().catch((err) => logger.error({ err }, "failed to fill in the screenshots of shipped release notes"));
   // Dados › Layouts and Mensagens do boleto start with the Banco do Brasil layouts and "Instruções padrão".
   await ensureBoletoDefaults();

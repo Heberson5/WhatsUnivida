@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The same emojis on every computer (Windows 10's own lack the newer ones and the flags). Only these characters use it,
+   so a screen without emojis never downloads the file. Twemoji: graphics CC-BY 4.0, font OFL-1.1 (public/fonts). */
+@font-face {
+  font-family: "Twemoji";
+  src: url("/fonts/twemoji.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+200D, U+20E3, U+231A-23FF, U+2600-27BF, U+2B00-2BFF, U+FE0F, U+1F000-1FAFF, U+E0020-E007F;
+}
+
+
 :root {
   /* Tells the browser which palette to use for UI it renders itself —
      native <select>/<option> dropdown popups, date/time pickers, the
@@ -149,6 +159,7 @@ body {
   background-image: radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 55%);
   color: var(--color-text);
   font-family:
+    "Twemoji",
     "Inter Variable",
     "Inter",
     system-ui,

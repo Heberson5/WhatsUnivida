@@ -127,7 +127,7 @@ export function useSocketEvents(activeConversationId: string | null) {
       queryClient.invalidateQueries({ queryKey: payload.oversight ? ["internal-chat-oversight"] : ["internal-chat", "messages", payload.roomId] });
     const onInternalChatTyping = (payload: { roomId: string; userId: string; name: string; kind?: "typing" | "recording" }) =>
       useInternalChatStore.getState().setTyping(payload.roomId, payload.userId, payload.name, payload.kind ?? "typing");
-    const onInternalChatRooms = (payload: { deletedRoomId?: string; closedByName?: string; oversight?: boolean }) => {
+    const onInternalChatRooms = (payload: { deletedRoomId?: string; closedByName?: string; deletedByAdmin?: boolean; oversight?: boolean }) => {
       if (payload?.oversight) return void queryClient.invalidateQueries({ queryKey: ["internal-chat-oversight"] });
       queryClient.invalidateQueries({ queryKey: ["internal-chat"] });
       const chat = useInternalChatStore.getState();
@@ -135,6 +135,7 @@ export function useSocketEvents(activeConversationId: string | null) {
       if (wasOpen) chat.setActiveRoom(null);
       // A direct conversation closed for both: the other person always hears of it; a deleted group, only if it was open.
       if (payload?.closedByName) toast.info(`${payload.closedByName} encerrou a conversa com você no chat interno.`);
+      else if (payload?.deletedByAdmin) toast.info("Uma conversa do chat interno foi excluída pelo administrador.");
       else if (wasOpen) toast.info("O grupo foi excluído por quem o criou.");
     };
     // "Chamar a atenção": the whole app shakes (or flashes, for whoever asked the computer for less motion), the

@@ -5,6 +5,7 @@ import { Errors } from "../../lib/http-error";
 import { sendTemplatedMail } from "../../lib/mail";
 import { env } from "../../config/env";
 import { queueMayMove } from "../../lib/presence-status";
+import { syncGeneralMember } from "../internal-chat/internal-chat.service";
 import type { Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import type { AccessSchedule, WeekdayKey } from "@whatsatendende/types";
@@ -99,6 +100,7 @@ export async function createUser(input: {
     },
     include: withConnection,
   });
+  await syncGeneralMember(user.id, "ACTIVE");
   // Never blocks account creation on e-mail delivery — sendTemplatedMail
   // already never throws (SMTP not configured, template disabled, or a
   // send failure all just resolve to { sent: false }).
@@ -181,6 +183,7 @@ export async function setUserStatus(id: string, status: "ACTIVE" | "INACTIVE", a
     },
     include: withConnection,
   });
+  if (changed) await syncGeneralMember(id, status);
   // Only on an actual ACTIVE->INACTIVE transition — never on a no-op PATCH
   // (e.g. deactivating an already-deactivated user) or on reactivation.
   if (status === "INACTIVE" && current.status !== "INACTIVE") {
@@ -234,6 +237,7 @@ export async function deleteUser(id: string, requestingUserId: string) {
   }
   try {
     await prisma.user.delete({ where: { id } });
+    await prisma.chatMember.deleteMany({ where: { userId: id } });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
       throw Errors.badRequest(

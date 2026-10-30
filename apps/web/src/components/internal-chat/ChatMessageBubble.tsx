@@ -13,11 +13,13 @@ import {
   Pencil,
   Pin,
   Reply,
+  Plus,
   SmilePlus,
   Timer,
   Trash2,
   Zap,
 } from "lucide-react";
+import { EmojiPickerDialog } from "../common/EmojiPicker";
 import { CHAT_EDIT_WINDOW_MINUTES, chatDurationLabel, type ChatMessageDTO } from "@whatsatendende/types";
 import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
 import { api } from "../../lib/api";
@@ -38,6 +40,8 @@ export interface BubbleActions {
   onVote?: (pollId: string, optionIds: string[]) => void;
   onOpenConversation?: (id: string) => void;
   onJumpTo?: (messageId: string) => void;
+  /** Administrador: "Excluir mensagem", for good. */
+  onErase?: (m: ChatMessageDTO) => void;
   /** Gestão: "Editada · ver versões". */
   onShowEdits?: (m: ChatMessageDTO) => void;
 }
@@ -179,6 +183,12 @@ export function ChatMessageBubble({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [allEmojis, setAllEmojis] = useState(false);
+  const eraseButton = actions.onErase && (
+    <button type="button" onClick={() => actions.onErase!(message)} className="inline-flex items-center gap-0.5 rounded-full bg-danger-soft px-1.5 font-semibold text-danger" title="Excluir mensagem definitivamente">
+      <Trash2 className="h-3 w-3" /> Excluir
+    </button>
+  );
   const time = format(new Date(message.createdAt), "HH:mm");
 
   if (!message.authorId) {
@@ -186,6 +196,7 @@ export function ChatMessageBubble({
       <SystemLine>
         {message.body}
         {oversight && ` · ${format(new Date(message.createdAt), "dd/MM HH:mm")}`}
+        {eraseButton}
       </SystemLine>
     );
   }
@@ -202,12 +213,15 @@ export function ChatMessageBubble({
       <SystemLine tone="warning">
         <Zap className="h-3.5 w-3.5" />
         {text} · {time}
+        {eraseButton}
       </SystemLine>
     );
   }
 
   const deleted = Boolean(message.deletedAt);
   const expired = Boolean(message.oversight?.expired);
+  const erased = deleted && !message.body && !message.attachment && !message.poll;
+  const deletable = mine && !deleted && !readOnly;
   const editable = mine && !deleted && !readOnly && Date.now() - new Date(message.createdAt).getTime() < CHAT_EDIT_WINDOW_MINUTES * 60_000;
   const showFile = message.attachment && !message.viewOnce && message.kind !== "AUDIO";
 
@@ -221,7 +235,7 @@ export function ChatMessageBubble({
               className={clsx(
                 "absolute -top-4 z-10 hidden items-center gap-0.5 rounded-full border border-border bg-surface px-1 py-0.5 text-muted shadow-elevated group-hover/msg:flex",
                 mine ? "right-2" : "left-2",
-                (menuOpen || pickerOpen) && "!flex"
+                (menuOpen || pickerOpen || allEmojis) && "!flex"
               )}
             >
               {QUICK_REACTIONS.slice(0, 3).map((e) => (
@@ -245,7 +259,19 @@ export function ChatMessageBubble({
                       {e}
                     </button>
                   ))}
+                  <button type="button" onClick={() => (setAllEmojis(true), setPickerOpen(false))} className="rounded-full p-1 hover:bg-surface-alt" aria-label="Mais emojis" title="Mais emojis">
+                    <Plus className="h-4 w-4" />
+                  </button>
                 </div>
+              )}
+              {allEmojis && (
+                <EmojiPickerDialog
+                  onClose={() => setAllEmojis(false)}
+                  onPick={(e) => {
+                    actions.onReact?.(message, e);
+                    setAllEmojis(false);
+                  }}
+                />
               )}
               {menuOpen && (
                 <div className={clsx("absolute top-7 w-48 rounded-xl border border-border bg-surface p-1 text-sm text-[var(--color-text)] shadow-elevated", mine ? "right-0" : "left-0")} onMouseLeave={() => setMenuOpen(false)}>
@@ -272,7 +298,7 @@ export function ChatMessageBubble({
                       Editar
                     </MenuItem>
                   )}
-                  {editable && (
+                  {deletable && (
                     <MenuItem danger icon={<Trash2 className="h-4 w-4" />} onClick={() => (actions.onDelete?.(message), setMenuOpen(false))}>
                       Apagar para todos
                     </MenuItem>
@@ -304,7 +330,7 @@ export function ChatMessageBubble({
                 <span className="line-clamp-2 opacity-90">{message.replyTo.preview}</span>
               </button>
             )}
-            {deleted && !oversight ? (
+            {deleted && (!oversight || erased) ? (
               <p className="flex items-center gap-1.5 italic opacity-80">
                 <Ban className="h-3.5 w-3.5" /> Mensagem apagada
               </p>
@@ -341,7 +367,8 @@ export function ChatMessageBubble({
             <p className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 text-[10.5px] opacity-80">
               {oversight && expired && <Badge tone="warning">Temporária · sumiu {message.expiresAt && format(new Date(message.expiresAt), "dd/MM HH:mm:ss")}</Badge>}
               {oversight && !expired && message.ttlSeconds && <Badge tone="warning">Temporária · {chatDurationLabel(message.ttlSeconds)}</Badge>}
-              {oversight && deleted && <Badge tone="danger">Apagada por quem enviou · {format(new Date(message.deletedAt!), "dd/MM HH:mm")}</Badge>}
+              {oversight && deleted && <Badge tone="danger">{erased ? "Excluída pelo administrador" : "Apagada por quem enviou"} · {format(new Date(message.deletedAt!), "dd/MM HH:mm")}</Badge>}
+              {eraseButton}
               {!oversight && message.ttlSeconds && !deleted && <TempTimer expiresAt={message.expiresAt} ttlSeconds={message.ttlSeconds} ttlFromRead={message.ttlFromRead} />}
               {message.editedAt &&
                 (oversight && actions.onShowEdits ? (

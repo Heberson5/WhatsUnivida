@@ -953,6 +953,7 @@ export function ChatPanel({
       <Composer
         ref={composerRef}
         conversationId={conversation.id}
+        checkWriting
         onScheduleText={
           agentTools
             ? async (body, sendAt) => {

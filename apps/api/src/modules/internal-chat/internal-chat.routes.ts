@@ -6,7 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 import { CHAT_MAX_AUDIO_SECONDS, PERMISSION } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
-import { requireAuth, requireAuthFromHeaderOrQuery } from "../../middleware/auth";
+import { requireAuth, requireAuthFromHeaderOrQuery, requireRole } from "../../middleware/auth";
 import { isPermissionAllowed, requirePermission } from "../../lib/permissions";
 import { writeAudit } from "../../lib/audit";
 import { Errors } from "../../lib/http-error";
@@ -43,6 +43,26 @@ internalChatRouter.get(
   requireOversight,
   asyncHandler(async (_req, res) => {
     res.json(await service.oversightRooms());
+  })
+);
+
+internalChatRouter.delete(
+  "/oversight/messages/:messageId",
+  requireRole("ADMIN"),
+  asyncHandler(async (req, res) => {
+    await service.adminDeleteMessage(req.params.messageId);
+    await writeAudit({ userId: req.auth!.userId, action: "INTERNAL_CHAT_MESSAGE_ERASED", entity: "ChatMessage", entityId: req.params.messageId, ipAddress: req.ip ?? null });
+    res.status(204).end();
+  })
+);
+
+internalChatRouter.delete(
+  "/oversight/rooms/:roomId",
+  requireRole("ADMIN"),
+  asyncHandler(async (req, res) => {
+    await service.adminDeleteRoom(req.params.roomId);
+    await writeAudit({ userId: req.auth!.userId, action: "INTERNAL_CHAT_ROOM_ERASED", entity: "ChatRoom", entityId: req.params.roomId, ipAddress: req.ip ?? null });
+    res.status(204).end();
   })
 );
 

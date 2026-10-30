@@ -3206,6 +3206,29 @@ export function chatDurationLabel(seconds: number): string {
   return `${seconds} segundos`;
 }
 
+/** Configurações › Corretor (one setting for everyone, changed by administrador or gestor). */
+export interface WritingAssistSettingsDTO {
+  enabled: boolean;
+  spelling: boolean;
+  grammar: boolean;
+  /** Abbreviations and informal words ("vc", "tb"). */
+  informal: boolean;
+  /** Capital letters and punctuation. */
+  punctuation: boolean;
+  /** The company's own words, never flagged. */
+  companyTerms: string[];
+}
+
+export const DEFAULT_WRITING_ASSIST_SETTINGS: WritingAssistSettingsDTO = { enabled: true, spelling: true, grammar: true, informal: true, punctuation: true, companyTerms: [] };
+
+export interface WritingIssueDTO {
+  offset: number;
+  length: number;
+  message: string;
+  /** Null when the checker knows it is wrong but has no suggestion. */
+  replacement: string | null;
+}
+
 export interface ChatRoomDTO {
   id: string;
   kind: ChatRoomKind;

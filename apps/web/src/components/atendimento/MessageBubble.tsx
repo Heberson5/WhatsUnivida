@@ -2,9 +2,10 @@ import { PollCard } from "./PollCard";
 import clsx from "clsx";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar, Check, CheckCheck, Clock, ExternalLink, FileText, Forward, MapPin, MessageCircle, ReplyIcon, Smile, Trash2, User, X } from "lucide-react";
+import { Calendar, Check, CheckCheck, Clock, Copy, ExternalLink, FileText, Forward, MapPin, MessageCircle, MoreHorizontal, Plus, ReplyIcon, Smile, Trash2, User, X } from "lucide-react";
+import { EmojiPickerDialog } from "../common/EmojiPicker";
 import type { MessageDTO, MessageAttachmentDTO } from "@whatsatendende/types";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { firstUrl, renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
 import { withAuthToken } from "../../lib/api";
 import { MediaLightbox, type LightboxMedia } from "./MediaLightbox";
@@ -192,6 +193,17 @@ function Attachment({
 }
 
 const FORWARDABLE_TYPES = ["TEXT", "IMAGE", "VIDEO", "DOCUMENT", "AUDIO"];
+const SWIPE_REPLY_PX = 50;
+const SWIPE_MAX_PX = 70;
+
+function MenuAction({ icon, onClick, children }: { icon: React.ReactNode; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-alt">
+      {icon}
+      {children}
+    </button>
+  );
+}
 
 export function MessageBubble({
   message,
@@ -226,6 +238,10 @@ export function MessageBubble({
   highlighted?: boolean;
 }) {
   const [showReactions, setShowReactions] = useState(false);
+  const [showAllEmojis, setShowAllEmojis] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [swipe, setSwipe] = useState(0);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const [showReactors, setShowReactors] = useState(false);
   const [openMedia, setOpenMedia] = useState<LightboxMedia | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -239,6 +255,12 @@ export function MessageBubble({
         isOutbound ? "rounded-br-md bg-primary text-primary-fg" : "rounded-bl-md bg-surface",
         highlighted && "ring-2 ring-yellow-400 ring-offset-2 ring-offset-[var(--color-bg)]"
       )}
+      onDoubleClick={(e) => {
+        // Like WhatsApp Web's reply gesture; links, players and buttons inside the bubble keep their own double click.
+        if (readOnly || (e.target as HTMLElement).closest("a,button,video,audio,input")) return;
+        window.getSelection()?.removeAllRanges();
+        onReply(message);
+      }}
     >
       {!isOutbound && message.senderParticipant && (
         <p className="mb-0.5 text-xs font-bold" style={{ color: message.senderParticipant.color }}>
@@ -407,6 +429,42 @@ export function MessageBubble({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
+      <div className="relative">
+        <button onClick={() => setShowMenu((s) => !s)} className="focus-ring rounded-full p-1.5 text-muted hover:bg-surface-alt hover:text-[var(--color-text)]" aria-label="Mais opções" title="Mais opções">
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+        {showMenu && (
+          <div
+            className={clsx("absolute top-8 z-10 w-40 rounded-xl border border-border bg-surface p-1 text-sm shadow-lg", isOutbound ? "right-0" : "left-0")}
+            onMouseLeave={() => setShowMenu(false)}
+          >
+            <MenuAction icon={<ReplyIcon className="h-4 w-4" />} onClick={() => (onReply(message), setShowMenu(false))}>
+              Responder
+            </MenuAction>
+            {onReact && (
+              <MenuAction icon={<Smile className="h-4 w-4" />} onClick={() => (setShowAllEmojis(true), setShowMenu(false))}>
+                Reagir
+              </MenuAction>
+            )}
+            {message.body && (
+              <MenuAction
+                icon={<Copy className="h-4 w-4" />}
+                onClick={() => {
+                  navigator.clipboard?.writeText(message.body ?? "").catch(() => undefined);
+                  setShowMenu(false);
+                }}
+              >
+                Copiar
+              </MenuAction>
+            )}
+            {onForward && FORWARDABLE_TYPES.includes(message.type) && (
+              <MenuAction icon={<Forward className="h-4 w-4" />} onClick={() => (onForward(message), setShowMenu(false))}>
+                Encaminhar
+              </MenuAction>
+            )}
+          </div>
+        )}
+      </div>
       {onReact && (
         <div className="relative">
           <button
@@ -435,6 +493,17 @@ export function MessageBubble({
                   {emoji}
                 </button>
               ))}
+              <button
+                onClick={() => {
+                  setShowAllEmojis(true);
+                  setShowReactions(false);
+                }}
+                className="focus-ring rounded-full bg-surface-alt p-1 text-muted hover:text-[var(--color-text)]"
+                aria-label="Mais emojis"
+                title="Mais emojis"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
         </div>
@@ -444,7 +513,27 @@ export function MessageBubble({
 
   return (
     <>
-      <div className={clsx("group flex items-end gap-1", isOutbound ? "justify-end" : "justify-start")}>
+      <div
+        className={clsx("group flex items-end gap-1", isOutbound ? "justify-end" : "justify-start")}
+        style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
+        onTouchStart={(e) => {
+          if (!readOnly) swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }}
+        onTouchMove={(e) => {
+          if (!swipeStart.current) return;
+          const dx = e.touches[0].clientX - swipeStart.current.x;
+          const dy = e.touches[0].clientY - swipeStart.current.y;
+          if (Math.abs(dy) > Math.abs(dx)) {
+            swipeStart.current = null;
+            setSwipe(0);
+          } else setSwipe(Math.max(0, Math.min(dx, SWIPE_MAX_PX)));
+        }}
+        onTouchEnd={() => {
+          if (swipe >= SWIPE_REPLY_PX) onReply(message);
+          swipeStart.current = null;
+          setSwipe(0);
+        }}
+      >
         {readOnly ? (
           bubble
         ) : isOutbound ? (
@@ -460,6 +549,15 @@ export function MessageBubble({
         )}
       </div>
       {openMedia && <MediaLightbox media={openMedia} onClose={() => setOpenMedia(null)} />}
+      {showAllEmojis && onReact && (
+        <EmojiPickerDialog
+          onClose={() => setShowAllEmojis(false)}
+          onPick={(emoji) => {
+            onReact(message, emoji);
+            setShowAllEmojis(false);
+          }}
+        />
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

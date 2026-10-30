@@ -1,12 +1,13 @@
 import { useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
+import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, ShieldCheck, CalendarDays, Sparkles, SpellCheck, type LucideIcon } from "lucide-react";
 import { PERMISSION, type Permission } from "@whatsatendende/types";
 import { BrandingPanel } from "./BrandingPanel";
 import { AppInstallPanel } from "./AppInstallPanel";
 import { ExportacoesPanel } from "./ExportacoesPanel";
 import { FeriadosPanel } from "./FeriadosPanel";
 import { FilaSettingsPanel } from "./FilaSettingsPanel";
+import { CorretorPanel } from "./CorretorPanel";
 import { NumerosTelefonePanel } from "./NumerosTelefonePanel";
 import { EmailSettingsPanel } from "./EmailSettingsPanel";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
@@ -18,11 +19,12 @@ import { VisoesColunasPanel } from "./VisoesColunasPanel";
 import { BackupPanel } from "./BackupPanel";
 import { useAuthStore } from "../../store/auth-store";
 
-type Tab = "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
+type Tab = "corretor" | "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
 
 // Grouped by subject in the left-hand section menu.
 const TABS: { key: Tab; label: string; group: string; icon: LucideIcon }[] = [
   { key: "fila", label: "Fila", group: "Atendimento", icon: Clock3 },
+  { key: "corretor", label: "Corretor", group: "Atendimento", icon: SpellCheck },
   { key: "feriados", label: "Feriados", group: "Atendimento", icon: CalendarDays },
   { key: "telefone", label: "Números de telefone", group: "Atendimento", icon: Phone },
   { key: "branding", label: "Identidade visual", group: "Aparência", icon: Palette },
@@ -82,6 +84,7 @@ export default function ConfiguracoesPage() {
   const visibleTabs = TABS.filter((t) => {
     // Notas de versão is edited by administrators only (enforced by the API too — release-notes.routes.ts).
     if (t.key === "permissoes" || t.key === "seguranca" || t.key === "notas-de-versao" || t.key === "backup") return role === "ADMIN";
+    if (t.key === "corretor") return role === "ADMIN" || role === "MANAGER";
     const permission = TAB_PERMISSION[t.key];
     return !permission || permissions?.[permission];
   });
@@ -134,6 +137,7 @@ export default function ConfiguracoesPage() {
         {activeTab === "sms" && <SmsSettingsPanel />}
         {activeTab === "feriados" && <FeriadosPanel />}
         {activeTab === "fila" && <FilaSettingsPanel />}
+        {activeTab === "corretor" && <CorretorPanel />}
         {activeTab === "telefone" && <NumerosTelefonePanel />}
         {activeTab === "visoes" && <VisoesColunasPanel />}
         {activeTab === "seguranca" && role === "ADMIN" && <SecuritySettingsPanel />}

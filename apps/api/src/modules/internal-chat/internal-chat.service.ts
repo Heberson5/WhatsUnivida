@@ -1,3 +1,5 @@
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import type { ChatMember, ChatMessage, ChatRoom, Prisma } from "@prisma/client";
 import {
   CHAT_EDIT_WINDOW_MINUTES,
@@ -16,6 +18,7 @@ import {
   type ChatSearchResultDTO,
   type ChatUserDTO,
 } from "@whatsatendende/types";
+import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
 import { Errors } from "../../lib/http-error";
 import { realtimeEvents } from "../../realtime/realtime";
@@ -55,8 +58,27 @@ export async function listChatUsers(): Promise<ChatUserDTO[]> {
 /** #Geral exists once and every active person is in it. */
 async function ensureGeneral(userId: string) {
   const room = (await prisma.chatRoom.findFirst({ where: { kind: "GENERAL" } })) ?? (await prisma.chatRoom.create({ data: { kind: "GENERAL", name: GENERAL_NAME } }));
-  await prisma.chatMember.upsert({ where: { roomId_userId: { roomId: room.id, userId } }, create: { roomId: room.id, userId }, update: {} });
+  await prisma.chatMember.upsert({ where: { roomId_userId: { roomId: room.id, userId } }, create: { roomId: room.id, userId }, update: { leftAt: null } });
   return room;
+}
+
+/** A new or reactivated user is in #Geral at once; an inactivated one leaves it. Nobody leaves it by themselves. */
+export async function syncGeneralMember(userId: string, status: "ACTIVE" | "INACTIVE") {
+  if (status === "ACTIVE") await ensureGeneral(userId);
+  else await prisma.chatMember.updateMany({ where: { userId, leftAt: null, room: { kind: "GENERAL" } }, data: { leftAt: new Date() } });
+  const room = await prisma.chatRoom.findFirst({ where: { kind: "GENERAL" }, include: { members: true } });
+  if (room) notify(room, "internal-chat:rooms", {});
+}
+
+/** On start: whoever was created or inactivated before #Geral followed the users' status. */
+export async function syncGeneralMembers() {
+  const users = await prisma.user.findMany({ select: { id: true, status: true } });
+  const room = await prisma.chatRoom.findFirst({ where: { kind: "GENERAL" }, include: { members: true } });
+  const inRoom = new Map(room?.members.map((m) => [m.userId, !m.leftAt]));
+  for (const user of users) {
+    const active = user.status === "ACTIVE";
+    if ((inRoom.get(user.id) ?? false) !== active) await syncGeneralMember(user.id, active ? "ACTIVE" : "INACTIVE");
+  }
 }
 
 const activeMembers = (room: RoomWithMembers) => room.members.filter((m) => !m.leftAt);
@@ -97,6 +119,11 @@ function messagePreview(message: Pick<ChatMessage, "kind" | "body" | "attachment
   if (message.kind === "NUDGE") return "⚡ Chamou a atenção";
   if (message.viewOnce) return "① Visualização única";
   return message.body ?? (message.attachmentName ? `📎 ${message.attachmentName}` : "");
+}
+
+/** A reply keeps quoting the message as it was, even after its author deleted it; only what the administrador erased is gone. */
+function quotePreview(message: ChatMessage): string {
+  return messagePreview({ ...message, deletedAt: null }) || "🚫 Mensagem apagada";
 }
 
 async function activePins(roomId: string, users: Users, now = new Date()): Promise<ChatPinDTO[]> {
@@ -266,7 +293,7 @@ function toMessageDTO(message: FullMessage, ctx: MessageContext, now = new Date(
     audio: message.kind === "AUDIO" && !hidden ? { durationMs: message.audioDurationMs ?? 0, waveform: message.audioWaveform } : null,
     conversation: message.conversationId && !hidden ? { id: message.conversationId, contactName: ctx.contacts.get(message.conversationId) ?? "Conversa" } : null,
     replyTo: reply
-      ? { id: reply.id, authorName: nameOf(ctx.users, reply.authorId), preview: !ctx.oversight && reply.expiresAt && reply.expiresAt <= now ? "Mensagem temporária" : messagePreview(reply) }
+      ? { id: reply.id, authorName: nameOf(ctx.users, reply.authorId), preview: !ctx.oversight && reply.expiresAt && reply.expiresAt <= now ? "Mensagem temporária" : quotePreview(reply) }
       : null,
     mentions: message.mentions,
     poll,
@@ -448,13 +475,13 @@ export async function sendMessage(roomId: string, userId: string, input: NewChat
   return oneMessage(message.id, room, userId);
 }
 
-async function ownMessageOrThrow(messageId: string, userId: string) {
+async function ownMessageOrThrow(messageId: string, userId: string, anyTime = false) {
   const message = await prisma.chatMessage.findUnique({ where: { id: messageId } });
   if (!message) throw Errors.notFound("Mensagem nao encontrada");
   const { room } = await memberOrThrow(message.roomId, userId);
   if (message.authorId !== userId) throw Errors.forbidden("So quem enviou pode mudar a mensagem");
   if (message.deletedAt) throw Errors.badRequest("A mensagem foi apagada");
-  if (Date.now() - message.createdAt.getTime() > CHAT_EDIT_WINDOW_MINUTES * 60_000) {
+  if (!anyTime && Date.now() - message.createdAt.getTime() > CHAT_EDIT_WINDOW_MINUTES * 60_000) {
     throw Errors.badRequest(`So e possivel mudar a mensagem ate ${CHAT_EDIT_WINDOW_MINUTES} minutos depois de enviar`);
   }
   return { message, room };
@@ -478,7 +505,7 @@ export async function editMessage(messageId: string, userId: string, body: strin
 
 /** "Apagar para todos": the others see "Mensagem apagada"; Gestão still sees what it was. */
 export async function deleteMessage(messageId: string, userId: string) {
-  const { room } = await ownMessageOrThrow(messageId, userId);
+  const { room } = await ownMessageOrThrow(messageId, userId, true);
   await prisma.chatMessage.update({ where: { id: messageId }, data: { deletedAt: new Date() } });
   await prisma.chatPin.deleteMany({ where: { messageId } });
   notify(room, "internal-chat:message", { roomId: room.id });
@@ -923,6 +950,64 @@ export async function oversightRooms(): Promise<ChatOversightRoomDTO[]> {
     });
   }
   return result.sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));
+}
+
+async function removeFiles(keys: (string | null)[]) {
+  await Promise.all(keys.flatMap((key) => (key ? [unlink(path.resolve(env.UPLOAD_DIR, key)).catch(() => undefined)] : [])));
+}
+
+/**
+ * Administrador › "Excluir mensagem", for good: the text and the file are erased. A message the participants still see
+ * stays as "Mensagem apagada" for them; one they no longer see (already deleted, expired, a system line) disappears.
+ */
+export async function adminDeleteMessage(messageId: string) {
+  const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, include: { poll: { select: { id: true } } } });
+  if (!message) throw Errors.notFound("Mensagem nao encontrada");
+  await prisma.chatPin.deleteMany({ where: { messageId } });
+  const now = new Date();
+  if (message.deletedAt || !message.authorId || (message.expiresAt && message.expiresAt <= now)) {
+    await prisma.chatMessage.delete({ where: { id: messageId } });
+  } else {
+    await prisma.chatMessage.update({
+      where: { id: messageId },
+      data: {
+        kind: "TEXT",
+        body: null,
+        conversationId: null,
+        mentions: [],
+        viewOnce: false,
+        nudgeTargetId: null,
+        attachmentKey: null,
+        attachmentName: null,
+        attachmentMimeType: null,
+        attachmentSize: null,
+        audioDurationMs: null,
+        audioWaveform: [],
+        deletedAt: now,
+        reactions: { deleteMany: {} },
+        views: { deleteMany: {} },
+        edits: { deleteMany: {} },
+        ...(message.poll ? { poll: { delete: true } } : {}),
+      },
+    });
+  }
+  await removeFiles([message.attachmentKey]);
+  const room = await prisma.chatRoom.findUniqueOrThrow({ where: { id: message.roomId }, include: { members: true } });
+  notify(room, "internal-chat:message", { roomId: room.id });
+  void notifyOversight("internal-chat:message", { roomId: room.id });
+}
+
+/** Administrador › "Excluir chat", for good: messages and files included, Histórico too. #Geral stays. */
+export async function adminDeleteRoom(roomId: string) {
+  const room = await prisma.chatRoom.findUnique({ where: { id: roomId }, include: { members: true } });
+  if (!room) throw Errors.notFound("Conversa nao encontrada");
+  if (room.kind === "GENERAL") throw Errors.badRequest("O #Geral nao pode ser excluido");
+  const files = await prisma.chatMessage.findMany({ where: { roomId, attachmentKey: { not: null } }, select: { attachmentKey: true } });
+  const memberIds = activeMembers(room).map((m) => m.userId);
+  await prisma.chatRoom.delete({ where: { id: roomId } });
+  await removeFiles(files.map((f) => f.attachmentKey));
+  if (memberIds.length) realtimeEvents.internalChat(memberIds, "internal-chat:rooms", { deletedRoomId: roomId, deletedByAdmin: true });
+  void notifyOversight("internal-chat:rooms", {});
 }
 
 export async function oversightMessages(roomId: string, before?: string) {

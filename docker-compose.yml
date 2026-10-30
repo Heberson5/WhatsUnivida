@@ -29,6 +29,9 @@ services:
   languagetool:
     image: erikvl87/languagetool:latest
     restart: unless-stopped
+    # LANGUAGETOOL_SCALE=0 in .env keeps it stopped (frees its memory) across
+    # deploys; messages then simply go out without the writing alert.
+    scale: ${LANGUAGETOOL_SCALE:-1}
     # Same reasoning as postgres/redis above — internal-only, no host port.
     # Stateless (no volume needed). The api service calls it over the
     # compose network via LANGUAGETOOL_URL below; a Composer correction

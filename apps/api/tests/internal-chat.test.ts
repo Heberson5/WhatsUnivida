@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
+import { syncGeneralMembers } from "../src/modules/internal-chat/internal-chat.service";
+import * as usersService from "../src/modules/users/users.service";
 import { resetDatabase, createTestUser, TEST_PASSWORD } from "./helpers";
 
 const app = createApp();
@@ -294,5 +296,69 @@ describe("Chat interno", () => {
   it("grupo e #Geral não se encerram por aqui", async () => {
     const general = (await request(app).get("/api/internal-chat/rooms").set(as("ana"))).body[0];
     expect((await close("ana", general.id, true)).status).toBe(400);
+  });
+
+  const erase = (who: string, messageId: string) => request(app).delete(`/api/internal-chat/oversight/messages/${messageId}`).set(as(who));
+
+  it("quem enviou apaga a qualquer momento: fica Mensagem apagada, a resposta continua citando e o administrador vê", async () => {
+    const dm = (await request(app).post("/api/internal-chat/direct").set(as("bia")).send({ userId: id.caio })).body;
+    const old = (await send("bia", dm.id, { body: "texto antigo" })).body;
+    await prisma.chatMessage.update({ where: { id: old.id }, data: { createdAt: new Date(Date.now() - 30 * 86_400_000) } });
+    const reply = (await send("caio", dm.id, { body: "resposta", replyToId: old.id })).body;
+    expect((await request(app).delete(`/api/internal-chat/messages/${old.id}`).set(as("caio"))).status).toBe(403);
+    await request(app).delete(`/api/internal-chat/messages/${old.id}`).set(as("bia")).expect(204);
+
+    const seen = await messagesOf("caio", dm.id);
+    expect(seen.find((m: { id: string }) => m.id === old.id)).toMatchObject({ body: null, deletedAt: expect.any(String) });
+    expect(seen.find((m: { id: string }) => m.id === reply.id).replyTo.preview).toBe("texto antigo");
+    expect((await oversightOf(dm.id)).find((m: { id: string }) => m.id === old.id).body).toBe("texto antigo");
+  });
+
+  it("administrador exclui de vez: a mensagem vira Mensagem apagada; a já apagada some; só o administrador pode", async () => {
+    const dm = (await request(app).post("/api/internal-chat/direct").set(as("bia")).send({ userId: id.duda })).body;
+    const shown = (await send("bia", dm.id, { body: "segredo" })).body;
+    const gone = (await send("bia", dm.id, { body: "já apagada" })).body;
+    await request(app).delete(`/api/internal-chat/messages/${gone.id}`).set(as("bia")).expect(204);
+
+    expect((await erase("gestor", shown.id)).status).toBe(403);
+    await erase("admin", shown.id).expect(204);
+    await erase("admin", gone.id).expect(204);
+
+    const seen = await messagesOf("duda", dm.id);
+    expect(seen.map((m: { id: string }) => m.id)).toEqual([shown.id]);
+    expect(seen[0]).toMatchObject({ body: null, deletedAt: expect.any(String) });
+    expect((await oversightOf(dm.id)).find((m: { id: string }) => m.id === shown.id).body).toBeNull();
+    expect(await prisma.auditLog.count({ where: { action: "INTERNAL_CHAT_MESSAGE_ERASED", entityId: shown.id } })).toBe(1);
+  });
+
+  it("administrador exclui o chat inteiro, também do Histórico; o #Geral não pode, mas as mensagens dele sim", async () => {
+    const group = (await request(app).post("/api/internal-chat/groups").set(as("bia")).send({ name: "Apagar", memberIds: [id.caio] })).body;
+    expect((await request(app).delete(`/api/internal-chat/oversight/rooms/${group.id}`).set(as("gestor"))).status).toBe(403);
+    await request(app).delete(`/api/internal-chat/oversight/rooms/${group.id}`).set(as("admin")).expect(204);
+    expect(await roomsOf("caio")).not.toContain(group.id);
+    expect(await oversightRoom(group.id)).toBeUndefined();
+
+    const general = (await request(app).get("/api/internal-chat/rooms").set(as("ana"))).body[0];
+    expect((await request(app).delete(`/api/internal-chat/oversight/rooms/${general.id}`).set(as("admin"))).status).toBe(400);
+    const line = (await send("ana", general.id, { body: "no geral" })).body;
+    await erase("admin", line.id).expect(204);
+  });
+
+  it("#Geral acompanha os usuários: novo entra na hora, inativado sai, reativado volta", async () => {
+    const general = (await request(app).get("/api/internal-chat/rooms").set(as("ana"))).body[0];
+    const isIn = async (userId: string) => {
+      const member = await prisma.chatMember.findUnique({ where: { roomId_userId: { roomId: general.id, userId } } });
+      return Boolean(member && !member.leftAt);
+    };
+    const created = await usersService.createUser({ fullName: "Novo Usuário", displayName: "Novo", email: "novo-chat@test.dev", password: TEST_PASSWORD, role: "ADMIN" });
+    expect(await isIn(created.id)).toBe(true);
+    await usersService.setUserStatus(created.id, "INACTIVE", id.admin);
+    expect(await isIn(created.id)).toBe(false);
+    await usersService.setUserStatus(created.id, "ACTIVE", id.admin);
+    expect(await isIn(created.id)).toBe(true);
+
+    await prisma.user.update({ where: { id: created.id }, data: { status: "INACTIVE" } });
+    await syncGeneralMembers();
+    expect(await isIn(created.id)).toBe(false);
   });
 });

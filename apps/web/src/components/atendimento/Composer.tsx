@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import clsx from "clsx";
-import { CalendarClock, Mic, Paperclip, Pause, Play, Plus, Send, Trash2, X, MapPin, Bold, Italic, Strikethrough, Code, Wand2, FileText, Image as ImageIcon, Video } from "lucide-react";
-import type { MessageDTO, ReplyMediaDTO } from "@whatsatendende/types";
+import { CalendarClock, Mic, Paperclip, Pause, Play, Plus, Send, Trash2, X, MapPin, Bold, Italic, Strikethrough, Code, FileText, Image as ImageIcon, Video } from "lucide-react";
+import type { MessageDTO, ReplyMediaDTO, WritingIssueDTO } from "@whatsatendende/types";
 import { toast } from "sonner";
 import { DataTagPreview, useDataTagAssist } from "./DataTagAssist";
 import { api } from "../../lib/api";
@@ -9,44 +9,16 @@ import { useAuthStore } from "../../store/auth-store";
 import { draftKey, useDraftStore } from "../../store/draft-store";
 import { useComposerActivityStore } from "../../store/composer-activity-store";
 import { WhenPicker } from "./WhenPicker";
-
-// How long to wait after the agent stops typing before asking for a writing
-// suggestion — same debounce shape as EmailTemplatesPanel's preview call.
-const WRITING_SUGGESTION_DEBOUNCE_MS = 600;
-
-interface WritingSuggestion {
-  offset: number;
-  length: number;
-  message: string;
-  replacement: string;
-}
+import { WritingAlert } from "./WritingAlert";
+import { EmojiPicker } from "../common/EmojiPicker";
 
 // How many bars the live/frozen waveform keeps — older samples scroll off
 // the left, matching WhatsApp Web's own recording indicator.
 const MAX_WAVEFORM_BARS = 42;
 
-// A compact but representative slice of the WhatsApp Web emoji panel —
-// grouped so the picker reads as categories, not one undifferentiated wall.
-const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
-  {
-    label: "Sorrisos",
-    emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "😉", "😊", "😇", "🥰", "😍", "😘", "😋", "😜", "🤪", "🤔", "🤨"],
-  },
-  {
-    label: "Gestos",
-    emojis: ["👍", "👎", "👏", "🙌", "🙏", "👋", "🤝", "💪", "✌️", "🤞", "👌", "✋", "🖐️", "🤙", "👆", "👉"],
-  },
-  {
-    label: "Corações",
-    emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💕", "💖", "💗"],
-  },
-  {
-    label: "Outros",
-    emojis: ["🎉", "🔥", "✨", "⭐", "😢", "😭", "😮", "😱", "😴", "🤗", "😎", "🥳", "✅", "❌", "⚠️", "❓"],
-  },
-];
-
 const MAX_TEXTAREA_LINES = 10;
+// Longer than this and the message goes without the writing check.
+const WRITING_CHECK_TIMEOUT_MS = 2_000;
 // The customer's "digitando…" is told again this often while it lasts, and ends after this long without typing.
 const PRESENCE_REPEAT_MS = 8_000;
 const PRESENCE_IDLE_MS = 5_000;
@@ -172,9 +144,11 @@ export const Composer = forwardRef<
     onScheduleText?: (text: string, sendAt: Date) => Promise<void>;
     /** What the customer's WhatsApp shows of the attendant: "digitando…" while writing, "gravando áudio…" while recording. */
     onPresence?: (presence: "composing" | "recording" | "paused") => void;
+    /** Conversations with a customer: errors found on sending stop it until corrected or sent anyway (Configurações › Corretor). */
+    checkWriting?: boolean;
   }
 >(function Composer(
-  { onSendText, onSendFile, onSendAudio, onSendLocation, quickReplies = [], replyTo, onCancelReply, disabled, conversationId, onScheduleText, loadMentionCandidates, onPresence },
+  { onSendText, onSendFile, onSendAudio, onSendLocation, quickReplies = [], replyTo, onCancelReply, disabled, conversationId, onScheduleText, loadMentionCandidates, onPresence, checkWriting },
   ref
 ) {
   const userId = useAuthStore((s) => s.user?.id);
@@ -207,7 +181,9 @@ export const Composer = forwardRef<
   const [caption, setCaption] = useState("");
   const [selectionBubble, setSelectionBubble] = useState<{ top: number; left: number } | null>(null);
   const [quickReplyActiveIndex, setQuickReplyActiveIndex] = useState(0);
-  const [writingSuggestions, setWritingSuggestions] = useState<WritingSuggestion[]>([]);
+  const [writingAlert, setWritingAlert] = useState<{ target: "text" | number; text: string; issues: WritingIssueDTO[] } | null>(null);
+  // A quick reply was reviewed when it was registered: sent as it is, it raises no alert.
+  const lastQuickReplyRef = useRef<string | null>(null);
   // Something not sent yet: the "Nova versão" popup waits until it goes.
   const composerId = useId();
   const setComposerBusy = useComposerActivityStore((s) => s.setBusy);
@@ -299,43 +275,40 @@ export const Composer = forwardRef<
     setQuickReplyActiveIndex(0);
   }, [quickReplyFilter]);
 
-  // Asks for writing-correction suggestions a short while after the agent
-  // stops typing — debounced the same way EmailTemplatesPanel debounces its
-  // preview call, so it doesn't fire on every keystroke. Best-effort: the
-  // backend already swallows a down/slow LanguageTool instance into an empty
-  // list, so a failed request here just means no suggestions, never an error
-  // the agent has to deal with.
-  useEffect(() => {
-    if (!text.trim() || quickReplyMatch) {
-      setWritingSuggestions([]);
-      return;
+  // The check behind the alert: only on what goes to a customer, and never in the way of sending — anything slower or
+  // broken than this means no alert this time.
+  async function findWritingIssues(value: string): Promise<WritingIssueDTO[]> {
+    if (!checkWriting || !value || value === lastQuickReplyRef.current) return [];
+    try {
+      return (await api.post<WritingIssueDTO[]>("/writing-assist/check", { text: value.slice(0, 4000), conversationId }, { timeout: WRITING_CHECK_TIMEOUT_MS })).data;
+    } catch {
+      return [];
     }
-    const timer = setTimeout(() => {
-      api
-        .post<WritingSuggestion[]>("/writing-assist/check", { text })
-        .then((res) => setWritingSuggestions(res.data))
-        .catch(() => setWritingSuggestions([]));
-    }, WRITING_SUGGESTION_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-
-  // Applying any suggestion (one or all) just clears the list rather than
-  // trying to shift the remaining offsets by hand — the effect above
-  // re-checks the edited text a moment later and whatever's left reappears
-  // with fresh, correct offsets.
-  function applyWritingSuggestion(suggestion: WritingSuggestion) {
-    const { offset, length, replacement } = suggestion;
-    setText((prev) => prev.slice(0, offset) + replacement + prev.slice(offset + length));
-    setWritingSuggestions([]);
-    requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
-  function applyAllWritingSuggestions() {
-    const sorted = [...writingSuggestions].sort((a, b) => b.offset - a.offset);
-    setText((prev) => sorted.reduce((acc, s) => acc.slice(0, s.offset) + s.replacement + acc.slice(s.offset + s.length), prev));
-    setWritingSuggestions([]);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+  // Offsets after the corrected word shift by what it changed; once nothing is left, the attendant presses send again.
+  function applyWritingIssue(index: number) {
+    if (!writingAlert) return;
+    const issue = writingAlert.issues[index];
+    if (issue.replacement === null) return;
+    const next = writingAlert.text.slice(0, issue.offset) + issue.replacement + writingAlert.text.slice(issue.offset + issue.length);
+    const delta = issue.replacement.length - issue.length;
+    const issues = writingAlert.issues.filter((_, i) => i !== index).map((other) => (other.offset > issue.offset ? { ...other, offset: other.offset + delta } : other));
+    if (writingAlert.target === "text") setText(next);
+    else setPendingFiles((prev) => prev.map((f, i) => (i === writingAlert.target ? { ...f, caption: next } : f)));
+    setWritingAlert(issues.length ? { ...writingAlert, text: next, issues } : null);
+    if (!issues.length) requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
   }
 
   function selectQuickReply(reply: QuickReplyOption) {
@@ -348,6 +321,7 @@ export const Composer = forwardRef<
       void stageQuickReplyMedia({ ...reply, text: replyText }, reply.media);
       return;
     }
+    lastQuickReplyRef.current = replyText.trim();
     setText(replyText);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
@@ -365,6 +339,7 @@ export const Composer = forwardRef<
       const { data } = await api.get<Blob>(`/quick-replies/${reply.id}/media`, { responseType: "blob" });
       const file = new File([data], media.fileName, { type: media.mimeType });
       setActiveFileIndex(pendingFiles.length);
+      lastQuickReplyRef.current = reply.text.trim();
       setPendingFiles((prev) => [...prev, { file, caption: reply.text }]);
     } catch {
       // The attachment couldn't be loaded — at least the text is there to send.
@@ -435,12 +410,19 @@ export const Composer = forwardRef<
     }
   }
 
-  async function handleSend() {
+  async function handleSend(sendAnyway = false) {
     if (!text.trim() || sending) return;
     const ready = dataTags.finalize(text.trim());
     if (ready === null) return;
     setSending(true);
     try {
+      if (!sendAnyway) {
+        const issues = await findWritingIssues(ready);
+        if (issues.length) {
+          setWritingAlert({ target: "text", text: ready, issues });
+          return;
+        }
+      }
       await onSendText(ready, replyTo?.id, currentMentions(ready));
       setText("");
       setPickedMentions([]);
@@ -497,11 +479,22 @@ export const Composer = forwardRef<
     setPendingFiles((prev) => prev.map((entry, i) => (i === activeFileIndex ? { ...entry, caption: text } : entry)));
   }
 
-  async function confirmSendFiles() {
+  async function confirmSendFiles(sendAnyway = false) {
     if (pendingFiles.length === 0) return;
     setSending(true);
-    setSendingFileProgress({ done: 0, total: pendingFiles.length });
     try {
+      if (!sendAnyway) {
+        for (let i = 0; i < pendingFiles.length; i++) {
+          const fileCaption = pendingFiles[i].caption.trim();
+          const issues = await findWritingIssues(fileCaption);
+          if (issues.length) {
+            setActiveFileIndex(i);
+            setWritingAlert({ target: i, text: fileCaption, issues });
+            return;
+          }
+        }
+      }
+      setSendingFileProgress({ done: 0, total: pendingFiles.length });
       // Sent one at a time (not Promise.all) so they land in the chat — and
       // on WhatsApp itself — in the same order they were staged, same as
       // WhatsApp Web's own batch-send behavior.
@@ -1118,7 +1111,7 @@ export const Composer = forwardRef<
             className="focus-ring flex-1 rounded-full border border-border bg-transparent px-4 py-2 text-sm"
           />
           <button
-            onClick={confirmSendFiles}
+            onClick={() => confirmSendFiles()}
             disabled={sending}
             className="focus-ring flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg disabled:opacity-60"
           >
@@ -1163,55 +1156,23 @@ export const Composer = forwardRef<
         </div>
       )}
 
+      {writingAlert && (
+        <WritingAlert
+          text={writingAlert.text}
+          issues={writingAlert.issues}
+          onApply={applyWritingIssue}
+          onBack={() => {
+            setWritingAlert(null);
+            requestAnimationFrame(() => textareaRef.current?.focus());
+          }}
+          onSendAnyway={() => {
+            const target = writingAlert.target;
+            setWritingAlert(null);
+            void (target === "text" ? handleSend(true) : confirmSendFiles(true));
+          }}
+        />
+      )}
       <div className="relative border-t border-border bg-surface">
-        {writingSuggestions.length > 0 && (
-          // Normal document flow (not absolute/fixed like the quick-reply
-          // menu above) — this grows the composer and pushes the chat up
-          // instead of floating on top of it. See PROMPT: "ficou em cima do
-          // texto" — the earlier caret-anchored floating chip covered the
-          // message being typed.
-          <div className="border-b border-border bg-surface-alt px-3 py-2 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 font-medium text-muted">
-                <Wand2 className="h-3.5 w-3.5 text-secondary" />
-                {writingSuggestions.length === 1 ? "1 sugestão de escrita" : `${writingSuggestions.length} sugestões de escrita`}
-              </span>
-              <div className="flex items-center gap-3">
-                {writingSuggestions.length > 1 && (
-                  <button type="button" onClick={applyAllWritingSuggestions} className="focus-ring font-medium text-primary hover:underline">
-                    Aplicar todas
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setWritingSuggestions([])}
-                  className="focus-ring rounded-full p-0.5 text-muted hover:bg-surface"
-                  aria-label="Dispensar sugestões"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-            <div className="mt-1.5 space-y-1">
-              {writingSuggestions.map((s, i) => (
-                <div key={`${s.offset}-${i}`} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate">
-                    <span className="text-muted line-through">{text.slice(s.offset, s.offset + s.length)}</span>
-                    <span className="mx-1 text-muted">→</span>
-                    <span className="font-medium text-secondary">{s.replacement}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => applyWritingSuggestion(s)}
-                    className="focus-ring shrink-0 rounded-full bg-secondary px-2 py-0.5 font-medium text-secondary-fg hover:opacity-90"
-                  >
-                    Aplicar
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         {mentionOptions.length > 0 && (
           <div className="shadow-elevated absolute bottom-full left-3 z-20 mb-1 w-72 overflow-hidden rounded-card border border-border bg-surface" onMouseDown={(e) => e.preventDefault()}>
             <p className="border-b border-border px-3 py-1.5 text-[11px] font-semibold text-muted">Marcar no grupo</p>
@@ -1304,29 +1265,8 @@ export const Composer = forwardRef<
             🙂
           </button>
           {showEmoji && (
-            <div className="shadow-elevated absolute bottom-12 left-0 z-10 w-72 rounded-card border border-border bg-surface p-2">
-              <div className="max-h-64 space-y-2 overflow-y-auto">
-                {EMOJI_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{group.label}</p>
-                    <div className="grid grid-cols-8 gap-0.5">
-                      {group.emojis.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => {
-                            setText((t) => t + emoji);
-                            textareaRef.current?.focus();
-                          }}
-                          className="focus-ring rounded p-1 text-lg transition-transform hover:scale-125 hover:bg-surface-alt"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="shadow-elevated absolute bottom-12 left-0 z-10 w-80">
+              <EmojiPicker className="h-96" onPick={insertEmoji} />
             </div>
           )}
         </div>
@@ -1395,7 +1335,7 @@ export const Composer = forwardRef<
         )}
         {text.trim() ? (
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={sending || disabled}
             className="focus-ring shrink-0 rounded-full bg-primary p-2.5 text-primary-fg disabled:opacity-60"
             aria-label="Enviar mensagem"

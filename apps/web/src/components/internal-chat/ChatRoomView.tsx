@@ -55,6 +55,7 @@ export function ChatRoomView(props: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const meId = useAuthStore((s) => s.user?.id ?? null);
+  const canErase = useAuthStore((s) => s.user?.role === "ADMIN") && oversight;
   const typingEntries = useInternalChatStore((s) => s.typing[room.id]);
   const focusMessageId = useInternalChatStore((s) => s.focusMessageId);
   const clearFocus = useInternalChatStore((s) => s.clearFocus);
@@ -65,6 +66,8 @@ export function ChatRoomView(props: Props) {
   const [infoFor, setInfoFor] = useState<ChatMessageDTO | null>(null);
   const [pinFor, setPinFor] = useState<ChatMessageDTO | null>(null);
   const [deleteFor, setDeleteFor] = useState<ChatMessageDTO | null>(null);
+  const [eraseFor, setEraseFor] = useState<ChatMessageDTO | null>(null);
+  const [eraseRoom, setEraseRoom] = useState(false);
   const [editsFor, setEditsFor] = useState<ChatMessageDTO | null>(null);
   const [dialog, setDialog] = useState<"settings" | "autodelete" | "mute" | "nudge" | "close" | null>(null);
   const [pinIndex, setPinIndex] = useState(0);
@@ -177,6 +180,21 @@ export function ChatRoomView(props: Props) {
   });
   const favoriteMutation = useMutation({ mutationFn: (favorite: boolean) => api.put(`/internal-chat/rooms/${room.id}/favorite`, { favorite }), onSuccess: refresh, onError });
   const muteMutation = useMutation({ mutationFn: (until: string | null) => api.put(`/internal-chat/rooms/${room.id}/mute`, { until }), onSuccess: () => (refresh(), setDialog(null)), onError });
+  const refreshOversight = () => queryClient.invalidateQueries({ queryKey: ["internal-chat-oversight"] });
+  const eraseMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/internal-chat/oversight/messages/${id}`),
+    onSuccess: () => (refreshOversight(), setEraseFor(null)),
+    onError,
+  });
+  const eraseRoomMutation = useMutation({
+    mutationFn: () => api.delete(`/internal-chat/oversight/rooms/${room.id}`),
+    onSuccess: () => {
+      toast.success("Chat excluído definitivamente.");
+      refreshOversight();
+      onBack();
+    },
+    onError,
+  });
   const closeMutation = useMutation({
     mutationFn: (forBoth: boolean) => api.post(`/internal-chat/rooms/${room.id}/close`, { forBoth }),
     onSuccess: (_, forBoth) => {
@@ -267,6 +285,11 @@ export function ChatRoomView(props: Props) {
           </label>
         )}
         {props.mode === "oversight" && <OversightPeople room={props.room} />}
+        {canErase && room.kind !== "GENERAL" && (
+          <HeaderButton label="Excluir chat" className="text-danger" onClick={() => setEraseRoom(true)}>
+            <Trash2 className="h-4 w-4" />
+          </HeaderButton>
+        )}
         {member && (
           <>
             {member.canNudge && (
@@ -383,6 +406,7 @@ export function ChatRoomView(props: Props) {
                   onOpenConversation: oversight ? undefined : openConversation,
                   onJumpTo: (id) => void jumpTo(id),
                   onShowEdits: oversight ? setEditsFor : undefined,
+                  onErase: canErase ? setEraseFor : undefined,
                 }}
               />
             </Fragment>
@@ -469,11 +493,40 @@ export function ChatRoomView(props: Props) {
           </div>
         </ChatDialog>
       )}
+      {eraseFor && (
+        <ChatConfirm
+          title="Excluir mensagem definitivamente?"
+          icon={<Trash2 className="h-4 w-4 text-danger" />}
+          message={
+            eraseFor.deletedAt || !eraseFor.authorId
+              ? "A mensagem é apagada de vez, com o arquivo, e some para todos. Não dá para desfazer."
+              : "O texto e o arquivo são apagados de vez, também para o administrador. Os participantes veem “Mensagem apagada”. Não dá para desfazer."
+          }
+          confirmLabel="Excluir"
+          danger
+          busy={eraseMutation.isPending}
+          onConfirm={() => eraseMutation.mutate(eraseFor.id)}
+          onClose={() => setEraseFor(null)}
+        />
+      )}
+      {eraseRoom && (
+        <ChatConfirm
+          title={`Excluir “${room.name}”?`}
+          icon={<Trash2 className="h-4 w-4 text-danger" />}
+          message="O chat inteiro é apagado de vez, com mensagens e arquivos: some para os participantes, das Ativas e do Histórico. Fica só o registro na auditoria de quem excluiu e quando. Não dá para desfazer."
+          confirmLabel="Excluir chat"
+          danger
+          typeToConfirm="EXCLUIR"
+          busy={eraseRoomMutation.isPending}
+          onConfirm={() => eraseRoomMutation.mutate()}
+          onClose={() => setEraseRoom(false)}
+        />
+      )}
       {deleteFor && (
         <ChatConfirm
           title="Apagar para todos?"
           icon={<Trash2 className="h-4 w-4 text-danger" />}
-          message="A mensagem some para todos da conversa e fica “Mensagem apagada” no lugar."
+          message="Para os participantes, fica “Mensagem apagada” no lugar. O administrador continua vendo a mensagem."
           confirmLabel="Apagar"
           danger
           busy={deleteMutation.isPending}

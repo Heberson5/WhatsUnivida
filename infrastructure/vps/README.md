@@ -67,6 +67,20 @@ o do container `web` (corrigido aqui); outro número, como `nginx/1.24.0
 (Ubuntu)`, é o proxy da VPS — e lá é preciso colocar `client_max_body_size
 300m;` no `server` do site (a opção **[24]** do gerenciador já cria assim).
 
+## Corretor: parar para liberar memória
+
+Desligar o corretor em **Configurações › Corretor** só faz o sistema parar de
+usá-lo: o serviço continua ligado, com cerca de 700 MB de memória. Para liberar
+essa memória, coloque `LANGUAGETOOL_SCALE=0` no `.env` do projeto na VPS e rode:
+
+```bash
+docker compose up -d --remove-orphans
+```
+
+Com ele parado, as mensagens saem normalmente, sem o alerta. Para voltar, apague
+essa linha do `.env` e rode o mesmo comando. A escolha continua valendo nos
+próximos deploys.
+
 Um arquivo de 300 MB (cerca de 720 mil linhas) leva perto de 3 minutos para ser
 lido e usa até 2,2 GB de memória enquanto isso: a VPS precisa ter memória livre
 para isso, além do que o sistema já usa.
