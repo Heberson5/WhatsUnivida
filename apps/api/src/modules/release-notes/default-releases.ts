@@ -11,6 +11,21 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.30.1",
+    date: "30 out 2026",
+    name: "Conversas vazias depois do encerramento",
+    summary: "Depois de encerrar um atendimento, não abre mais uma conversa vazia do mesmo cliente em Gestão.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Conversa vazia em Gestão depois de encerrar",
+        text: "Uma conversa encerrada podia ganhar, minutos depois, outra do mesmo cliente, marcada como Atendido pelo celular, sem atendente e sem nenhuma mensagem, parecendo que o aceite e o encerramento não tinham valido. Isso não acontece mais. Uma mensagem realmente escrita no celular depois do encerramento continua abrindo uma conversa nova, com a mensagem dentro. As conversas vazias antigas continuam no histórico.",
+        where: "Gestão",
+      },
+    ],
+  },
+  {
     version: "2.30.0",
     date: "30 out 2026",
     name: "Alerta do corretor, emojis novos e exclusão no chat interno",

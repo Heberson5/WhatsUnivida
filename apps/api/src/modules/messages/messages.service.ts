@@ -199,6 +199,10 @@ export interface CreateOutboundMessageFromDeviceInput extends QuotedStoryInput, 
  * createOutboundMessage, and WhatsApp is just echoing it back through the
  * same live event stream; recording it again would duplicate it.
  */
+export async function isMessageRecorded(providerMessageId: string): Promise<boolean> {
+  return (await prisma.message.count({ where: { providerMessageId } })) > 0;
+}
+
 export async function createOutboundMessageFromDevice(input: CreateOutboundMessageFromDeviceInput) {
   const existing = await prisma.message.findUnique({ where: { providerMessageId: input.providerMessageId } });
   if (existing) return null;

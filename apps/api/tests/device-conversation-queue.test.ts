@@ -98,4 +98,63 @@ describe("conversa iniciada pelo celular", () => {
     const notes = await prisma.conversationNote.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" } });
     expect(notes.at(-1)?.body).toContain("a mensagem de aceite não foi enviada");
   }, 10000);
+
+  describe("mensagem enviada pelo celular depois do encerramento", () => {
+    const waitForHandler = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+    async function closedConversationWithSentMessage(phone: string, providerMessageId: string) {
+      const conversation = await phoneConversationAnsweredBy(phone);
+      await requeueUnansweredDeviceConversations(new Date(Date.now() + 6 * 60_000));
+      await request(app).post(`/api/conversations/${conversation.id}/accept`).set("Authorization", `Bearer ${agentToken}`);
+      const closed = await request(app).post(`/api/conversations/${conversation.id}/close`).set("Authorization", `Bearer ${agentToken}`).send({});
+      expect(closed.status).toBe(200);
+      await prisma.message.create({
+        data: { conversationId: conversation.id, direction: "OUTBOUND", type: "TEXT", status: "SENT", body: "Já registrada", providerMessageId },
+      });
+      return conversation;
+    }
+
+    function deliverFromMe(phone: string, providerMessageId: string) {
+      const provider = __getProviderForTests(connectionId) as unknown as { emitter: { emit(name: string, event: unknown): void } };
+      provider.emitter.emit("message", {
+        providerMessageId,
+        chatId: `${phone}@s.whatsapp.net`,
+        phone,
+        contactName: null,
+        type: "TEXT",
+        body: "Já registrada",
+        replyToProviderMessageId: null,
+        timestamp: new Date(),
+        fromMe: true,
+      });
+    }
+
+    it("uma mensagem já registrada não abre conversa vazia", async () => {
+      const conversation = await closedConversationWithSentMessage("5511990002005", "ja-registrada-1");
+      deliverFromMe("5511990002005", "ja-registrada-1");
+      await waitForHandler();
+      const rows = await prisma.conversation.findMany({ where: { contactId: conversation.contactId } });
+      expect(rows.map((c) => c.status)).toEqual(["CLOSED"]);
+    }, 10000);
+
+    it("uma mensagem já registrada não tira da fila a conversa que está esperando", async () => {
+      const conversation = await phoneConversationAnsweredBy("5511990002006");
+      await requeueUnansweredDeviceConversations(new Date(Date.now() + 6 * 60_000));
+      await prisma.message.create({
+        data: { conversationId: conversation.id, direction: "OUTBOUND", type: "TEXT", status: "SENT", body: "Espera", providerMessageId: "ja-registrada-2" },
+      });
+      deliverFromMe("5511990002006", "ja-registrada-2");
+      await waitForHandler();
+      expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("WAITING");
+    });
+
+    it("uma mensagem nova escrita no celular continua abrindo conversa, com a mensagem dentro", async () => {
+      const conversation = await closedConversationWithSentMessage("5511990002007", "ja-registrada-3");
+      deliverFromMe("5511990002007", "nova-do-celular");
+      await waitForHandler();
+      const rows = await prisma.conversation.findMany({ where: { contactId: conversation.contactId }, orderBy: { createdAt: "asc" }, include: { messages: true } });
+      expect(rows.map((c) => c.status)).toEqual(["CLOSED", "HANDLED_EXTERNALLY"]);
+      expect(rows[1].messages.map((m) => m.providerMessageId)).toEqual(["nova-do-celular"]);
+    }, 10000);
+  });
 });

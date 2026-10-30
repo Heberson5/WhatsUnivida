@@ -618,6 +618,10 @@ function wireProviderEvents(connectionId: string, provider: WhatsAppProvider) {
    * sent itself (see createOutboundMessageFromDevice).
    */
   async function handleDeviceSentMessage(event: InboundMessageEvent) {
+    // Checked before the lookup below, which opens a conversation when none is active: a message
+    // already recorded (delivered again after its conversation closed) left an empty one behind.
+    if (await messagesService.isMessageRecorded(event.providerMessageId)) return;
+
     // contactName is never trusted here (see BaileysWhatsAppProvider) and
     // a fromMe message should never seed a brand-new contact's photo from
     // this account's own profile picture, so no getContactPhoto call here.
