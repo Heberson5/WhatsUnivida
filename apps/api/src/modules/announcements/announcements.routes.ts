@@ -16,6 +16,7 @@ import * as service from "./announcements.service";
 export const announcementsRouter = Router();
 announcementsRouter.use(requireAuth);
 
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe o horário");
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 const tzSchema = z.coerce.number().int().min(-840).max(840).default(240);
 const tzOf = (value: unknown) => tzSchema.parse(value ?? undefined);
@@ -38,7 +39,9 @@ const inputSchema = z.object({
     .default(null),
   linkLabel: z.string().trim().max(40).nullable().default(null),
   startDate: day,
-  endDate: day.nullable().default(null),
+  startTime: time,
+  endDate: day,
+  endTime: time,
   recurrence: z.enum(["ONCE", "DAILY", "WEEKLY", "MONTHLY"]),
   audience: z.object({
     all: z.boolean(),
@@ -186,6 +189,16 @@ announcementsRouter.post(
     const { paused } = z.object({ paused: z.boolean() }).parse(req.body ?? {});
     const updated = await service.setPaused(req.params.id, paused, req.auth!.userId);
     await audit(req, paused ? "ANNOUNCEMENT_PAUSED" : "ANNOUNCEMENT_RESUMED", updated.id);
+    res.json(updated);
+  })
+);
+
+announcementsRouter.post(
+  "/admin/:id/end-now",
+  ...canEdit,
+  asyncHandler(async (req, res) => {
+    const updated = await service.endNow(req.params.id, req.auth!.userId, tzOf(req.body?.tz));
+    await audit(req, "ANNOUNCEMENT_ENDED", updated.id);
     res.json(updated);
   })
 );

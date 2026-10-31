@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { localDay, nextSend, sendDays, type ScheduleRule } from "../src/modules/report-schedules/schedule-dates";
-import { nextDay, occursOn } from "../src/modules/announcements/announcement-days";
+import { hasEnded, hasStarted, nextDay, nowKey, occursOn, showsNow } from "../src/modules/announcements/announcement-days";
 
 const TZ = 240; // UTC-4, Cuiabá
 const noHoliday = () => false;
@@ -110,9 +110,30 @@ describe("avisos do Pop Up — dias em que aparecem", () => {
     expect(occursOn(monthly, "2027-03-30")).toBe(false);
   });
 
+  it("respeita o horário de início e de término, no relógio da pessoa", () => {
+    const a = { startDate: "2026-11-02", startTime: "14:00", endDate: "2026-11-04", endTime: "18:00", recurrence: "DAILY" as const };
+    expect(showsNow(a, "2026-11-02 13:59")).toBe(false);
+    expect(showsNow(a, "2026-11-02 14:00")).toBe(true);
+    expect(showsNow(a, "2026-11-03 02:00")).toBe(true);
+    expect(showsNow(a, "2026-11-04 17:59")).toBe(true);
+    expect(showsNow(a, "2026-11-04 18:00")).toBe(false);
+    expect(hasEnded(a, "2026-11-04 18:00")).toBe(true);
+    expect(hasStarted(a, "2026-11-02 13:59")).toBe(false);
+    expect(nowKey(240, new Date("2026-11-02T18:30:00.000Z"))).toBe("2026-11-02 14:30");
+  });
+
+  it("aviso antigo, sem horários, vale até o fim do último dia", () => {
+    const old = { startDate: "2026-11-02", endDate: null, recurrence: "ONCE" as const };
+    expect(showsNow(old, "2026-11-02 23:59")).toBe(true);
+    expect(hasEnded(old, "2026-11-02 23:59")).toBe(false);
+    expect(hasEnded(old, "2026-11-03 00:00")).toBe(true);
+  });
+
   it("só no dia de início, e nada depois da data de término", () => {
-    expect(occursOn({ ...base, recurrence: "ONCE" }, "2026-11-02")).toBe(true);
-    expect(occursOn({ ...base, recurrence: "ONCE" }, "2026-11-03")).toBe(false);
+    expect(occursOn({ ...base, endDate: null, recurrence: "ONCE" }, "2026-11-02")).toBe(true);
+    expect(occursOn({ ...base, endDate: null, recurrence: "ONCE" }, "2026-11-03")).toBe(false);
+    expect(occursOn({ ...base, recurrence: "ONCE" }, "2026-11-03")).toBe(true);
+    expect(occursOn({ ...base, recurrence: "ONCE" }, "2027-01-01")).toBe(false);
     expect(occursOn({ ...base, recurrence: "DAILY" }, "2027-01-01")).toBe(false);
     expect(nextDay({ ...base, recurrence: "DAILY" }, "2027-01-01")).toBeNull();
   });

@@ -28,7 +28,7 @@ export function useAnnouncementBoard() {
     queryKey: ["announcements", "board"],
     queryFn: async () => (await api.get<BoardResponse>("/announcements/board", { params: { tz: tz() } })).data,
     enabled: canReceive,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -39,6 +39,8 @@ export function usePendingAnnouncements() {
     queryFn: async () => (await api.get<AnnouncementDTO[]>("/announcements/pending", { params: { tz: tz() } })).data,
     enabled: canReceive,
     staleTime: 0,
+    // A notice starts at its own time, on each person's clock.
+    refetchInterval: 60_000,
   });
 }
 

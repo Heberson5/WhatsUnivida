@@ -2028,9 +2028,12 @@ model Announcement {
   pinned      Boolean                @default(false)
   linkUrl     String?
   linkLabel   String?
-  /// Calendar days (YYYY-MM-DD) — the notice has no time of day, only the day it shows.
+  /// Calendar days (YYYY-MM-DD) and times (HH:mm), read on each person's own clock: it starts at startTime on startDate
+  /// and ends at endTime on endDate. Older notices may have none of the times (the whole day) or no endDate.
   startDate   String
+  startTime   String?
   endDate     String?
+  endTime     String?
   recurrence  AnnouncementRecurrence @default(ONCE)
   /// { all: true } or { roles: Role[], connectionIds: string[], userIds: string[] } — anyone matching any list.
   audience    Json

@@ -11,6 +11,35 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.31.0",
+    date: "31 out 2026",
+    name: "Avisos com horário e ciente obrigatório",
+    summary: "Os avisos agora têm data e horário de início e de término, e todo pop-up só fecha com \"Li e estou ciente\", voltando a cada login até a confirmação.",
+    notes: [
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Data e horário de início e de término",
+        text: "Todo aviso novo ou editado precisa ter data e horário de início e de término, inclusive o de uma vez só. O horário segue o relógio de cada pessoa. Nos avisos que se repetem, o início vale para o primeiro dia e o término para o último. Avisos antigos seguem como estão até serem editados.",
+        where: "Pop Up › Avisos",
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Pop-up só fecha com o ciente",
+        text: "Todo pop-up agora só fecha ao clicar em Li e estou ciente, e o limite de 2 vezes por dia acabou: ele volta a cada login até a confirmação ou até o término do aviso. Quem está com o pop-up aberto na hora do término ainda precisa confirmar. As vezes que apareceu continuam contadas no comprovante. Com vários avisos pendentes, eles abrem um por vez, no lugar do resumo.",
+        where: "Pop-up depois do login",
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Encerrar agora",
+        text: "Um botão na lista termina o aviso ativo na hora, sem precisar editar as datas.",
+        where: "Pop Up › Avisos",
+      },
+    ],
+  },
+  {
     version: "2.30.1",
     date: "30 out 2026",
     name: "Conversas vazias depois do encerramento",

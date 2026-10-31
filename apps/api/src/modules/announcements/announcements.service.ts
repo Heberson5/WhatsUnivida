@@ -6,7 +6,6 @@ import { Jimp } from "jimp";
 import { imageSize } from "image-size";
 import type { Announcement, Prisma, Role } from "@prisma/client";
 import {
-  ANNOUNCEMENT_MAX_SHOWS_PER_DAY,
   ANNOUNCEMENT_REACTIONS,
   type AnnouncementAdminDTO,
   type AnnouncementAudience,
@@ -24,7 +23,7 @@ import { Errors } from "../../lib/http-error";
 import { realtimeEvents } from "../../realtime/realtime";
 import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
-import { addDays, hasEnded, nextDay, occursOn, todayKey } from "./announcement-days";
+import { addDays, hasEnded, hasStarted, nextDay, nowKey, showsNow, todayKey } from "./announcement-days";
 
 /**
  * Pop Up › Avisos: notices shown after login ("stories" pop-up, or grouped into Comunicados when there are many) and
@@ -233,16 +232,16 @@ async function viewerUser(userId: string): Promise<AudienceUser> {
 
 // ---------------------------------------------------------------- mapping
 
-function statusOf(a: Announcement, today: string): AnnouncementStatus {
+function statusOf(a: Announcement, now: string): AnnouncementStatus {
   if (a.paused) return "PAUSED";
-  if (hasEnded(a, today)) return "ENDED";
-  if (a.startDate > today) return "SCHEDULED";
+  if (hasEnded(a, now)) return "ENDED";
+  if (!hasStarted(a, now)) return "SCHEDULED";
   return "ACTIVE";
 }
 
 function baseDTO(
   a: Announcement,
-  today: string,
+  now: string,
   extra: { authorName: string | null; readAt: Date | null; ackAt: Date | null; reactions: AnnouncementDTO["reactions"] }
 ): AnnouncementDTO {
   return {
@@ -258,7 +257,9 @@ function baseDTO(
     linkUrl: a.linkUrl,
     linkLabel: a.linkLabel,
     startDate: a.startDate,
+    startTime: a.startTime,
     endDate: a.endDate,
+    endTime: a.endTime,
     recurrence: a.recurrence,
     audience: normalizeAudience(a.audience),
     images: imagesOf(a).map(toFileDTO),
@@ -268,7 +269,7 @@ function baseDTO(
     readAt: extra.readAt?.toISOString() ?? null,
     ackAt: extra.ackAt?.toISOString() ?? null,
     reactions: extra.reactions,
-    showsToday: !a.paused && occursOn(a, today),
+    showsToday: !a.paused && showsNow(a, now),
   };
 }
 
@@ -296,7 +297,7 @@ async function reactionsFor(ids: string[], userId: string | null): Promise<Map<s
 
 async function toAdminDTOs(rows: Announcement[], tz = DEFAULT_TZ): Promise<AnnouncementAdminDTO[]> {
   if (rows.length === 0) return [];
-  const today = todayKey(tz);
+  const now = nowKey(tz);
   const ids = rows.map((r) => r.id);
   const [names, users, receipts, reactions] = await Promise.all([
     authorNames(rows.map((r) => r.createdById)),
@@ -309,15 +310,15 @@ async function toAdminDTOs(rows: Announcement[], tz = DEFAULT_TZ): Promise<Annou
     const audienceIds = new Set(audience.map((u) => u.id));
     const mine = receipts.filter((r) => r.announcementId === a.id && audienceIds.has(r.userId));
     return {
-      ...baseDTO(a, today, { authorName: names.get(a.createdById) ?? null, readAt: null, ackAt: null, reactions: reactions.get(a.id) ?? [] }),
+      ...baseDTO(a, now, { authorName: names.get(a.createdById) ?? null, readAt: null, ackAt: null, reactions: reactions.get(a.id) ?? [] }),
       paused: a.paused,
-      status: statusOf(a, today),
+      status: statusOf(a, now),
       deletedAt: a.deletedAt?.toISOString() ?? null,
       audienceCount: audience.length,
       readCount: mine.filter((r) => r.readAt).length,
       ackCount: mine.filter((r) => r.ackAt).length,
       updatedAt: a.updatedAt.toISOString(),
-      nextDay: a.paused ? null : nextDay(a, today),
+      nextDay: a.paused || hasEnded(a, now) ? null : nextDay(a, now.slice(0, 10)),
     };
   });
 }
@@ -342,8 +343,8 @@ export async function getAdmin(id: string, tz = DEFAULT_TZ): Promise<Announcemen
 }
 
 function inputData(input: AnnouncementInput) {
-  if (input.recurrence !== "ONCE" && input.endDate && input.endDate < input.startDate) {
-    throw Errors.badRequest("A data de término precisa ser igual ou depois da data de início.");
+  if (`${input.endDate} ${input.endTime}` <= `${input.startDate} ${input.startTime}`) {
+    throw Errors.badRequest("O término precisa ser depois do início.");
   }
   return {
     title: input.title.trim(),
@@ -352,12 +353,15 @@ function inputData(input: AnnouncementInput) {
     layout: input.layout,
     display: input.display,
     category: input.category?.trim() || null,
-    requireAck: input.requireAck,
+    // A pop-up only closes with "Li e estou ciente"; the option is only a choice for a notice shown just on the board.
+    requireAck: input.display === "POPUP_AND_BOARD" || input.requireAck,
     pinned: input.pinned,
     linkUrl: input.linkUrl?.trim() || null,
     linkLabel: input.linkLabel?.trim() || null,
     startDate: input.startDate,
-    endDate: input.recurrence === "ONCE" ? null : input.endDate,
+    startTime: input.startTime,
+    endDate: input.endDate,
+    endTime: input.endTime,
     recurrence: input.recurrence,
     audience: normalizeAudience(input.audience) as unknown as Prisma.InputJsonValue,
   };
@@ -390,12 +394,14 @@ export async function duplicate(id: string, userId: string, tz = DEFAULT_TZ): Pr
       layout: source.layout,
       display: source.display,
       category: source.category,
-      requireAck: source.requireAck,
+      requireAck: source.display === "POPUP_AND_BOARD" || source.requireAck,
       pinned: source.pinned,
       linkUrl: source.linkUrl,
       linkLabel: source.linkLabel,
       startDate: today,
+      startTime: source.startTime,
       endDate: length === null ? null : addDays(today, length),
+      endTime: source.endTime,
       recurrence: source.recurrence,
       audience: source.audience as Prisma.InputJsonValue,
       images: copyStoredFiles(imagesOf(source)) as unknown as Prisma.InputJsonValue,
@@ -413,6 +419,17 @@ export async function setPaused(id: string, paused: boolean, userId: string): Pr
   await prisma.announcement.update({ where: { id }, data: { paused, updatedById: userId } });
   realtimeEvents.announcementsChanged();
   return getAdmin(id);
+}
+
+/** "Encerrar agora": it ends at this minute on the clock of whoever clicked; a pop-up already open still waits for its "ciente". */
+export async function endNow(id: string, userId: string, tz = DEFAULT_TZ): Promise<AnnouncementAdminDTO> {
+  const row = await findLive(id);
+  const now = nowKey(tz);
+  if (!hasStarted(row, now)) throw Errors.badRequest("Este aviso ainda não começou.");
+  if (hasEnded(row, now)) throw Errors.badRequest("Este aviso já terminou.");
+  await prisma.announcement.update({ where: { id }, data: { endDate: now.slice(0, 10), endTime: now.slice(11), updatedById: userId } });
+  realtimeEvents.announcementsChanged();
+  return getAdmin(id, tz);
 }
 
 export async function moveToTrash(id: string, userId: string): Promise<void> {
@@ -462,7 +479,7 @@ async function visibleRows(user: AudienceUser): Promise<Announcement[]> {
   return rows.filter((a) => inAudience(user, a.audience));
 }
 
-async function toViewerDTOs(rows: Announcement[], userId: string, today: string): Promise<AnnouncementDTO[]> {
+async function toViewerDTOs(rows: Announcement[], userId: string, now: string): Promise<AnnouncementDTO[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const [names, receipts, reactions] = await Promise.all([
@@ -472,17 +489,17 @@ async function toViewerDTOs(rows: Announcement[], userId: string, today: string)
   ]);
   return rows.map((a) => {
     const receipt = receipts.find((r) => r.announcementId === a.id);
-    return baseDTO(a, today, { authorName: names.get(a.createdById) ?? null, readAt: receipt?.readAt ?? null, ackAt: receipt?.ackAt ?? null, reactions: reactions.get(a.id) ?? [] });
+    return baseDTO(a, now, { authorName: names.get(a.createdById) ?? null, readAt: receipt?.readAt ?? null, ackAt: receipt?.ackAt ?? null, reactions: reactions.get(a.id) ?? [] });
   });
 }
 
 /** Comunicados: what shows today, then the ones that ended in the last BOARD_HISTORY_DAYS ("Anteriores"). */
 export async function board(viewer: Viewer, tz = DEFAULT_TZ): Promise<{ settings: AnnouncementBoardSettingsDTO; items: AnnouncementDTO[]; unread: number }> {
   const user = await viewerUser(viewer.userId);
-  const today = todayKey(tz);
-  const historyFrom = addDays(today, -BOARD_HISTORY_DAYS);
-  const rows = (await visibleRows(user)).filter((a) => a.startDate <= today && !(hasEnded(a, today) && (a.endDate ?? a.startDate) < historyFrom));
-  const items = await toViewerDTOs(rows, user.id, today);
+  const now = nowKey(tz);
+  const historyFrom = addDays(now.slice(0, 10), -BOARD_HISTORY_DAYS);
+  const rows = (await visibleRows(user)).filter((a) => hasStarted(a, now) && !(hasEnded(a, now) && (a.endDate ?? a.startDate) < historyFrom));
+  const items = await toViewerDTOs(rows, user.id, now);
   return { settings: await getBoardSettings(), items, unread: items.filter((i) => i.showsToday && !i.readAt).length };
 }
 
@@ -491,14 +508,15 @@ export async function unreadCount(viewer: Viewer, tz = DEFAULT_TZ): Promise<numb
 }
 
 /**
- * The pop-ups due for this login session: notices that show today, as pop-up, that this person has seen fewer than
- * ANNOUNCEMENT_MAX_SHOWS_PER_DAY times today and not yet in this session — a reminder from "Lembrar pendentes" brings
- * one back once more. A confirmed "Li e estou ciente" stops it for good.
+ * The pop-ups due for this login session: notices showing now, as pop-up, that this person has not yet seen in this
+ * session — so every login, until they confirm "Li e estou ciente" or the notice ends. A reminder from "Lembrar
+ * pendentes" brings one back once more. Each showing is still counted (see markShown).
  */
 export async function pending(viewer: Viewer, tz = DEFAULT_TZ): Promise<AnnouncementDTO[]> {
   const user = await viewerUser(viewer.userId);
-  const today = todayKey(tz);
-  const rows = (await visibleRows(user)).filter((a) => a.display === "POPUP_AND_BOARD" && occursOn(a, today));
+  const now = nowKey(tz);
+  const today = now.slice(0, 10);
+  const rows = (await visibleRows(user)).filter((a) => a.display === "POPUP_AND_BOARD" && showsNow(a, now));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const [deliveries, receipts] = await Promise.all([
@@ -512,13 +530,12 @@ export async function pending(viewer: Viewer, tz = DEFAULT_TZ): Promise<Announce
     const reminded = receipt?.remindedAt && (!delivery || receipt.remindedAt > delivery.lastShownAt);
     if (reminded) return true;
     if (!delivery) return true;
-    if (delivery.count >= ANNOUNCEMENT_MAX_SHOWS_PER_DAY) return false;
     return !viewer.sessionId || !delivery.sessionIds.includes(viewer.sessionId);
   });
   // Urgent first, then those that need a "ciente", then the newest.
   const weight = (a: Announcement) => (a.kind === "URGENT" ? 0 : a.requireAck ? 1 : 2);
   due.sort((a, b) => weight(a) - weight(b) || b.createdAt.getTime() - a.createdAt.getTime());
-  return toViewerDTOs(due, user.id, today);
+  return toViewerDTOs(due, user.id, now);
 }
 
 /** The pop-up was shown in this session: counts one of today's showings and marks it as read. */

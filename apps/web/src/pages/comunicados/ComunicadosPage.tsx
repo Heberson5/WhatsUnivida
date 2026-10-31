@@ -7,7 +7,7 @@ import { ArrowRight, CheckCircle2, ExternalLink, FileText, Pin, Search, ShieldCh
 import { ANNOUNCEMENT_KIND_LABEL, type AnnouncementDTO } from "@whatsatendende/types";
 import { api } from "../../lib/api";
 import { useAnnouncementBoard, type BoardResponse } from "../../hooks/useAnnouncements";
-import { AnnouncementBody, KIND_STYLE, KindBadge, reducedMotion } from "../../components/announcements/announcement-ui";
+import { AnnouncementBody, KIND_STYLE, KindBadge, reducedMotion, announcementUntil } from "../../components/announcements/announcement-ui";
 
 const HERO_MS = 5000;
 
@@ -284,7 +284,7 @@ function Tile({ item, delay, onOpen }: { item: AnnouncementDTO; delay: number; o
         </p>
         <p className="mb-2.5 line-clamp-2 text-sm font-semibold leading-snug">{item.title}</p>
         <div className="flex justify-between text-xs text-muted">
-          <span>{shortDate(item.startDate)}</span>
+          <span>{(item.showsToday && announcementUntil(item)) || shortDate(item.startDate)}</span>
           <span>
             {item.requireAck && (item.ackAt ? "Ciente ✓" : "Pede ciente")}
             {likes > 0 && ` · ${likes} reações`}

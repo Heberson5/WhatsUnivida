@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import clsx from "clsx";
-import { BarChart3, BellRing, Copy, Download, Pause, Pencil, Pin, Play, Plus, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { BarChart3, BellRing, Copy, Download, Pause, Pencil, Pin, Play, Plus, Power, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import {
   ANNOUNCEMENT_RECURRENCE_LABEL,
   PERMISSION,
@@ -14,7 +14,7 @@ import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { downloadFile } from "../../lib/download";
 import { useBoardName } from "../../hooks/useAnnouncements";
-import { KIND_STYLE, KindBadge } from "../../components/announcements/announcement-ui";
+import { KIND_STYLE, KindBadge, announcementPeriod } from "../../components/announcements/announcement-ui";
 import { AnnouncementFormModal } from "./AnnouncementFormModal";
 
 const STATUS: Record<AnnouncementStatus, { label: string; className: string }> = {
@@ -91,6 +91,14 @@ export function AvisosTab() {
     },
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
+  const endNow = useMutation({
+    mutationFn: (a: AnnouncementAdminDTO) => api.post(`/announcements/admin/${a.id}/end-now`, { tz: tz() }),
+    onSuccess: () => {
+      refresh();
+      toast.success("Aviso encerrado.");
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
   const trash = useMutation({
     mutationFn: (a: AnnouncementAdminDTO) => api.delete(`/announcements/admin/${a.id}`),
     onSuccess: () => {
@@ -111,8 +119,7 @@ export function AvisosTab() {
         <div className="max-w-2xl">
           <h2 className="text-base font-semibold">Avisos</h2>
           <p className="mt-1 text-sm text-muted">
-            Avisos que aparecem depois do login — e na hora, para quem já estiver no sistema —, no máximo 2 vezes no dia. Até 2 de uma vez abrem como histórias; com 3 ou mais, aparece um resumo que leva
-            para {boardName}.
+            Avisos que aparecem a cada login — e na hora, para quem já estiver no sistema — do início ao término, até a pessoa clicar em "Li e estou ciente". Os avisos também ficam em {boardName}.
           </p>
           {can.edit && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -171,8 +178,7 @@ export function AvisosTab() {
                   {a.requireAck && <ShieldCheck className="h-3.5 w-3.5 text-warning" aria-label="Pede ciente" />}
                 </p>
                 <p className="mt-0.5 text-xs text-muted">
-                  {formatDay(a.startDate)}
-                  {a.recurrence !== "ONCE" && (a.endDate ? ` a ${formatDay(a.endDate)}` : " em diante")} · {ANNOUNCEMENT_RECURRENCE_LABEL[a.recurrence]}
+                  {announcementPeriod(a)} · {ANNOUNCEMENT_RECURRENCE_LABEL[a.recurrence]}
                   {a.display === "BOARD_ONLY" ? ` · só em ${boardName}` : ""}
                   {a.category ? ` · ${a.category}` : ""}
                   {a.nextDay && a.status !== "ACTIVE" ? ` · próximo: ${formatDay(a.nextDay)}` : ""}
@@ -199,6 +205,14 @@ export function AvisosTab() {
                 {can.edit && a.status !== "ENDED" && (
                   <button onClick={() => pause.mutate(a)} className="focus-ring flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-alt">
                     {a.paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />} {a.paused ? "Retomar" : "Pausar"}
+                  </button>
+                )}
+                {can.edit && a.status === "ACTIVE" && (
+                  <button
+                    onClick={() => window.confirm(`Encerrar "${a.title}" agora? Ele deixa de abrir para quem ainda não viu.`) && endNow.mutate(a)}
+                    className="focus-ring flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-alt"
+                  >
+                    <Power className="h-3.5 w-3.5" /> Encerrar agora
                   </button>
                 )}
                 {can.remove && (

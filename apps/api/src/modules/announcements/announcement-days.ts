@@ -1,9 +1,10 @@
 import type { AnnouncementRecurrence } from "@whatsatendende/types";
 
 /**
- * Which days a notice shows. A notice has no time of day — only days (YYYY-MM-DD): from its start date to its end
- * date (or only the start date, for ONCE), every day, on the start date's weekday (WEEKLY) or on the start date's day of
- * the month (MONTHLY — a 31 falls on the last day of a shorter month).
+ * When a notice shows, on each person's own clock: from its start date and time to its end date and time, every day
+ * (ONCE, DAILY), on the start date's weekday (WEEKLY) or on the start date's day of the month (MONTHLY — a 31 falls on
+ * the last day of a shorter month). Older notices may have no times (the whole day) and no end date (ONCE: only its start
+ * date; the others: no end).
  */
 
 const DAY_MS = 86_400_000;
@@ -12,6 +13,8 @@ export interface AnnouncementDays {
   startDate: string;
   endDate: string | null;
   recurrence: AnnouncementRecurrence;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 function parse(day: string): Date {
@@ -31,15 +34,20 @@ export function todayKey(tzOffsetMinutes: number, now = new Date()): string {
   return dayKey(new Date(now.getTime() - tzOffsetMinutes * 60_000));
 }
 
+/** The person's date and time right now, "YYYY-MM-DD HH:mm": compared as text against a notice's start and end. */
+export function nowKey(tzOffsetMinutes: number, now = new Date()): string {
+  return new Date(now.getTime() - tzOffsetMinutes * 60_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
 function lastDayOfMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 }
 
 export function occursOn(a: AnnouncementDays, day: string): boolean {
   if (day < a.startDate) return false;
-  if (a.recurrence === "ONCE") return day === a.startDate;
-  if (a.endDate && day > a.endDate) return false;
-  if (a.recurrence === "DAILY") return true;
+  const last = lastDay(a);
+  if (last && day > last) return false;
+  if (a.recurrence === "ONCE" || a.recurrence === "DAILY") return true;
   const start = parse(a.startDate);
   const d = parse(day);
   if (a.recurrence === "WEEKLY") return d.getUTCDay() === start.getUTCDay();
@@ -49,7 +57,7 @@ export function occursOn(a: AnnouncementDays, day: string): boolean {
 
 /** The last day it can show — null when it repeats with no end. */
 export function lastDay(a: AnnouncementDays): string | null {
-  return a.recurrence === "ONCE" ? a.startDate : a.endDate;
+  return a.endDate ?? (a.recurrence === "ONCE" ? a.startDate : null);
 }
 
 /** The first day it shows on or after `from` — null once it has ended. Looks at most ~13 months ahead. */
@@ -64,8 +72,16 @@ export function nextDay(a: AnnouncementDays, from: string): string | null {
   return null;
 }
 
-/** Whether it is over: its last day has passed. */
-export function hasEnded(a: AnnouncementDays, today: string): boolean {
+export function hasStarted(a: AnnouncementDays, now: string): boolean {
+  return now >= `${a.startDate} ${a.startTime ?? "00:00"}`;
+}
+
+/** Whether it is over: its end date and time have arrived. */
+export function hasEnded(a: AnnouncementDays, now: string): boolean {
   const last = lastDay(a);
-  return last !== null && today > last;
+  return last !== null && now >= `${last} ${a.endTime ?? "24:00"}`;
+}
+
+export function showsNow(a: AnnouncementDays, now: string): boolean {
+  return occursOn(a, now.slice(0, 10)) && hasStarted(a, now) && !hasEnded(a, now);
 }

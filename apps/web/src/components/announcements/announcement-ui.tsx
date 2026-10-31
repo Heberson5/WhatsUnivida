@@ -34,6 +34,20 @@ export function AnnouncementBody({ text, className }: { text: string; className?
   );
 }
 
+const shownDay = (day: string) => day.split("-").reverse().join("/");
+const shownMoment = (day: string, time: string | null) => `${shownDay(day)}${time ? ` às ${time}` : ""}`;
+
+/** When a notice runs: "01/11/2026 às 08:00 até 05/11/2026 às 18:00". */
+export function announcementPeriod(a: Pick<AnnouncementDTO, "startDate" | "startTime" | "endDate" | "endTime" | "recurrence">): string {
+  const start = shownMoment(a.startDate, a.startTime);
+  if (a.endDate) return `${start} até ${shownMoment(a.endDate, a.endTime)}`;
+  return a.recurrence === "ONCE" ? start : `${start} em diante`;
+}
+
+export function announcementUntil(a: Pick<AnnouncementDTO, "endDate" | "endTime">): string | null {
+  return a.endDate ? `Até ${shownMoment(a.endDate, a.endTime)}` : null;
+}
+
 const CONFETTI = ["#ffe450", "#ff8fab", "#7dd3fc", "#a7f3d0", "#c4b5fd", "#fdba74"];
 
 export function reducedMotion(): boolean {
@@ -57,7 +71,7 @@ export function StoryCard({
   onNext,
   busy,
 }: {
-  item: Pick<AnnouncementDTO, "kind" | "layout" | "title" | "body" | "images" | "attachments" | "linkUrl" | "linkLabel" | "requireAck">;
+  item: Pick<AnnouncementDTO, "kind" | "layout" | "title" | "body" | "images" | "attachments" | "linkUrl" | "linkLabel" | "requireAck" | "endDate" | "endTime">;
   boardName: string;
   index: number;
   total: number;
@@ -132,6 +146,7 @@ export function StoryCard({
           )}
           <h2 className="text-[22px] font-semibold leading-tight tracking-[-0.3px]">{item.title || "Título do aviso"}</h2>
           {item.body && <AnnouncementBody text={item.body} className="mt-2 max-h-[30vh] overflow-y-auto text-[14px] leading-relaxed opacity-90" />}
+          {announcementUntil(item) && <p className="mt-2 text-xs opacity-80">{announcementUntil(item)}</p>}
           <div className={clsx("space-y-2", item.layout === "COVER" && cover ? "mt-auto pt-5" : "mt-5")}>
             {onPrimary !== undefined && (
               <button

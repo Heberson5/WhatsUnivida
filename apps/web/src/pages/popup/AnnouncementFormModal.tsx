@@ -41,6 +41,11 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function nowLocal() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function emptyAnnouncement(): AnnouncementInput {
   return {
     title: "",
@@ -49,12 +54,14 @@ export function emptyAnnouncement(): AnnouncementInput {
     layout: "COVER",
     display: "POPUP_AND_BOARD",
     category: null,
-    requireAck: false,
+    requireAck: true,
     pinned: false,
     linkUrl: null,
     linkLabel: null,
     startDate: todayLocal(),
-    endDate: null,
+    startTime: nowLocal(),
+    endDate: todayLocal(),
+    endTime: "23:59",
     recurrence: "ONCE",
     audience: { all: true, roles: [], connectionIds: [], userIds: [] },
   };
@@ -73,7 +80,10 @@ export function toAnnouncementInput(a: AnnouncementAdminDTO): AnnouncementInput 
     linkUrl: a.linkUrl,
     linkLabel: a.linkLabel,
     startDate: a.startDate,
-    endDate: a.endDate,
+    // Older notices had no times, and a single-day one no end date: they ran for the whole day.
+    startTime: a.startTime ?? "00:00",
+    endDate: a.endDate ?? (a.recurrence === "ONCE" ? a.startDate : null),
+    endTime: a.endTime ?? "23:59",
     recurrence: a.recurrence,
     audience: a.audience,
   };
@@ -168,7 +178,7 @@ export function AnnouncementFormModal({
   async function save() {
     setSaving(true);
     try {
-      const payload = { ...form, endDate: form.recurrence === "ONCE" ? null : form.endDate };
+      const payload = { ...form, requireAck: popupNeedsAck || form.requireAck };
       const saved = existing ? (await api.patch<AnnouncementAdminDTO>(`/announcements/admin/${existing.id}`, payload)).data : (await api.post<AnnouncementAdminDTO>("/announcements/admin", payload)).data;
       for (const key of removed) await api.delete(`/announcements/admin/${saved.id}/files/${key}`);
       for (const { file } of queuedImages) {
@@ -199,12 +209,21 @@ export function AnnouncementFormModal({
         ? `Aparece todo dia ${start.getDate()}${start.getDate() > 28 ? " (no último dia, nos meses mais curtos)" : ""}`
         : form.recurrence === "DAILY"
           ? "Aparece todos os dias"
-          : "Aparece só no dia de início";
+          : "Aparece durante todo o período";
+  const popupNeedsAck = form.display === "POPUP_AND_BOARD";
+  const endMoment = form.endDate && form.endTime ? `${form.endDate} ${form.endTime}` : null;
+  const periodError = !form.startTime || !endMoment
+    ? "Informe a data e o horário de início e de término."
+    : endMoment <= `${form.startDate} ${form.startTime}`
+      ? "O término precisa ser depois do início."
+      : endMoment <= `${todayLocal()} ${nowLocal()}`
+        ? "O término já passou: escolha uma data e um horário futuros."
+        : null;
   const users = (attendants ?? []).filter((u) => u.status === "ACTIVE" && u.displayName.toLowerCase().includes(userQuery.trim().toLowerCase()));
   const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   const audience = form.audience;
   const audienceEmpty = !audience.all && audience.roles.length + audience.connectionIds.length + audience.userIds.length === 0;
-  const invalid = !form.title.trim() || audienceEmpty || (form.recurrence !== "ONCE" && form.endDate !== null && form.endDate < form.startDate);
+  const invalid = !form.title.trim() || audienceEmpty || periodError !== null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:p-6" onClick={onClose}>
@@ -352,12 +371,24 @@ export function AnnouncementFormModal({
 
             <section className="rounded-card border border-border p-4">
               <h3 className="mb-3 text-sm font-semibold">Quando aparece</h3>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className={labelClass}>Início</span>
                   <input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} className={inputClass} />
                 </label>
                 <label className="block">
+                  <span className={labelClass}>Horário de início</span>
+                  <input type="time" value={form.startTime ?? ""} onChange={(e) => set("startTime", e.target.value || null)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>Término</span>
+                  <input type="date" value={form.endDate ?? ""} min={form.startDate} onChange={(e) => set("endDate", e.target.value || null)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>Horário de término</span>
+                  <input type="time" value={form.endTime ?? ""} onChange={(e) => set("endTime", e.target.value || null)} className={inputClass} />
+                </label>
+                <label className="col-span-2 block">
                   <span className={labelClass}>Repetição</span>
                   <select value={form.recurrence} onChange={(e) => set("recurrence", e.target.value as AnnouncementRecurrence)} className={inputClass}>
                     {(Object.keys(ANNOUNCEMENT_RECURRENCE_LABEL) as AnnouncementRecurrence[]).map((r) => (
@@ -367,17 +398,12 @@ export function AnnouncementFormModal({
                     ))}
                   </select>
                 </label>
-                {form.recurrence !== "ONCE" && (
-                  <label className="block">
-                    <span className={labelClass}>Término</span>
-                    <input type="date" value={form.endDate ?? ""} min={form.startDate} onChange={(e) => set("endDate", e.target.value || null)} className={inputClass} />
-                  </label>
-                )}
               </div>
               <p className="mt-2 text-xs text-muted">
-                {repeatHelp}
-                {form.recurrence !== "ONCE" && !form.endDate ? ", sem data para terminar" : ""}. Aparece depois do login — e na hora, para quem já estiver no sistema — no máximo 2 vezes no dia.
+                {repeatHelp}, no horário de cada pessoa.
+                {popupNeedsAck ? " O pop-up aparece a cada login — e na hora, para quem já estiver no sistema — e só fecha quando a pessoa clica em \"Li e estou ciente\". Depois do término, não abre mais." : ""}
               </p>
+              {periodError && <p className="mt-1 text-xs font-medium text-red-600">{periodError}</p>}
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="flex items-start gap-2 text-sm">
                   <input type="radio" className="mt-1" checked={form.display === "POPUP_AND_BOARD"} onChange={() => set("display", "POPUP_AND_BOARD")} />
@@ -394,12 +420,12 @@ export function AnnouncementFormModal({
                   </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" checked={form.requireAck} onChange={(e) => set("requireAck", e.target.checked)} />
+                  <input type="checkbox" className="mt-1" checked={popupNeedsAck || form.requireAck} disabled={popupNeedsAck} onChange={(e) => set("requireAck", e.target.checked)} />
                   <span>
                     <span className="flex items-center gap-1 font-medium">
                       <ShieldCheck className="h-4 w-4 text-warning" /> Exigir "Li e estou ciente"
                     </span>
-                    <span className="block text-xs text-muted">Para de aparecer quando a pessoa confirma; fica o comprovante</span>
+                    <span className="block text-xs text-muted">{popupNeedsAck ? "Obrigatório em todo pop-up; fica o comprovante" : "Fica o comprovante de quem confirmou"}</span>
                   </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
@@ -481,7 +507,7 @@ export function AnnouncementFormModal({
                   index={0}
                   total={1}
                   progress={0.35}
-                  primaryLabel={form.requireAck ? "Li e estou ciente" : "Entendi"}
+                  primaryLabel={popupNeedsAck || form.requireAck ? "Li e estou ciente" : "Entendi"}
                   onPrimary={() => undefined}
                 />
               </div>

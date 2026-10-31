@@ -3509,16 +3509,12 @@ export const ANNOUNCEMENT_KIND_LABEL: Record<AnnouncementKind, string> = {
 };
 
 export const ANNOUNCEMENT_RECURRENCE_LABEL: Record<AnnouncementRecurrence, string> = {
-  ONCE: "Só no dia de início",
+  ONCE: "Uma vez, sem repetir",
   DAILY: "1 vez por dia",
   WEEKLY: "1 vez por semana",
   MONTHLY: "1 vez por mês",
 };
 
-/** A person sees the pop-up of a notice at most this many times on each day it shows (each login, or live, counts once). */
-export const ANNOUNCEMENT_MAX_SHOWS_PER_DAY = 2;
-/** Up to this many pending notices open as pop-ups; more than this, they're grouped in a single "Você tem N novidades". */
-export const ANNOUNCEMENT_POPUP_LIMIT = 2;
 export const ANNOUNCEMENT_REACTIONS = ["👍", "❤️", "👏"] as const;
 
 export interface AnnouncementAudience {
@@ -3549,7 +3545,9 @@ export interface AnnouncementInput {
   linkUrl: string | null;
   linkLabel: string | null;
   startDate: string;
+  startTime: string | null;
   endDate: string | null;
+  endTime: string | null;
   recurrence: AnnouncementRecurrence;
   audience: AnnouncementAudience;
 }

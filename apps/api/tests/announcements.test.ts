@@ -3,7 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { resetDatabase, createTestUser, createTestConnection, TEST_PASSWORD } from "./helpers";
-import { todayKey } from "../src/modules/announcements/announcement-days";
+import { addDays, todayKey } from "../src/modules/announcements/announcement-days";
 import { purgeExpiredTrash } from "../src/modules/announcements/announcements.service";
 
 const app = createApp();
@@ -27,7 +27,9 @@ function notice(overrides: Record<string, unknown> = {}) {
     linkUrl: null,
     linkLabel: null,
     startDate: todayKey(TZ),
-    endDate: null,
+    startTime: "00:00",
+    endDate: addDays(todayKey(TZ), 1),
+    endTime: "23:59",
     recurrence: "ONCE",
     audience: { all: true, roles: [], connectionIds: [], userIds: [] },
     ...overrides,
@@ -57,9 +59,10 @@ describe("Pop Up › Avisos e Comunicados", () => {
     expect(res.status).toBe(403);
   });
 
-  it("aparece no máximo 2 vezes no dia, uma por login, e o ciente encerra", async () => {
-    const created = await request(app).post("/api/announcements/admin").set("Authorization", `Bearer ${managerToken}`).send(notice({ requireAck: true }));
+  it("aparece a cada login, sem limite, até o ciente, e conta as vezes", async () => {
+    const created = await request(app).post("/api/announcements/admin").set("Authorization", `Bearer ${managerToken}`).send(notice());
     expect(created.status).toBe(201);
+    expect(created.body.requireAck).toBe(true);
     const id = created.body.id as string;
 
     // 1st login: pending, then shown.
@@ -77,10 +80,11 @@ describe("Pop Up › Avisos e Comunicados", () => {
     expect(pending.body).toHaveLength(1);
     await request(app).post("/api/announcements/shown").set("Authorization", `Bearer ${token}`).send({ ids: [id], tz: TZ });
 
-    // 3rd login: the day's limit was reached.
+    // 3rd login: no limit any more.
     token = await loginAs(agentEmail);
     pending = await request(app).get(`/api/announcements/pending?tz=${TZ}`).set("Authorization", `Bearer ${token}`);
-    expect(pending.body).toHaveLength(0);
+    expect(pending.body).toHaveLength(1);
+    await request(app).post("/api/announcements/shown").set("Authorization", `Bearer ${token}`).send({ ids: [id], tz: TZ });
 
     // A reminder brings it back once; the "ciente" stops it for good.
     const remind = await request(app).post(`/api/announcements/admin/${id}/remind`).set("Authorization", `Bearer ${managerToken}`);
@@ -94,7 +98,7 @@ describe("Pop Up › Avisos e Comunicados", () => {
     const receipts = await request(app).get(`/api/announcements/admin/${id}/receipts`).set("Authorization", `Bearer ${managerToken}`);
     const bruno = receipts.body.find((r: { name: string }) => r.name === "Bruno");
     expect(bruno.ackAt).not.toBeNull();
-    expect(bruno.shownCount).toBe(2);
+    expect(bruno.shownCount).toBe(3);
 
     const xlsx = await request(app).get(`/api/announcements/admin/${id}/receipts?format=xlsx`).set("Authorization", `Bearer ${managerToken}`);
     expect(xlsx.status).toBe(200);
@@ -131,6 +135,41 @@ describe("Pop Up › Avisos e Comunicados", () => {
     await prisma.announcement.update({ where: { id }, data: { deletedAt: new Date(Date.now() - 8 * 86_400_000) } });
     expect(await purgeExpiredTrash()).toBe(1);
     expect(await prisma.announcement.count()).toBe(0);
+  });
+
+  it("exige data e horário de início e de término, com o término depois do início", async () => {
+    const post = (body: Record<string, unknown>) => request(app).post("/api/announcements/admin").set("Authorization", `Bearer ${managerToken}`).send(notice(body));
+    expect((await post({ endTime: null })).status).toBe(400);
+    expect((await post({ endDate: null })).status).toBe(400);
+    expect((await post({ startTime: "25:00" })).status).toBe(400);
+    expect((await post({ endDate: todayKey(TZ), startTime: "10:00", endTime: "10:00" })).status).toBe(400);
+  });
+
+  it("não abre antes do início nem depois do término; Encerrar agora termina na hora", async () => {
+    const post = (body: Record<string, unknown>) => request(app).post("/api/announcements/admin").set("Authorization", `Bearer ${managerToken}`).send(notice(body));
+    const tomorrow = addDays(todayKey(TZ), 1);
+    const yesterday = addDays(todayKey(TZ), -1);
+    const later = await post({ title: "Depois", startDate: tomorrow, startTime: "08:00", endDate: tomorrow, endTime: "09:00" });
+    expect(later.body.status).toBe("SCHEDULED");
+    const over = await post({ title: "Terminou", startDate: yesterday, endDate: yesterday });
+    expect(over.body.status).toBe("ENDED");
+    const running = await post({ title: "Rodando" });
+    expect(running.body.status).toBe("ACTIVE");
+
+    const token = await loginAs(agentEmail);
+    const titles = async () => (await request(app).get(`/api/announcements/pending?tz=${TZ}`).set("Authorization", `Bearer ${token}`)).body.map((a: { title: string }) => a.title);
+    expect(await titles()).toEqual(["Rodando"]);
+
+    const notStarted = await request(app).post(`/api/announcements/admin/${later.body.id}/end-now`).set("Authorization", `Bearer ${managerToken}`).send({ tz: TZ });
+    expect(notStarted.status).toBe(400);
+    const ended = await request(app).post(`/api/announcements/admin/${running.body.id}/end-now`).set("Authorization", `Bearer ${managerToken}`).send({ tz: TZ });
+    expect(ended.status).toBe(200);
+    expect(ended.body.status).toBe("ENDED");
+    expect(ended.body.endDate).toBe(todayKey(TZ));
+    expect(await titles()).toEqual([]);
+
+    // Whoever has it open can still confirm.
+    expect((await request(app).post(`/api/announcements/${running.body.id}/ack`).set("Authorization", `Bearer ${token}`)).status).toBeLessThan(300);
   });
 
   it("duplicar cria uma cópia pausada, começando hoje, sem leituras", async () => {
