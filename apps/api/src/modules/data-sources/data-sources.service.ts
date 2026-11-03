@@ -5,9 +5,11 @@ import {
   PERMISSION,
   contractStatusOf,
   birthdayPersonKey,
+  boletoCharges,
   businessDay,
   daysUntilBirthday,
   parseBirthDate,
+  type BoletoChargeRates,
   type ContactBirthdayEntry,
   type ContactContractDTO,
   type ClientBeneficiaryDTO,
@@ -31,6 +33,7 @@ import { env } from "../../config/env";
 import { realtimeEvents } from "../../realtime/realtime";
 import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
+import { getSendMessage } from "../boletos/boleto-layouts.service";
 import { fetchFromDatabase, fetchFromLink, fetchFromMicrosoft, microsoftToken, parseSpreadsheet, type DatabaseConfig, type FetchedTable, type MicrosoftApp } from "./data-source-fetch";
 
 const INSERT_CHUNK = 5_000;
@@ -495,6 +498,34 @@ export function parseBrDate(value: string | undefined): Date | null {
   return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : null;
 }
 
+/** The calendar day of a date from parseBrDate. */
+export const dayOf = (date: Date) => ({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate() });
+
+/** "1.234,56", "1234.56" or "89,9" → cents. */
+export function parseMoneyCents(value: string | undefined): number | null {
+  const raw = (value ?? "").replace(/[^\d.,-]/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+}
+
+/**
+ * A late parcel's multa, juros and value to pay today as the bank charges them (on the boleto's value and due, else
+ * the parcel's) — the ERP's figures are only as of its last export and don't round like the bank. Not late, or
+ * nothing to work from: the ERP's stay.
+ */
+function parcelChargesToday(data: Row, map: ColumnMap, today: { year: number; month: number; day: number }, rates: BoletoChargeRates): Partial<ClientParcelDTO> {
+  const col = (role: DataSourceRole) => (map[role] ? data[map[role]!] : undefined);
+  const due = parseBrDate(col("boletoDue")) ?? parseBrDate(col("parcelDue"));
+  const cents = parseMoneyCents(col("boletoValue")) ?? parseMoneyCents(col("parcelValue"));
+  if (!due || !cents) return {};
+  const charges = boletoCharges(cents, dayOf(due), today, rates);
+  if (charges.daysLate === 0) return {};
+  const money = (c: number) => (c / 100).toFixed(2);
+  return { daysLate: charges.daysLate, overdue: true, fine: money(charges.fineCents), interest: money(charges.interestCents), updatedValue: money(charges.updatedCents) };
+}
+
 function ageOn(birth: Date, today: Date): number {
   let age = today.getFullYear() - birth.getFullYear();
   if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
@@ -660,8 +691,11 @@ export async function getClientData(conversation: ConversationForData, role: Rol
   const fields = shown.filter((column) => !CONTRACT_COLUMN.test(column)).map((column) => toField(column, rows));
   const contractColumns = shown.filter((column) => CONTRACT_COLUMN.test(column));
   const contractOf = (row: { data: Row }) => (map.contract ? row.data[map.contract] : undefined) || "Sem contrato";
+  const rates = await getSendMessage();
+  const today = businessDay(new Date(), env.BUSINESS_TZ_OFFSET_MINUTES);
   const contracts = buildContracts(rows, map).map((contract) => ({
     ...contract,
+    parcels: contract.parcels.map((parcel) => ({ ...parcel, ...parcelChargesToday(rows.find((r) => r.id === parcel.id)!.data, map, today, rates) })),
     fields: contractColumns.map((column) => toField(column, rows.filter((r) => contractOf(r) === contract.number))),
   }));
   return {

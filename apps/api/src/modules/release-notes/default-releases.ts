@@ -11,6 +11,35 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.32.0",
+    date: "3 nov 2026",
+    name: "Valor atualizado do boleto vencido",
+    summary: "O texto que vai com um boleto vencido diz quanto o cliente paga hoje, com multa e juros, calculado como o banco cobra. Os Dados do cliente mostram o mesmo valor.",
+    notes: [
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "Valor para pagar hoje no texto do boleto",
+        text: "Ao enviar um boleto vencido, o texto que vai junto termina com \"Pagando hoje (03/11), com multa e juros de 29 dias de atraso, o valor fica R$ 86,16.\" Na janela de envio, cada boleto vencido mostra também o valor de hoje. O atendente ainda pode ajustar o texto antes de enviar.",
+        where: "Atendimento › Dados do cliente › Enviar boleto",
+      },
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Multa e juros iguais aos do banco",
+        text: "O valor atualizado dos Dados do cliente passa a ser calculado pelo sistema, como o banco cobra: a multa e os juros de um dia são arredondados para o centavo, e os juros multiplicados pelos dias de atraso até hoje. Antes vinha do ERP, que não arredonda os juros do dia e só se atualizava na exportação: um boleto de R$ 83,62 vencido em 05/10 mostrava R$ 86,09 no dia 03/11, e o banco cobrou R$ 86,16.",
+        where: "Atendimento › Dados do cliente",
+      },
+      {
+        type: "novo",
+        area: "dados",
+        title: "Taxas e novas tags na mensagem de envio",
+        text: "Em Mensagem de envio ficam a multa (%) e os juros ao dia (%) registrados no banco (já vêm 2% e 0,033%), e as tags {valor_atualizado}, {total_atualizado} e {aviso_atraso}. Uma mensagem sem nenhuma delas recebe o aviso do atraso no fim, quando o boleto está vencido. A prévia mostra também como fica com o boleto vencido.",
+        where: "Dados › Mensagem de envio",
+      },
+    ],
+  },
+  {
     version: "2.31.1",
     date: "3 nov 2026",
     name: "Qualquer tipo de arquivo e nomes no Dashboard",

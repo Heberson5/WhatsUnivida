@@ -2820,7 +2820,10 @@ export interface ClientParcelDTO {
   due: string | null;
   daysLate: number;
   value: string | null;
-  /** Multa, juros e saldo + encargos até hoje, como o ERP calcula — o boleto continua com o valor registrado. */
+  /**
+   * Multa, juros e valor a pagar hoje, como o banco cobra (boletoCharges); sem como calcular, os do ERP. O boleto
+   * continua com o valor registrado.
+   */
   fine: string | null;
   interest: string | null;
   updatedValue: string | null;
@@ -2908,6 +2911,8 @@ export interface BoletoPreviewItemDTO {
   due: string;
   value: string;
   overdue: boolean;
+  /** What the bank charges if paid today (with multa and juros), formatted; null while not late. */
+  updatedValue: string | null;
   linha: string;
   /** The boleto's PIX copia e cola (its QR Code), when the source has a valid one; null = no PIX on this boleto. */
   pix: string | null;
@@ -3057,7 +3062,7 @@ export const BOLETO_MESSAGE_TAG = /\{mensagem:([^}]+)\}/g;
 
 // --- Dados › Mensagem de envio: the WhatsApp text that goes with the PDF -----------------------------------------
 
-export interface BoletoSendMessageDTO {
+export interface BoletoSendMessageDTO extends BoletoChargeRates {
   /** One boleto. */
   single: string;
   /** Several boletos in the same PDF. */
@@ -3105,23 +3110,85 @@ export function fillCustomerTags(text: string, customerName: string, savedFirstN
 }
 
 export const BOLETO_SEND_MESSAGE_MAX_LENGTH = 1000;
-export const BOLETO_SEND_MESSAGE_TAGS = ["{primeiro_nome}", "{cliente}", "{quantidade}", "{vencimento}", "{valor}", "{total}"] as const;
+/** What the bank adds to a boleto paid late — as the ERP registers it with the bank. Kept in Dados › Mensagem de envio. */
+export interface BoletoChargeRates {
+  /** Multa: % of the value, once. */
+  finePercent: number;
+  /** Juros: % of the value for each calendar day late. */
+  interestDayPercent: number;
+}
+export const DEFAULT_BOLETO_CHARGE_RATES: BoletoChargeRates = { finePercent: 2, interestDayPercent: 0.033 };
+
+export interface BoletoCharges {
+  daysLate: number;
+  fineCents: number;
+  interestCents: number;
+  /** Value + multa + juros; the value itself while not late. */
+  updatedCents: number;
+}
+
+type CalendarDay = { year: number; month: number; day: number };
+// x.toFixed first: 104,56 × 2% must give 209,12 cents, not 209,11999.
+const roundCents = (x: number) => Math.round(Number(x.toFixed(6)));
+
+/**
+ * A boleto paid on `today`, as the bank charges it: the multa rounded to the cent, plus the day's juros rounded to
+ * the cent times the calendar days since the due date. Checked against real payments (83,62 due 05/10 paid 03/11 →
+ * 86,16; 175,65 and 104,56 due 06/10 → 180,84 and 107,49) — the ERP doesn't round the day's juros and is off by cents.
+ */
+export function boletoCharges(cents: number, due: CalendarDay, today: CalendarDay, rates: BoletoChargeRates): BoletoCharges {
+  const days = (Date.UTC(today.year, today.month - 1, today.day) - Date.UTC(due.year, due.month - 1, due.day)) / 86_400_000;
+  const daysLate = Math.max(0, Math.round(days));
+  if (daysLate === 0) return { daysLate, fineCents: 0, interestCents: 0, updatedCents: cents };
+  const fineCents = roundCents((cents * rates.finePercent) / 100);
+  const interestCents = roundCents((cents * rates.interestDayPercent) / 100) * daysLate;
+  return { daysLate, fineCents, interestCents, updatedCents: cents + fineCents + interestCents };
+}
+
+export const BOLETO_SEND_MESSAGE_TAGS = [
+  "{primeiro_nome}",
+  "{cliente}",
+  "{quantidade}",
+  "{vencimento}",
+  "{valor}",
+  "{total}",
+  "{valor_atualizado}",
+  "{total_atualizado}",
+  "{aviso_atraso}",
+] as const;
+// A message without any of these still ends with {aviso_atraso} when a boleto is late: the customer always gets the value to pay.
+const UPDATED_VALUE_TAG = /\{(valor_atualizado|total_atualizado|aviso_atraso)\}/;
 
 export const DEFAULT_BOLETO_SEND_MESSAGE: BoletoSendMessageDTO = {
-  single: "Olá, {primeiro_nome}! Segue o boleto da parcela com vencimento em {vencimento}, no valor de {valor}.",
-  plural: "Olá, {primeiro_nome}! Seguem os boletos das {quantidade} parcelas, todos no mesmo arquivo, no total de {total}.",
+  single: "Olá, {primeiro_nome}! Segue o boleto da parcela com vencimento em {vencimento}, no valor de {valor}.{aviso_atraso}",
+  plural: "Olá, {primeiro_nome}! Seguem os boletos das {quantidade} parcelas, todos no mesmo arquivo, no total de {total}.{aviso_atraso}",
+  ...DEFAULT_BOLETO_CHARGE_RATES,
 };
 
 /**
  * The send message for these boletos: the plural one when there's more than one. {vencimento} and {valor} are the
- * first boleto's (the only one, in the singular); {total} adds them all up.
+ * first boleto's (the only one, in the singular); {total} adds them all up. The "_atualizado" ones are what the bank
+ * charges if paid on `today` ("03/11"), from each boleto's charges; {aviso_atraso} says it in a sentence, and is
+ * empty while none is late.
  */
 export function fillBoletoSendMessage(
-  settings: BoletoSendMessageDTO,
-  input: { clientName: string; boletos: { due: string; cents: number }[] }
+  settings: Pick<BoletoSendMessageDTO, "single" | "plural">,
+  input: { clientName: string; boletos: { due: string; cents: number; charges?: BoletoCharges }[]; today?: string }
 ): string {
-  const template = input.boletos.length > 1 ? settings.plural : settings.single;
+  const plural = input.boletos.length > 1;
+  const template = plural ? settings.plural : settings.single;
+  const updated = (b: { cents: number; charges?: BoletoCharges }) => b.charges?.updatedCents ?? b.cents;
   const total = input.boletos.reduce((sum, b) => sum + b.cents, 0);
+  const totalUpdated = input.boletos.reduce((sum, b) => sum + updated(b), 0);
+  const late = input.boletos.filter((b) => (b.charges?.daysLate ?? 0) > 0);
+  const when = input.today ? `Pagando hoje (${input.today})` : "Pagando hoje";
+  const days = late[0]?.charges?.daysLate ?? 0;
+  const notice =
+    late.length === 0
+      ? ""
+      : plural
+        ? ` ${when}, com multa e juros pelo atraso, o total fica R$ ${centsText(totalUpdated)}.`
+        : ` ${when}, com multa e juros de ${days} dia${days > 1 ? "s" : ""} de atraso, o valor fica R$ ${centsText(totalUpdated)}.`;
   const values: Record<string, string> = {
     "{primeiro_nome}": firstNameOf(input.clientName),
     "{cliente}": input.clientName.trim(),
@@ -3129,10 +3196,14 @@ export function fillBoletoSendMessage(
     "{vencimento}": input.boletos[0]?.due ?? "",
     "{valor}": `R$ ${centsText(input.boletos[0]?.cents ?? 0)}`,
     "{total}": `R$ ${centsText(total)}`,
+    "{valor_atualizado}": `R$ ${centsText(input.boletos[0] ? updated(input.boletos[0]) : 0)}`,
+    "{total_atualizado}": `R$ ${centsText(totalUpdated)}`,
+    "{aviso_atraso}": notice,
   };
-  return template
-    .replace(/\{(primeiro_nome|cliente|quantidade|vencimento|valor|total)\}/g, (tag) => values[tag])
+  const filled = template
+    .replace(/\{(primeiro_nome|cliente|quantidade|vencimento|valor|total|valor_atualizado|total_atualizado|aviso_atraso)\}/g, (tag) => values[tag])
     .replace(/,\s*!/g, "!");
+  return notice && !UPDATED_VALUE_TAG.test(template) ? `${filled.trimEnd()}${notice}` : filled;
 }
 
 /** Why a parcel can't get a boleto (shown next to it), or null when it can. */

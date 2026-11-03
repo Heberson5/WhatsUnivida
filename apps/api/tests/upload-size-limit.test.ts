@@ -50,7 +50,7 @@ describe("sending a file: size limit", () => {
     const before = await prisma.message.count({ where: { conversationId } });
     const res = await sendFile(env.UPLOAD_MAX_SIZE_MB * MB + 1, "video.mp4", "video/mp4");
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Arquivo muito grande");
+    expect(res.body.message).toMatch(/^Arquivo muito grande: o limite é de \d+ MB\.$/);
     expect(await prisma.message.count({ where: { conversationId } })).toBe(before);
   });
 });

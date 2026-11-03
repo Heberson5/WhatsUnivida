@@ -3,7 +3,15 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { __getProviderForTests } from "../src/modules/whatsapp/whatsapp.service";
-import { BOLETO_PAYMENT_PLACES, DEFAULT_BOLETO_INSTRUCTION, DEFAULT_BOLETO_SEND_MESSAGE, fillBoletoInstructions, fillBoletoSendMessage } from "@whatsatendende/types";
+import {
+  BOLETO_PAYMENT_PLACES,
+  DEFAULT_BOLETO_CHARGE_RATES,
+  DEFAULT_BOLETO_INSTRUCTION,
+  DEFAULT_BOLETO_SEND_MESSAGE,
+  boletoCharges,
+  fillBoletoInstructions,
+  fillBoletoSendMessage,
+} from "@whatsatendende/types";
 import { buildBoletoFromRow } from "../src/modules/boletos/boletos.service";
 import type { ColumnMap, Row } from "../src/modules/data-sources/data-sources.service";
 import type { MockWhatsAppProvider } from "@whatsatendende/whatsapp";
@@ -131,9 +139,12 @@ describe("Envio de boleto", () => {
 
   it("prévia: mensagem de envio no plural para vários boletos", async () => {
     const res = await preview([parcelIds["D-1"], parcelIds["D-2"]]);
-    expect(res.body.message).toBe("Olá, Cliente! Seguem os boletos das 2 parcelas, todos no mesmo arquivo, no total de R$ 180,00.");
+    expect(res.body.message).toMatch(/^Olá, Cliente! Seguem os boletos das 2 parcelas, todos no mesmo arquivo, no total de R\$ 180,00\. Pagando hoje \(\d\d\/\d\d\), com multa e juros pelo atraso, o total fica R\$ [\d.]+,\d\d\.$/);
     const single = await preview([parcelIds["D-1"]]);
-    expect(single.body.message).toBe("Olá, Cliente! Segue o boleto da parcela com vencimento em 10/01/2026, no valor de R$ 90,00.");
+    expect(single.body.message).toMatch(/^Olá, Cliente! Segue o boleto da parcela com vencimento em 10\/01\/2026, no valor de R\$ 90,00\. Pagando hoje \(\d\d\/\d\d\), com multa e juros de \d+ dias de atraso, o valor fica R\$ [\d.]+,\d\d\.$/);
+    expect(single.body.items[0].updatedValue).toMatch(/^R\$\s[\d.]+,\d\d$/);
+    const notLate = await preview([parcelIds["D-1"], parcelIds["D-2"], parcelIds["D-3"]]);
+    expect(notLate.body.items[2]).toMatchObject({ overdue: false, updatedValue: null });
   });
 
   it("envia um só PDF com a mensagem como comentário e, se marcado, a linha digitável de cada um; nota e auditoria", async () => {
@@ -163,6 +174,30 @@ describe("Envio de boleto", () => {
       .send({ parcelIds: [parcelIds["D-1"], parcelIds["D-2"]], message: "", confirmOverdue: true, sendLinhas: false })
       .expect(201);
     expect(provider.sentTexts.length).toBe(textsBefore);
+  });
+
+  it("valor atualizado como o banco cobra: multa e juros do dia arredondados, juros vezes os dias corridos", () => {
+    const rates = DEFAULT_BOLETO_CHARGE_RATES;
+    const paidOn = { year: 2026, month: 11, day: 3 };
+    // Real payments: what the bank charged.
+    expect(boletoCharges(8362, { year: 2026, month: 10, day: 5 }, paidOn, rates)).toEqual({ daysLate: 29, fineCents: 167, interestCents: 87, updatedCents: 8616 });
+    expect(boletoCharges(17565, { year: 2026, month: 10, day: 6 }, paidOn, rates).updatedCents).toBe(18084);
+    expect(boletoCharges(10456, { year: 2026, month: 10, day: 6 }, paidOn, rates).updatedCents).toBe(10749);
+    // Not late: the value itself.
+    expect(boletoCharges(8362, { year: 2026, month: 11, day: 3 }, paidOn, rates)).toEqual({ daysLate: 0, fineCents: 0, interestCents: 0, updatedCents: 8362 });
+    const charges = boletoCharges(8362, { year: 2026, month: 10, day: 5 }, paidOn, rates);
+    const boletos = [{ due: "05/10/2026", cents: 8362, charges }];
+    expect(fillBoletoSendMessage(DEFAULT_BOLETO_SEND_MESSAGE, { clientName: "Maria Souza", boletos, today: "03/11" })).toBe(
+      "Olá, Maria! Segue o boleto da parcela com vencimento em 05/10/2026, no valor de R$ 83,62. Pagando hoje (03/11), com multa e juros de 29 dias de atraso, o valor fica R$ 86,16."
+    );
+    // A saved message without the tags still gets the notice; one with {valor_atualizado} doesn't.
+    expect(fillBoletoSendMessage({ single: "Segue o boleto.", plural: "" }, { clientName: "", boletos, today: "03/11" })).toBe(
+      "Segue o boleto. Pagando hoje (03/11), com multa e juros de 29 dias de atraso, o valor fica R$ 86,16."
+    );
+    expect(fillBoletoSendMessage({ single: "Hoje fica {valor_atualizado}.", plural: "" }, { clientName: "", boletos })).toBe("Hoje fica R$ 86,16.");
+    expect(fillBoletoSendMessage(DEFAULT_BOLETO_SEND_MESSAGE, { clientName: "", boletos: [{ due: "10/11/2026", cents: 8362 }] })).toBe(
+      "Olá! Segue o boleto da parcela com vencimento em 10/11/2026, no valor de R$ 83,62."
+    );
   });
 
   it("instruções: multa e juros ao dia calculados sobre o valor original", () => {

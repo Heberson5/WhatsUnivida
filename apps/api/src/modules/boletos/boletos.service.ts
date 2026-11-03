@@ -7,8 +7,12 @@ import {
   BOLETO_BANK_CODES,
   BOLETO_SAMPLES_REQUIRED,
   DATA_SOURCE_ROLES,
+  boletoCharges,
+  businessDay,
   fillBoletoSendMessage,
   type BoletoBankValidationDTO,
+  type BoletoChargeRates,
+  type BoletoCharges,
   type BoletoLayoutInput,
   type BoletoPreviewDTO,
   type BoletoPreviewItemDTO,
@@ -17,7 +21,18 @@ import {
 import { prisma } from "../../lib/prisma";
 import { Errors } from "../../lib/http-error";
 import { env } from "../../config/env";
-import { buildContracts, clientRows, parseBrDate, sourceStatus, usableSource, type ColumnMap, type ConversationForData, type Row } from "../data-sources/data-sources.service";
+import {
+  buildContracts,
+  clientRows,
+  dayOf,
+  parseBrDate,
+  parseMoneyCents,
+  sourceStatus,
+  usableSource,
+  type ColumnMap,
+  type ConversationForData,
+  type Row,
+} from "../data-sources/data-sources.service";
 import { barcodeFromLinha, buildBarcode, freeFieldBB, linhaFromBarcode } from "./boleto-code";
 import { BOLETO_BANK_RULES } from "./boleto-banks";
 import { renderBoletosPdf, type BoletoPdfData } from "./boleto-pdf";
@@ -56,15 +71,6 @@ export async function getValidation(): Promise<BoletoBankValidationDTO[]> {
 
 function digits(value: string | undefined): string {
   return (value ?? "").replace(/\D/g, "");
-}
-
-/** "1.234,56", "1234.56" or "89,9" → cents. */
-export function parseMoneyCents(value: string | undefined): number | null {
-  const raw = (value ?? "").replace(/[^\d.,-]/g, "");
-  if (!raw) return null;
-  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
-  const n = Number(normalized);
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
 }
 
 function formatMoney(cents: number): string {
@@ -237,14 +243,15 @@ async function resolveSelection(conversation: ConversationForData, parcelIds: st
   return { source, map, parcels };
 }
 
-function previewItem(p: SelectedParcel, today: Date): BoletoPreviewItemDTO {
+function previewItem(p: SelectedParcel, charges: BoletoCharges): BoletoPreviewItemDTO {
   return {
     parcelId: p.rowId,
     contract: p.contract,
     document: p.document,
     due: format(p.boleto.due, "dd/MM/yyyy"),
     value: formatMoney(p.boleto.cents),
-    overdue: p.boleto.due < today,
+    overdue: charges.daysLate > 0,
+    updatedValue: charges.daysLate > 0 ? formatMoney(charges.updatedCents) : null,
     linha: p.boleto.linha,
     pix: p.boleto.pix,
   };
@@ -257,21 +264,24 @@ function withoutPixLines(text: string, hasPix: boolean): string {
 }
 const pixLines = (lines: string[], hasPix: boolean) => (hasPix ? lines : lines.filter((line) => !PIX_LINE.test(line)));
 
-function todayStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+/** Each boleto's multa and juros if paid today — the business' day, not the server's (UTC). */
+function chargesToday(parcels: SelectedParcel[], rates: BoletoChargeRates): { charges: BoletoCharges[]; today: string } {
+  const today = businessDay(new Date(), env.BUSINESS_TZ_OFFSET_MINUTES);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { charges: parcels.map((p) => boletoCharges(p.boleto.cents, dayOf(p.boleto.due), today, rates)), today: `${pad(today.day)}/${pad(today.month)}` };
 }
 
 export async function previewBoletos(conversation: ConversationForData & { contact: { name: string | null; phone: string | null } }, parcelIds: string[]): Promise<BoletoPreviewDTO> {
   const { map, parcels } = await resolveSelection(conversation, parcelIds);
-  const today = todayStart();
-  const items = parcels.map((p) => previewItem(p, today));
+  const settings = await getSendMessage();
+  const { charges, today } = chargesToday(parcels, settings);
+  const items = parcels.map((p, i) => previewItem(p, charges[i]));
   const clientName = (map.clientName && parcels[0].data[map.clientName]) || conversation.contact.name || "";
   return {
     items,
     // Dados › Mensagem de envio: the plural one when several boletos go in the PDF.
     message: withoutPixLines(
-      fillBoletoSendMessage(await getSendMessage(), { clientName, boletos: parcels.map((p, i) => ({ due: items[i].due, cents: p.boleto.cents })) }),
+      fillBoletoSendMessage(settings, { clientName, boletos: parcels.map((p, i) => ({ due: items[i].due, cents: p.boleto.cents, charges: charges[i] })), today }),
       items.some((item) => item.pix)
     ),
     warnings: items.filter((i) => i.overdue).map((i) => `Boleto vencido em ${i.due} — o banco pode cobrar juros ou recusar`),
@@ -292,10 +302,10 @@ export async function prepareBoletos(
   confirmOverdue: boolean
 ): Promise<PreparedBoletos> {
   const { source, map, parcels } = await resolveSelection(conversation, parcelIds);
-  const today = todayStart();
+  const { charges } = chargesToday(parcels, await getSendMessage());
   const issued = format(new Date(), "dd/MM/yyyy");
   const col = (data: Row, role: keyof ColumnMap) => (map[role] ? data[map[role]!] : undefined) || null;
-  const items = parcels.map((p) => previewItem(p, today));
+  const items = parcels.map((p, i) => previewItem(p, charges[i]));
   const overdue = items.find((item) => item.overdue);
   if (overdue && !confirmOverdue) throw Errors.badRequest(`Boleto vencido em ${overdue.due} — confirme o envio`);
   const instructions = await prisma.boletoInstruction.findMany();

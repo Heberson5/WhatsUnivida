@@ -9,6 +9,8 @@ import { phoneKey } from "../src/lib/phone-key";
 import { downloadCandidates, assertReadOnlyQuery, fetchFromLink, parseSpreadsheet } from "../src/modules/data-sources/data-source-fetch";
 import { parseBeneficiaries, syncDueDataSources } from "../src/modules/data-sources/data-sources.service";
 import { resetDatabase, createTestUser, createWaitingConversation, TEST_PASSWORD } from "./helpers";
+import { DEFAULT_BOLETO_CHARGE_RATES, boletoCharges, businessDay } from "@whatsatendende/types";
+import { env } from "../src/config/env";
 
 const app = createApp();
 
@@ -211,7 +213,16 @@ describe("Fontes de dados", () => {
     const [contract] = data.client.contracts;
     expect(contract).toMatchObject({ number: "C-1", overdueCount: 2, suspensionThreshold: 2, suspended: true });
     expect(contract.parcels.map((p: { document: string }) => p.document)).toEqual(["D-1", "D-2", "D-3"]);
-    expect(contract.parcels[0]).toMatchObject({ value: "89.90", fine: "1.80", interest: "2.10", updatedValue: "93.80" });
+    // Multa and juros as the bank charges them today, not the ERP's (1.80, 2.10, 93.80 in the file).
+    const charges = boletoCharges(8990, { year: 2026, month: 8, day: 10 }, businessDay(new Date(), env.BUSINESS_TZ_OFFSET_MINUTES), DEFAULT_BOLETO_CHARGE_RATES);
+    const money = (cents: number) => (cents / 100).toFixed(2);
+    expect(contract.parcels[0]).toMatchObject({
+      value: "89.90",
+      daysLate: charges.daysLate,
+      fine: "1.80",
+      interest: money(charges.interestCents),
+      updatedValue: money(charges.updatedCents),
+    });
     expect(contract.beneficiaries.map((b: { name: string; holder: boolean }) => [b.name, b.holder])).toEqual([["Maria Teste", true], ["João Teste", false]]);
     expect(data.suspensionWarningPending).toBe(true);
     expect(data.client.fields.find((f: { column: string }) => f.column === "cpf_cnpj").value).not.toContain("12345678");

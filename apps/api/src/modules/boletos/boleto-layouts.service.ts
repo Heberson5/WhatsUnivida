@@ -260,7 +260,8 @@ export async function layoutForBank(bankLayouts: Record<string, string>, bankCod
 
 export async function getSendMessage(): Promise<BoletoSendMessageDTO> {
   const row = await prisma.systemSetting.findUnique({ where: { key: SEND_MESSAGE_KEY } });
-  return (row?.value as BoletoSendMessageDTO | undefined) ?? DEFAULT_BOLETO_SEND_MESSAGE;
+  // Saved before the rates existed: the default ones.
+  return { ...DEFAULT_BOLETO_SEND_MESSAGE, ...(row?.value as Partial<BoletoSendMessageDTO> | undefined) };
 }
 
 export async function setSendMessage(message: BoletoSendMessageDTO): Promise<BoletoSendMessageDTO> {

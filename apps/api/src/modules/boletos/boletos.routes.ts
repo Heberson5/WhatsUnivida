@@ -5,6 +5,7 @@ import {
   BOLETO_INSTRUCTION_LINES_MAX,
   BOLETO_LAYOUT_MODELS,
   BOLETO_SEND_MESSAGE_MAX_LENGTH,
+  DEFAULT_BOLETO_CHARGE_RATES,
   PERMISSION,
   type BoletoLayoutModel,
 } from "@whatsatendende/types";
@@ -196,7 +197,16 @@ boletosRouter.put(
   "/send-message",
   requirePermission(PERMISSION.FONTES_DADOS_EDITAR),
   asyncHandler(async (req, res) => {
-    const message = await layouts.setSendMessage(z.object({ single: sendMessageText, plural: sendMessageText }).parse(req.body));
+    const message = await layouts.setSendMessage(
+      z
+        .object({
+          single: sendMessageText,
+          plural: sendMessageText,
+          finePercent: z.number().min(0).max(100).default(DEFAULT_BOLETO_CHARGE_RATES.finePercent),
+          interestDayPercent: z.number().min(0).max(10).default(DEFAULT_BOLETO_CHARGE_RATES.interestDayPercent),
+        })
+        .parse(req.body)
+    );
     await writeAudit({ userId: req.auth!.userId, action: "BOLETO_SEND_MESSAGE_UPDATED", entity: "SystemSetting", entityId: "boleto-send-message", ipAddress: req.ip ?? null, metadata: { ...message } });
     res.json(message);
   })

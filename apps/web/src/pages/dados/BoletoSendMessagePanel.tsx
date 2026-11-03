@@ -5,6 +5,7 @@ import {
   BOLETO_SEND_MESSAGE_MAX_LENGTH,
   BOLETO_SEND_MESSAGE_TAGS,
   PERMISSION,
+  boletoCharges,
   fillBoletoSendMessage,
   type BoletoSendMessageDTO,
 } from "@whatsatendende/types";
@@ -17,6 +18,12 @@ const inputClass = "focus-ring w-full rounded-card border border-border bg-trans
 const EXAMPLE_CLIENT = "Maria Aparecida Souza";
 const EXAMPLE_ONE = [{ due: "10/11/2026", cents: 12758 }];
 const EXAMPLE_THREE = [...EXAMPLE_ONE, { due: "10/12/2026", cents: 12758 }, { due: "10/01/2027", cents: 12758 }];
+// The late example: the same boletos, paid 10 days after the first due date.
+const LATE_TODAY = { year: 2026, month: 11, day: 20 };
+const dayOfBr = (due: string) => {
+  const [day, month, year] = due.split("/").map(Number);
+  return { year, month, day };
+};
 
 /**
  * Dados › Mensagem de envio: the text the attendant gets ready to send with the boleto PDF (as its caption) — the
@@ -44,12 +51,20 @@ export function BoletoSendMessagePanel() {
   });
 
   if (!draft) return null;
-  const fields: { key: keyof BoletoSendMessageDTO; label: string; hint: string; el: HTMLTextAreaElement | null; setEl: (el: HTMLTextAreaElement | null) => void; example: typeof EXAMPLE_ONE }[] = [
-    { key: "single", label: "Um boleto", hint: "{vencimento} e {valor} são os do boleto.", el: singleEl, setEl: setSingleEl, example: EXAMPLE_ONE },
+  const late = (example: typeof EXAMPLE_ONE) => example.map((b) => ({ ...b, charges: boletoCharges(b.cents, dayOfBr(b.due), LATE_TODAY, draft) }));
+  const fields: { key: "single" | "plural"; label: string; hint: string; el: HTMLTextAreaElement | null; setEl: (el: HTMLTextAreaElement | null) => void; example: typeof EXAMPLE_ONE }[] = [
+    {
+      key: "single",
+      label: "Um boleto",
+      hint: "{vencimento} e {valor} são os do boleto; {valor_atualizado}, o valor com multa e juros para pagar hoje.",
+      el: singleEl,
+      setEl: setSingleEl,
+      example: EXAMPLE_ONE,
+    },
     {
       key: "plural",
       label: "Vários boletos (no mesmo PDF)",
-      hint: "{quantidade} é quantos boletos vão; {total}, a soma dos valores; {vencimento} e {valor}, os do primeiro.",
+      hint: "{quantidade} é quantos boletos vão; {total}, a soma dos valores; {total_atualizado}, a soma com multa e juros para pagar hoje; {vencimento} e {valor}, os do primeiro.",
       el: pluralEl,
       setEl: setPluralEl,
       example: EXAMPLE_THREE,
@@ -85,8 +100,48 @@ export function BoletoSendMessagePanel() {
             <span className="font-semibold">Prévia: </span>
             {fillBoletoSendMessage(draft, { clientName: EXAMPLE_CLIENT, boletos: example })}
           </div>
+          <div className="mt-1 rounded-card border border-dashed border-border bg-surface-alt px-3 py-2 text-xs">
+            <span className="font-semibold">Prévia com o boleto vencido há 10 dias: </span>
+            {fillBoletoSendMessage(draft, { clientName: EXAMPLE_CLIENT, boletos: late(example), today: "20/11" })}
+          </div>
         </div>
       ))}
+      <div>
+        <h3 className="text-sm font-semibold">Multa e juros após o vencimento</h3>
+        <p className="mt-1 text-xs text-muted">
+          As mesmas taxas registradas no banco. Com elas o sistema calcula o valor para pagar no dia, como o banco cobra: a multa e os juros de um dia são arredondados
+          para o centavo, e os juros multiplicados pelos dias de atraso. Esse valor vai em {"{valor_atualizado}"}, {"{total_atualizado}"} e {"{aviso_atraso}"}, e aparece nos
+          Dados do cliente. Se a mensagem não tiver nenhuma dessas tags, o aviso do atraso vai no fim dela.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-4">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">Multa (%)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={draft.finePercent}
+              disabled={!canEdit}
+              onChange={(e) => setDraft({ ...draft, finePercent: Number(e.target.value) || 0 })}
+              className={`${inputClass} w-32`}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">Juros ao dia (%)</span>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              step="0.001"
+              value={draft.interestDayPercent}
+              disabled={!canEdit}
+              onChange={(e) => setDraft({ ...draft, interestDayPercent: Number(e.target.value) || 0 })}
+              className={`${inputClass} w-32`}
+            />
+          </label>
+        </div>
+      </div>
       {canEdit && (
         <button
           type="button"

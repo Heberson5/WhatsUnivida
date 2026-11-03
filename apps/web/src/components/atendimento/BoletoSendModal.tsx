@@ -58,6 +58,7 @@ export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: 
             <div key={item.parcelId} className="rounded-card border border-border p-3">
               <p className="flex items-center gap-1.5 font-medium">
                 <FileText className="h-4 w-4 text-muted" /> Contrato {item.contract} · vencimento {item.due} · {item.value}
+                {item.updatedValue && <strong className="font-semibold text-danger">· hoje {item.updatedValue}</strong>}
               </p>
               <p className="mt-1.5 flex items-center gap-1 break-all font-mono text-xs">
                 {item.linha}
