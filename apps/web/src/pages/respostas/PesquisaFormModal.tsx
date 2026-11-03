@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import type { SatisfactionSurveyDTO } from "@whatsatendende/types";
+import { DEFAULT_SURVEY_REASON, type SatisfactionSurveyDTO } from "@whatsatendende/types";
 import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
 import { ConnectionScopePicker, toConnectionScopeValue, type ConnectionScopeValue } from "./ConnectionScopePicker";
 import { TagButtons, insertTag } from "../dados/TagButtons";
@@ -25,7 +25,14 @@ export interface PesquisaFormValues {
   thanks: string;
   answerWindowHours: number;
   closingWaitMinutes: number;
+  reasonEnabled: boolean;
+  reasonMinScore: number;
+  reasonMaxScore: number;
+  reasonQuestion: string;
+  reasonThanks: string;
 }
+
+const SCORES = Array.from({ length: 11 }, (_, n) => n);
 
 /** The form's starting values — an existing survey, a copy of one (Duplicar), or a blank one. */
 export function toPesquisaFormValues(survey: SatisfactionSurveyDTO | null, copy = false): PesquisaFormValues {
@@ -38,6 +45,7 @@ export function toPesquisaFormValues(survey: SatisfactionSurveyDTO | null, copy 
       thanks: "Obrigado pela sua avaliação!",
       answerWindowHours: 24,
       closingWaitMinutes: 30,
+      ...DEFAULT_SURVEY_REASON,
     };
   }
   return {
@@ -49,6 +57,11 @@ export function toPesquisaFormValues(survey: SatisfactionSurveyDTO | null, copy 
     thanks: survey.thanks,
     answerWindowHours: survey.answerWindowHours,
     closingWaitMinutes: survey.closingWaitMinutes,
+    reasonEnabled: survey.reasonEnabled,
+    reasonMinScore: survey.reasonMinScore,
+    reasonMaxScore: survey.reasonMaxScore,
+    reasonQuestion: survey.reasonQuestion,
+    reasonThanks: survey.reasonThanks,
   };
 }
 
@@ -78,6 +91,7 @@ export function PesquisaFormModal({
   const [saving, setSaving] = useState(false);
   const set = (patch: Partial<PesquisaFormValues>) => setValues((v) => ({ ...v, ...patch }));
   const [questionEl, setQuestionEl] = useState<HTMLTextAreaElement | null>(null);
+  const [reasonEl, setReasonEl] = useState<HTMLTextAreaElement | null>(null);
 
   const scopeMissing = !values.connectionScope.allConnections && values.connectionScope.connectionIds.length === 0;
   const waitInRange =
@@ -92,6 +106,7 @@ export function PesquisaFormModal({
     windowInRange &&
     waitInRange &&
     waitWithinWindow &&
+    !(values.reasonEnabled && (values.reasonMinScore > values.reasonMaxScore || !values.reasonQuestion.trim() || !values.reasonThanks.trim())) &&
     !(values.active && scopeMissing);
 
   async function handleSubmit(e: FormEvent) {
@@ -104,7 +119,14 @@ export function PesquisaFormModal({
     if (!valid) return;
     setSaving(true);
     try {
-      await onSubmit({ ...values, name: values.name.trim(), question: values.question.trim(), thanks: values.thanks.trim() });
+      await onSubmit({
+        ...values,
+        name: values.name.trim(),
+        question: values.question.trim(),
+        thanks: values.thanks.trim(),
+        reasonQuestion: values.reasonQuestion.trim(),
+        reasonThanks: values.reasonThanks.trim(),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar a pesquisa.");
@@ -191,6 +213,85 @@ export function PesquisaFormModal({
             />
             <span className="mt-1 block text-xs text-muted">Enviado na hora, quando o cliente responde com uma nota válida. A mensagem de encerramento vem 10 segundos depois.</span>
           </label>
+
+          <div className="space-y-3 rounded-card border border-border p-3">
+            <label className="flex items-center justify-between gap-4">
+              <span>
+                <span className="block text-sm font-semibold">Perguntar o motivo de notas baixas</span>
+                <span className="block text-xs text-muted">
+                  Em vez do agradecimento, pergunta o que influenciou a nota. A resposta aparece no relatório e avisa os gestores.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                aria-label="Perguntar o motivo de notas baixas"
+                checked={values.reasonEnabled}
+                onChange={(e) => set({ reasonEnabled: e.target.checked })}
+                className="h-5 w-5 shrink-0 accent-primary"
+              />
+            </label>
+            {values.reasonEnabled && (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span>Para notas de</span>
+                  <select
+                    value={values.reasonMinScore}
+                    onChange={(e) => set({ reasonMinScore: Number(e.target.value) })}
+                    aria-label="Nota inicial"
+                    className="focus-ring rounded-card border border-border bg-surface px-2 py-1 text-sm"
+                  >
+                    {SCORES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                  <span>a</span>
+                  <select
+                    value={values.reasonMaxScore}
+                    onChange={(e) => set({ reasonMaxScore: Number(e.target.value) })}
+                    aria-label="Nota final"
+                    className="focus-ring rounded-card border border-border bg-surface px-2 py-1 text-sm"
+                  >
+                    {SCORES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                  {values.reasonMinScore > values.reasonMaxScore && (
+                    <span className="text-xs text-danger" role="alert">
+                      A nota inicial não pode ser maior que a final.
+                    </span>
+                  )}
+                </div>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium">Pergunta do motivo</span>
+                  <textarea
+                    rows={2}
+                    value={values.reasonQuestion}
+                    ref={setReasonEl}
+                    onChange={(e) => set({ reasonQuestion: e.target.value })}
+                    maxLength={1024}
+                    className="focus-ring w-full resize-none rounded-card border border-border bg-transparent px-3 py-2 text-sm"
+                  />
+                  <TagButtons tags={CUSTOMER_TAGS} onInsert={(tag) => insertTag(reasonEl, values.reasonQuestion, tag, (reasonQuestion) => set({ reasonQuestion }))} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium">Agradecimento depois do motivo</span>
+                  <input
+                    value={values.reasonThanks}
+                    onChange={(e) => set({ reasonThanks: e.target.value })}
+                    maxLength={1024}
+                    className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm"
+                  />
+                  <span className="mt-1 block text-xs text-muted">
+                    A mensagem de encerramento vem 10 segundos depois. Se o cliente não responder no tempo de espera abaixo, vai o agradecimento normal.
+                  </span>
+                </label>
+              </>
+            )}
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">

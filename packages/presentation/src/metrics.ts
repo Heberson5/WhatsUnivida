@@ -16,12 +16,32 @@ export interface StatDelta {
  * "12% vs período anterior". Null when there's nothing meaningful to compare
  * (no previous data at all). `lowerIsBetter` flips the color for times.
  */
-export function compareWithPrevious(current: number | null, previous: number | null, lowerIsBetter = false): StatDelta | null {
-  if (current === null || previous === null || previous === 0) return null;
+// Under this, a percentage says little (27 against 2 is "+1250%"): the card shows the difference and the number instead.
+const SMALL_COUNT = 10;
+
+/**
+ * The change against what the card compares with — `label` names it ("sex 30/10 até 14:18"). For a count (`count`)
+ * against fewer than 10, the difference and the number instead of a percentage; against 0, "sem movimento".
+ */
+export function compareWithPrevious(
+  current: number | null,
+  previous: number | null,
+  lowerIsBetter = false,
+  label = "período anterior",
+  count = false
+): StatDelta | null {
+  if (current === null || previous === null) return null;
+  if (count && previous < SMALL_COUNT) {
+    const diff = current - previous;
+    if (previous === 0) return current === 0 ? null : { text: `sem movimento em ${label}`, good: !lowerIsBetter, up: true };
+    if (diff === 0) return { text: `igual a ${label}`, good: true, up: false };
+    return { text: `${diff > 0 ? "+" : "−"}${Math.abs(diff)} vs ${previous} em ${label}`, good: lowerIsBetter ? diff < 0 : diff > 0, up: diff > 0 };
+  }
+  if (previous === 0) return null;
   const change = (current - previous) / previous;
-  if (Math.abs(change) < 0.005) return { text: "igual ao período anterior", good: true, up: false };
+  if (Math.abs(change) < 0.005) return { text: label === "período anterior" ? "igual ao período anterior" : `igual a ${label}`, good: true, up: false };
   const up = change > 0;
-  return { text: `${Math.round(Math.abs(change) * 100)}% vs período anterior`, good: lowerIsBetter ? !up : up, up };
+  return { text: `${Math.round(Math.abs(change) * 100)}% vs ${label}`, good: lowerIsBetter ? !up : up, up };
 }
 
 export function formatMinutes(ms: number | null): string {

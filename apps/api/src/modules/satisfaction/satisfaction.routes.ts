@@ -28,6 +28,11 @@ const surveyFields = z.object({
   thanks: z.string().trim().min(1).max(1024),
   answerWindowHours: z.number().int().min(1).max(72),
   closingWaitMinutes: z.number().int().min(1).max(720),
+  reasonEnabled: z.boolean().optional(),
+  reasonMinScore: z.number().int().min(0).max(10).optional(),
+  reasonMaxScore: z.number().int().min(0).max(10).optional(),
+  reasonQuestion: z.string().trim().max(1024).optional(),
+  reasonThanks: z.string().trim().max(1024).optional(),
 });
 
 type SurveyFields = z.infer<typeof surveyFields>;
@@ -35,6 +40,12 @@ type SurveyFields = z.infer<typeof surveyFields>;
 function checkSurvey(s: SurveyFields, ctx: z.RefinementCtx) {
   if (s.active && !s.connectionScope.allConnections && s.connectionScope.connectionIds.length === 0) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escolha pelo menos uma conexão ou marque todas as conexões para ligar a pesquisa", path: ["connectionScope"] });
+  }
+  if (s.reasonEnabled && (s.reasonMinScore ?? 0) > (s.reasonMaxScore ?? 6)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Na pergunta do motivo, a nota inicial não pode ser maior que a final", path: ["reasonMinScore"] });
+  }
+  if (s.reasonEnabled && (!s.reasonQuestion || !s.reasonThanks)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escreva a pergunta do motivo e o agradecimento depois dela", path: ["reasonQuestion"] });
   }
   if (s.closingWaitMinutes > s.answerWindowHours * 60) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A espera pela nota não pode ser maior que o tempo para o cliente responder a pesquisa", path: ["closingWaitMinutes"] });
@@ -44,7 +55,14 @@ function checkSurvey(s: SurveyFields, ctx: z.RefinementCtx) {
 const createSchema = surveyFields.superRefine(checkSurvey);
 
 function auditMetadata(survey: ReturnType<typeof service.toSurveyDTO>) {
-  return { name: survey.name, active: survey.active, connectionScope: survey.connectionScope, answerWindowHours: survey.answerWindowHours, closingWaitMinutes: survey.closingWaitMinutes };
+  return {
+    name: survey.name,
+    active: survey.active,
+    connectionScope: survey.connectionScope,
+    answerWindowHours: survey.answerWindowHours,
+    closingWaitMinutes: survey.closingWaitMinutes,
+    reason: survey.reasonEnabled ? `${survey.reasonMinScore} a ${survey.reasonMaxScore}` : "desligada",
+  };
 }
 
 satisfactionRouter.post(

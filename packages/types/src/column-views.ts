@@ -132,6 +132,7 @@ export const COLUMN_SCREENS = {
       { key: "connection", label: "Conexão" },
       { key: "score", label: "Nota" },
       { key: "answer", label: "Resposta do cliente" },
+      { key: "reason", label: "Motivo da nota" },
       { key: "category", label: "Classificação" },
     ],
   },

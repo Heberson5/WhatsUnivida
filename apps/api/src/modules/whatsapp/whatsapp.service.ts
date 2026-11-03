@@ -514,8 +514,20 @@ function wireProviderEvents(connectionId: string, provider: WhatsAppProvider) {
       // there, nothing new opens. Only the text of a text message can be a score or a thank-you: a picture or an audio is
       // somebody who wants to talk.
       const surveyBody = event.type === "TEXT" ? event.body ?? null : null;
-      const kept = { body: surveyBody, providerMessageId: event.providerMessageId };
-      if ((await satisfaction.captureSurveyAnswer(connectionId, contact, kept)) || (await satisfaction.captureThanksAfterClose(connectionId, contact, kept))) {
+      const kept = { body: surveyBody, providerMessageId: event.providerMessageId, type: event.type };
+      // The reason of a low score may be an audio or a picture: it stays on the closed conversation with its file.
+      const storeSurveyMedia = async (conversationId: string) => {
+        if (await prisma.message.findUnique({ where: { providerMessageId: event.providerMessageId }, select: { id: true } })) return;
+        const stored = await prisma.message.create({
+          data: { conversationId, direction: "INBOUND", type: event.type, status: "DELIVERED", body: event.body ?? null, providerMessageId: event.providerMessageId },
+        });
+        await addAttachmentsFromEvent(stored.id, event);
+        realtimeEvents.newMessage(conversationId, null);
+      };
+      if (
+        (await satisfaction.captureSurveyAnswer(connectionId, contact, kept, storeSurveyMedia)) ||
+        (await satisfaction.captureThanksAfterClose(connectionId, contact, kept))
+      ) {
         // Nobody opens a closed conversation to read it: the phone must not keep the chat as unread.
         await provider.markRead(event.chatId, [event.providerMessageId]).catch((err) => logger.warn({ err, connectionId }, "failed to mark a kept message as read on the phone"));
         return;

@@ -11,6 +11,45 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.33.0",
+    date: "3 nov 2026",
+    name: "Motivo das notas baixas e comparação por dia útil",
+    summary: "A pesquisa pergunta o que influenciou uma nota baixa e avisa os gestores. No Dashboard, os cartões comparam com o dia útil do mesmo tipo, seguindo o expediente e os feriados, e as mensagens automáticas não entram mais na contagem.",
+    notes: [
+      {
+        type: "novo",
+        area: "respostas",
+        title: "Pergunta do motivo de notas baixas",
+        text: "Quando o cliente dá uma nota baixa, a pesquisa pergunta o que influenciou a nota antes de agradecer. A resposta, em texto, áudio ou foto, fica guardada com a nota, e depois saem o agradecimento e a mensagem de encerramento. Se o cliente não responder no tempo de espera, vão o agradecimento normal e o encerramento. A faixa de notas, a pergunta e o agradecimento são de cada pesquisa. As pesquisas que já estavam ligadas passam a perguntar para notas de 0 a 6.",
+        where: "Respostas › Pesquisa",
+        images: [{ src: "/notas-de-versao/pesquisa-motivo.webp", caption: "A pergunta do motivo, para notas de 0 a 6", size: "small" }],
+      },
+      {
+        type: "novo",
+        area: "dashboard",
+        title: "O motivo no relatório, no Dashboard e num aviso",
+        text: "O relatório da pesquisa ganhou a coluna Motivo da nota e o filtro Com motivo. No Dashboard, as últimas avaliações mostram o motivo de cada detrator. Quem pode ver os relatórios recebe um aviso no sino quando chega um motivo, para poder ligar para o cliente no mesmo dia. O atendente da conversa não recebe o aviso.",
+        where: "Relatórios › Pesquisa de satisfação e Dashboard",
+        images: [{ src: "/notas-de-versao/dashboard-motivos.webp", caption: "Os motivos nas últimas avaliações" }],
+      },
+      {
+        type: "correcao",
+        area: "dashboard",
+        title: "Comparação com o dia útil do mesmo tipo",
+        text: "Os cartões comparavam hoje com ontem inteiro, mesmo num feriado ou num domingo, e mostravam números como +1250%. Agora Hoje é comparado com o último dia útil do mesmo tipo até a mesma hora: de segunda a sexta com o dia útil anterior de segunda a sexta, e sábado com sábado. O sistema segue o Horário de expediente das conexões e os Feriados. Este mês é comparado com os mesmos dias úteis do início do mês anterior. Cada cartão diz com que dia compara e, quando o número comparado é menor que 10, mostra a diferença em vez da porcentagem.",
+        where: "Dashboard",
+        images: [{ src: "/notas-de-versao/dashboard-comparacao-dia-util.webp", caption: "Terça depois do feriado de segunda: comparada com a sexta até a mesma hora" }],
+      },
+      {
+        type: "correcao",
+        area: "dashboard",
+        title: "Mensagens automáticas fora da contagem",
+        text: "O cartão Mensagens e as mensagens por atendente contam só o que os clientes e os atendentes escreveram. Fora do expediente, espera na fila, fluxo, pesquisa, aceite, transferência, encerramento e falta de retorno ficam de fora. Na conversa, o aceite e o encerramento continuam com o nome do atendente. As mensagens de aceite, transferência e encerramento enviadas antes desta versão ainda contam.",
+        where: "Dashboard",
+      },
+    ],
+  },
+  {
     version: "2.32.0",
     date: "3 nov 2026",
     name: "Valor atualizado do boleto vencido",

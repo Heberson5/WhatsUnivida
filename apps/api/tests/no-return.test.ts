@@ -27,10 +27,13 @@ import { cancelScheduledMessage, scheduleMessage } from "../src/modules/agent-to
 
 const app = createApp();
 
+// The agent's automatic texts (falta de retorno, encerramento...) go in their name; the system's own have no agent.
+const IN_AGENT_NAME = { senderAgentId: { not: null } };
+
 /** What the customer was sent, as the conversation shows it (the agent's automatic texts — not the survey's). */
 async function sentNow() {
   const rows = await prisma.message.findMany({
-    where: { direction: "OUTBOUND", automatedBy: null },
+    where: { direction: "OUTBOUND", ...IN_AGENT_NAME },
     orderBy: { createdAt: "asc" },
     select: { body: true, conversation: { select: { contact: { select: { phone: true } } } } },
   });
@@ -214,7 +217,7 @@ describe("Encerramento por falta de retorno", () => {
   const NO_RETURN_TEXT = "Joana, como não tivemos retorno, estamos encerrando este atendimento por enquanto. Quando quiser continuar, é só mandar uma mensagem aqui que retomamos de onde paramos. Até logo! 👋";
   /** What the conversation shows after the survey's question, in order. */
   const afterQuestion = async (conversationId: string) =>
-    (await prisma.message.findMany({ where: { conversationId, direction: "OUTBOUND", automatedBy: null }, orderBy: { createdAt: "asc" } })).map((m) => m.body);
+    (await prisma.message.findMany({ where: { conversationId, direction: "OUTBOUND", ...IN_AGENT_NAME }, orderBy: { createdAt: "asc" } })).map((m) => m.body);
 
   it("o cliente deu a nota: depois do agradecimento vai a mensagem de encerramento do atendente, não a de falta de retorno", async () => {
     await createClosingMessage({ name: "Padrão", text: "Obrigada pelo contato, {{primeiro_nome}}!", active: true, userIds: [agentId], connectionScope: { allConnections: true, connectionIds: [] } });

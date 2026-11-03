@@ -77,8 +77,8 @@ export function SatisfactionCard({ overview, isLoading }: { overview: Satisfacti
               <p className="font-medium">NPS (0 a 100){zone ? ` · ${zone.label}` : ""}</p>
               <p className="flex flex-wrap gap-x-2">
                 {delta && (
-                  <span className={`font-semibold ${DELTA_TONE[delta.tone]}`} title={`Período anterior: ${overview.previous.nps}`}>
-                    {delta.text} vs. período anterior
+                  <span className={`font-semibold ${DELTA_TONE[delta.tone]}`} title={`${overview.previous.label ?? "Período anterior"}: ${overview.previous.nps}`}>
+                    {delta.text} vs. {overview.previous.label ?? "período anterior"}
                   </span>
                 )}
                 {goal !== null && totals.nps !== null && (

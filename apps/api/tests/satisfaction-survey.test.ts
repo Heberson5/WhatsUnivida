@@ -457,7 +457,8 @@ describe("Pesquisa de satisfação (NPS)", () => {
       expect(texts()).toEqual(["Obrigado!", CLOSING.text]);
       expect(sent.at(-1)?.sender).toBeNull(); // after the survey, without the agent's name on top
       const message = await prisma.message.findFirstOrThrow({ where: { conversationId: conversation.id, body: CLOSING.text } });
-      expect(message).toMatchObject({ direction: "OUTBOUND", senderAgentId: agentId, automatedBy: null });
+      // In the agent's name, marked as the automatic closing message (the Dashboard doesn't count it as theirs).
+      expect(message).toMatchObject({ direction: "OUTBOUND", senderAgentId: agentId, automatedBy: "CLOSING" });
       expect(await surveyOf(conversation.id)).toMatchObject({ closingOutcome: "SENT" });
       expect((await surveyOf(conversation.id)).closingResolvedAt).not.toBeNull();
 

@@ -104,6 +104,11 @@ export interface CreateSystemOutboundMessageInput {
   agentId?: string | null;
   /** The closing message held back until the "Desfazer" window is over is sent to an already-closed conversation. */
   allowClosed?: boolean;
+  /**
+   * An automatic message sent in the agent's name (Aceite, Transferência, Encerramento, Falta de retorno): it still shows
+   * their name, but the Dashboard doesn't count it as something they wrote.
+   */
+  automatedBy?: string;
 }
 
 /**
@@ -135,6 +140,7 @@ export async function createSystemOutboundMessage(input: CreateSystemOutboundMes
       status: "PENDING",
       body: input.body ?? null,
       senderAgentId: input.agentId ?? null,
+      automatedBy: input.automatedBy ?? null,
     },
     include: messageInclude,
   });

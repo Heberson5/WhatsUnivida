@@ -31,6 +31,7 @@ const response = (id: string, contactName: string, score: number | null, categor
   question: "De 0 a 10?",
   score,
   answerText: score === null ? null : String(score),
+  reasonText: score === 3 ? "O atendente demorou para responder" : null,
   rereadScore: null,
   correction: null,
   category,
@@ -42,7 +43,7 @@ const REPORT: SatisfactionReportDTO = {
   byConnection: [{ ...stats, connectionId: "s", connectionName: "Suporte", connectionColor: "#0097B4" }],
   trend: [],
   responses: [response("1", "Marina Alves", 10, "promoter"), response("2", "Rita Souza", 3, "detractor"), response("3", "Paulo Lima", 8, "passive"), response("4", "Sem Resposta", null, null)],
-  previous: { from: "2026-09-01T00:00:00.000Z", to: "2026-09-30T23:59:59.000Z", nps: 47, average: 6.0, answered: 5, responseRate: 80 },
+  previous: { from: "2026-09-01T00:00:00.000Z", to: "2026-09-30T23:59:59.000Z", label: null, nps: 47, average: 6.0, answered: 5, responseRate: 80 },
   currentQuestion: "De 0 a 10?",
   settings: { npsGoal: 60, presentationCustomer: "full" },
 };

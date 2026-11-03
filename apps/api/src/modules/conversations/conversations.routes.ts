@@ -353,7 +353,7 @@ async function sendAutoMessage(
     cliente: conversation.contact.name ?? conversation.contact.phone ?? "",
     primeiroNome: conversation.contact.firstName,
   });
-  const message = await createSystemOutboundMessage({ conversationId: conversation.id, type: "TEXT", body: text, agentId: sender.id });
+  const message = await createSystemOutboundMessage({ conversationId: conversation.id, type: "TEXT", body: text, agentId: sender.id, automatedBy: trigger });
   await sendOutboundTextViaChannel(conversation, message.id, text, template.showSenderName ? sender.name : null);
   realtimeEvents.newMessage(conversation.id, conversation.assignedAgentId);
 }

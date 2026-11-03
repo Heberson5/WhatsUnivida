@@ -43,12 +43,13 @@ const CATEGORY: Record<SatisfactionCategory, { label: string; chip: string; colo
 const ZONE_TEXT = { success: "text-success", primary: "text-primary", warning: "text-warning", danger: "text-danger" } as const;
 const npsTone = (nps: number | null) => (nps === null ? "text-muted" : ZONE_TEXT[npsZone(nps).tone]);
 
-type ResponseFilter = "answered" | SatisfactionCategory | "unanswered" | "review";
+type ResponseFilter = "answered" | SatisfactionCategory | "reason" | "unanswered" | "review";
 const RESPONSE_FILTERS: { key: ResponseFilter; label: string }[] = [
   { key: "answered", label: "Respondidas" },
   { key: "detractor", label: "Detratores (0–6)" },
   { key: "passive", label: "Neutros (7–8)" },
   { key: "promoter", label: "Promotores (9–10)" },
+  { key: "reason", label: "Com motivo" },
   { key: "unanswered", label: "Sem resposta" },
   { key: "review", label: "Para revisar" },
 ];
@@ -144,7 +145,9 @@ export function SatisfactionReport({
           ? r.status !== "answered"
           : filter === "review"
             ? r.rereadScore !== null
-            : r.category === filter;
+            : filter === "reason"
+              ? r.reasonText !== null
+              : r.category === filter;
     const q = search.trim().toLowerCase();
     const digits = q.replace(/\D/g, "");
     const bySearch = !q || (r.contactName ?? "").toLowerCase().includes(q) || (digits.length > 0 && (r.contactPhone ?? "").includes(digits));
@@ -568,6 +571,14 @@ function ResponseCell({ column, response: r, onCorrect }: { column: string; resp
         <td className="max-w-[16rem] px-4 py-2.5 text-xs text-muted">
           <span className="line-clamp-2" title={r.answerText ?? undefined}>
             {r.answerText ?? "–"}
+          </span>
+        </td>
+      );
+    case "reason":
+      return (
+        <td className="max-w-[18rem] px-4 py-2.5 text-xs">
+          <span className="line-clamp-3 whitespace-pre-line" title={r.reasonText ?? undefined}>
+            {r.reasonText ?? <span className="text-muted">–</span>}
           </span>
         </td>
       );

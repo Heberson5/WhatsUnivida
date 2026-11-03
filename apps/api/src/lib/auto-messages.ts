@@ -186,7 +186,7 @@ async function deliverPending(id: string, now: Date): Promise<string | null> {
     const { conversation } = row;
     if (!(await stillFits(job.condition, conversation))) return await finish("CANCELED_NO_LONGER_FITS");
     if (await isBlocked(conversation, row.kind as AutoMessageKind)) return await finish("BLOCKED");
-    const sentOk = await send(conversation, job);
+    const sentOk = await send(conversation, job, row.kind as AutoMessageKind);
     return await finish(sentOk ? "SENT" : "FAILED");
   } catch (err) {
     logger.error({ err, id }, "failed to send an automatic message");
@@ -203,13 +203,13 @@ type SendConversation = {
   contact: { phone: string | null; externalUserId: string | null };
 };
 
-async function send(conversation: SendConversation, job: Omit<AutoMessageJob, "conversationId" | "kind">): Promise<boolean> {
+async function send(conversation: SendConversation, job: Omit<AutoMessageJob, "conversationId" | "kind">, kind: AutoMessageKind): Promise<boolean> {
   // Instagram/Messenger: the text only.
   const media = conversation.channel === "WHATSAPP" ? (job.media ?? null) : null;
   const type = (media && replyMediaKind(media.mimeType)) || "TEXT";
   const message = job.automatedBy
     ? await prisma.message.create({ data: { conversationId: conversation.id, direction: "OUTBOUND", type, status: "PENDING", body: job.text, automatedBy: job.automatedBy } })
-    : await createSystemOutboundMessage({ conversationId: conversation.id, type, body: job.text, agentId: job.senderAgentId ?? undefined, allowClosed: true });
+    : await createSystemOutboundMessage({ conversationId: conversation.id, type, body: job.text, agentId: job.senderAgentId ?? undefined, allowClosed: true, automatedBy: kind });
   const senderName = job.senderDisplayName ?? null;
   // Loaded here, not at the top: the WhatsApp and Meta services import this module too.
   const whatsappService = await import("../modules/whatsapp/whatsapp.service");

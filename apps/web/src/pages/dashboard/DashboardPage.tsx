@@ -35,7 +35,7 @@ interface DashboardData {
   timings: { avgAcceptMs: number | null; avgFirstResponseMs: number | null; avgHandlingMs: number | null; avgClosingMs: number | null };
   perAgent: { agentId: string; agentName: string; conversations: number; closedNoReturn: number; messagesSent: number; messagesReceived: number; avgHandlingMs: number | null }[];
   users: { online: number; active: number; total: number };
-  previous: { received: number; unique: number; closed: number; messagesTotal: number; avgFirstResponseMs: number | null };
+  previous: { received: number; unique: number; closed: number; messagesTotal: number; avgFirstResponseMs: number | null; label: string };
 }
 
 // Amber for "waiting" doesn't come from the brand (it's a status-severity
@@ -362,14 +362,14 @@ export default function DashboardPage() {
               label="Conversas recebidas"
               value={data.conversations.received.toLocaleString("pt-BR")}
               icon={Inbox}
-              delta={compareWithPrevious(data.conversations.received, data.previous.received)}
+              delta={compareWithPrevious(data.conversations.received, data.previous.received, false, data.previous.label, true)}
             />
             <StatCard
               label="Atendimentos únicos"
               value={data.conversations.unique.toLocaleString("pt-BR")}
               icon={Users}
               hint="clientes diferentes atendidos"
-              delta={compareWithPrevious(data.conversations.unique, data.previous.unique)}
+              delta={compareWithPrevious(data.conversations.unique, data.previous.unique, false, data.previous.label, true)}
             />
             <StatCard
               label="Na fila agora"
@@ -385,13 +385,13 @@ export default function DashboardPage() {
               value={formatMinutes(data.timings.avgFirstResponseMs)}
               icon={Timer}
               hint="sem contar a mensagem de aceite"
-              delta={compareWithPrevious(data.timings.avgFirstResponseMs, data.previous.avgFirstResponseMs, true)}
+              delta={compareWithPrevious(data.timings.avgFirstResponseMs, data.previous.avgFirstResponseMs, true, data.previous.label)}
             />
             <StatCard
               label="Encerradas"
               value={data.conversations.closed.toLocaleString("pt-BR")}
               icon={CheckCircle2}
-              delta={compareWithPrevious(data.conversations.closed, data.previous.closed)}
+              delta={compareWithPrevious(data.conversations.closed, data.previous.closed, false, data.previous.label, true)}
               onClick={canOpenGestao ? () => goToGestao(["CLOSED"], true) : undefined}
               goToLabel="Ver na Gestão →"
             />
@@ -399,7 +399,7 @@ export default function DashboardPage() {
               label="Mensagens"
               value={data.messages.total.toLocaleString("pt-BR")}
               icon={MessageSquare}
-              delta={compareWithPrevious(data.messages.total, data.previous.messagesTotal)}
+              delta={compareWithPrevious(data.messages.total, data.previous.messagesTotal, false, data.previous.label, true)}
             />
           </section>
 

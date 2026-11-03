@@ -586,9 +586,27 @@ export interface SatisfactionSurveyDTO {
    * do. Never longer than the answer window.
    */
   closingWaitMinutes: number;
+  /**
+   * Pergunta do motivo: a score from reasonMinScore to reasonMaxScore gets reasonQuestion instead of the thanks; the
+   * customer's next message is the reason, answered with reasonThanks (no answer within closingWaitMinutes: the thanks).
+   */
+  reasonEnabled: boolean;
+  reasonMinScore: number;
+  reasonMaxScore: number;
+  reasonQuestion: string;
+  reasonThanks: string;
   createdAt: string;
   updatedAt: string;
 }
+
+/** What a new survey starts with for the pergunta do motivo — the detractors (0 to 6). */
+export const DEFAULT_SURVEY_REASON = {
+  reasonEnabled: true,
+  reasonMinScore: 0,
+  reasonMaxScore: 6,
+  reasonQuestion: "Sentimos muito pela sua experiência, {{primeiro_nome}}. Pode nos contar o que mais influenciou sua nota?",
+  reasonThanks: "Obrigado pelo retorno, {{primeiro_nome}}. Vamos usar sua opinião para melhorar nosso atendimento.",
+} as const;
 
 /** NPS of one survey question: 9–10 promoters, 7–8 passives, 0–6 detractors. */
 export interface SatisfactionQuestionSummaryDTO {
@@ -666,6 +684,8 @@ export interface SatisfactionSettingsDTO {
 export interface SatisfactionPreviousDTO {
   from: string;
   to: string;
+  /** How the Dashboard names it ("sex 30/10 até 14:18"); null = the same length right before. */
+  label: string | null;
   nps: number | null;
   average: number | null;
   answered: number;
@@ -730,6 +750,8 @@ export interface SatisfactionResponseDTO {
   score: number | null;
   /** What the customer wrote (null on old surveys whose answer could not be found). */
   answerText: string | null;
+  /** Pergunta do motivo: what the customer said influenced a low score; null when not asked or not answered. */
+  reasonText: string | null;
   /** The score the current reading rules get from answerText, when it differs from score — a reading to review. */
   rereadScore: number | null;
   /** Set when a manager fixed the score: what had been read, and who fixed it. */

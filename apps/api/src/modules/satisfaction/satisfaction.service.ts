@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { fillSendTags } from "../../lib/customer-tags";
 import path from "node:path";
 import type { Prisma, SatisfactionSurveyConfig } from "@prisma/client";
-import { CONVERSATION_UNDO_WINDOW_MS, npsFromCounts, replyMediaKind, type SatisfactionSettingsDTO, type SatisfactionQuestionSummaryDTO, type SatisfactionSummaryDTO, type SatisfactionSurveyDTO } from "@whatsatendende/types";
+import { CONVERSATION_UNDO_WINDOW_MS, PERMISSION, npsFromCounts, replyMediaKind, type SatisfactionSettingsDTO, type SatisfactionQuestionSummaryDTO, type SatisfactionSummaryDTO, type SatisfactionSurveyDTO } from "@whatsatendende/types";
 import { prisma } from "../../lib/prisma";
 import { blockingTag, contactIdsBlocking, enqueueAutoMessage, isBlocked, recordBlocked, type AutoMessageCondition } from "../../lib/auto-messages";
 import { logger } from "../../lib/logger";
@@ -15,6 +15,9 @@ import type { HeldReplyMedia } from "../../lib/reply-media";
 import { addAttachment, createSystemOutboundMessage } from "../messages/messages.service";
 import { isGratitudeMessage } from "./gratitude";
 import { looksLikeScoreAttempt, parseSurveyScore } from "./survey-score";
+import { isPermissionAllowed } from "../../lib/permissions";
+import { createNotification } from "../notifications/notifications.service";
+import { toNotificationDTO } from "../notifications/notifications.mapper";
 export { parseSurveyScore };
 
 /**
@@ -52,6 +55,15 @@ const LEGACY_QUESTION_LABEL = "Pesquisa anterior (nota de 1 a 5)";
 // For a score on a survey whose setup was deleted in the meantime.
 const DEFAULT_THANKS = "Obrigado pela sua avaliação!";
 export const SCORE_REASK_TEXT = "Não entendi sua nota. Responda só com um número de 0 a 10, por favor.";
+// Pergunta do motivo: the reason may come in a few messages — each one this soon after the first joins it.
+const REASON_MORE_MS = 2 * 60_000;
+// A reason that isn't text: the report says what it was, the conversation has it.
+const REASON_MEDIA_LABEL: Record<string, string> = {
+  AUDIO: "(áudio — ouça na conversa)",
+  IMAGE: "(imagem — veja na conversa)",
+  VIDEO: "(vídeo — veja na conversa)",
+  DOCUMENT: "(arquivo — veja na conversa)",
+};
 
 type SurveyRow = SatisfactionSurveyConfig & { connections: { id: string; name: string }[] };
 
@@ -63,6 +75,11 @@ export interface SurveyInput {
   thanks: string;
   answerWindowHours: number;
   closingWaitMinutes: number;
+  reasonEnabled?: boolean;
+  reasonMinScore?: number;
+  reasonMaxScore?: number;
+  reasonQuestion?: string;
+  reasonThanks?: string;
 }
 
 export function toSurveyDTO(row: SurveyRow): SatisfactionSurveyDTO {
@@ -75,6 +92,11 @@ export function toSurveyDTO(row: SurveyRow): SatisfactionSurveyDTO {
     thanks: row.thanks,
     answerWindowHours: row.answerWindowHours,
     closingWaitMinutes: row.closingWaitMinutes,
+    reasonEnabled: row.reasonEnabled,
+    reasonMinScore: row.reasonMinScore,
+    reasonMaxScore: row.reasonMaxScore,
+    reasonQuestion: row.reasonQuestion,
+    reasonThanks: row.reasonThanks,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -419,7 +441,14 @@ async function deliverClosingMessage(surveyId: string, now: Date): Promise<strin
     if (await isBlocked({ id: conversation.id, contactId: survey.contactId }, kind)) return await finish(CLOSING_BLOCKED);
     const text = answered?.text ?? survey.closingText;
     const media = answered ? answered.media : heldMediaOf(survey.closingMedia);
-    const message = await createSystemOutboundMessage({ conversationId: conversation.id, type: closingMessageType(media), body: text, agentId: sender?.id, allowClosed: true });
+    const message = await createSystemOutboundMessage({
+      conversationId: conversation.id,
+      type: closingMessageType(media),
+      body: text,
+      agentId: sender?.id,
+      allowClosed: true,
+      automatedBy: kind,
+    });
     // After the survey the closing message goes without the "*Nome:*" on top — the name only goes with it when there is no survey.
     const sent = media
       ? await sendClosingMedia(conversation.whatsappConnectionId, message.id, conversation.contact.phone, media, text, null)
@@ -439,6 +468,7 @@ async function deliverClosingMessage(surveyId: string, now: Date): Promise<strin
  * rather than failing the message for good.
  */
 export async function processDueClosingMessages(now = new Date()): Promise<number> {
+  await thankSilentReasons(now);
   const due = await prisma.satisfactionSurvey.findMany({
     where: { closingText: { not: null }, closingResolvedAt: null, closingDueAt: { lte: now }, whatsappConnection: { status: "CONNECTED" } },
     select: { id: true },
@@ -450,6 +480,60 @@ export async function processDueClosingMessages(now = new Date()): Promise<numbe
     if ((await deliverClosingMessage(id, now)) === CLOSING_SENT) sent += 1;
   }
   return sent;
+}
+
+/**
+ * Asked the reason of a low score and got none within the wait: the survey's thanks goes out anyway, and the closing
+ * message a few seconds after it.
+ */
+async function thankSilentReasons(now: Date): Promise<void> {
+  const silent = await prisma.satisfactionSurvey.findMany({
+    where: { reasonAskedAt: { not: null }, reasonAnsweredAt: null, reasonTimedOutAt: null, closingDueAt: { lte: now }, whatsappConnection: { status: "CONNECTED" } },
+    select: { id: true, contactId: true, sentAt: true, conversationId: true, closingText: true, closingResolvedAt: true, config: { select: { thanks: true } }, conversation: { select: { status: true } } },
+    take: 50,
+  });
+  for (const s of silent) {
+    const claimed = await prisma.satisfactionSurvey.updateMany({ where: { id: s.id, reasonAnsweredAt: null, reasonTimedOutAt: null }, data: { reasonTimedOutAt: now } });
+    if (claimed.count === 0) continue;
+    if (s.conversation.status !== "CLOSED" || (await hasConversationSince(s.contactId, s.sentAt))) continue;
+    const thanksDueAt = await sendSurveyText({ id: s.conversationId }, s.config?.thanks ?? DEFAULT_THANKS);
+    if (s.closingText !== null && s.closingResolvedAt === null) {
+      await prisma.satisfactionSurvey.updateMany({ where: { id: s.id, closingResolvedAt: null }, data: { closingDueAt: new Date(thanksDueAt.getTime() + 3_000) } });
+    }
+  }
+}
+
+/**
+ * Tells whoever sees the satisfaction reports that a low score came with its reason — in time to call the customer
+ * back the same day. Never in the way of the survey: a failure is only logged.
+ */
+async function notifyLowScoreReason(surveyId: string): Promise<void> {
+  try {
+    const survey = await prisma.satisfactionSurvey.findUnique({
+      where: { id: surveyId },
+      select: { score: true, reasonText: true, agent: { select: { displayName: true } }, conversation: { select: { contact: { select: { name: true, phone: true } } } } },
+    });
+    if (!survey) return;
+    const users = await prisma.user.findMany({ where: { status: "ACTIVE" }, select: { id: true, role: true } });
+    const allowedByRole = new Map<string, boolean>();
+    for (const role of new Set(users.map((u) => u.role))) allowedByRole.set(role, await isPermissionAllowed(role, PERMISSION.RELATORIOS_ACESSAR));
+    const customer = survey.conversation.contact.name ?? survey.conversation.contact.phone ?? "Cliente";
+    const reason = (survey.reasonText ?? "").replace(/\s+/g, " ").slice(0, 200);
+    for (const user of users) {
+      if (!allowedByRole.get(user.role)) continue;
+      const notification = await createNotification({
+        userId: user.id,
+        type: "SURVEY_LOW_SCORE",
+        title: `Nota ${survey.score} na pesquisa: ${customer}`,
+        body: `Motivo: ${reason}${survey.agent ? ` · Atendente: ${survey.agent.displayName}` : ""}`,
+        entityType: "SatisfactionSurvey",
+        entityId: surveyId,
+      });
+      realtimeEvents.notificationCreated(user.id, toNotificationDTO(notification));
+    }
+  } catch (err) {
+    logger.error({ err, surveyId }, "failed to notify the reason of a low score");
+  }
 }
 
 /** The customer's message is part of the survey exchange: it stays on the closed conversation, no new one opens. */
@@ -481,7 +565,9 @@ async function keepOnClosedConversation(conversationId: string, message: { body:
 export async function captureSurveyAnswer(
   connectionId: string,
   contact: { id: string; phone: string | null },
-  message: { body: string | null; providerMessageId: string }
+  message: { body: string | null; providerMessageId: string; type?: string },
+  // Stores a picture, an audio... sent as the reason of a low score on the closed conversation, its file included.
+  storeMedia?: (conversationId: string) => Promise<void>
 ): Promise<boolean> {
   const now = new Date();
   // questionId is null only on surveys from the old 1–5 scale, which no longer take answers.
@@ -493,10 +579,17 @@ export async function captureSurveyAnswer(
       OR: [
         { answeredAt: null, expiresAt: { gt: now } }, // still taking the score
         { closingText: { not: null }, closingResolvedAt: null }, // the closing message is still on its way
+        { reasonAskedAt: { not: null }, reasonAnsweredAt: null, closingDueAt: { gt: now } }, // waiting for the reason of a low score
+        { reasonAnsweredAt: { gt: new Date(now.getTime() - REASON_MORE_MS) } }, // the reason, in a few messages
       ],
     },
     orderBy: { sentAt: "desc" },
-    include: { conversation: { select: { status: true } }, config: { select: { thanks: true } } },
+    include: {
+      conversation: { select: { status: true, contact: { select: { name: true, firstName: true } } } },
+      config: {
+        select: { thanks: true, closingWaitMinutes: true, reasonEnabled: true, reasonMinScore: true, reasonMaxScore: true, reasonQuestion: true, reasonThanks: true },
+      },
+    },
   });
   if (!survey) return false;
   // The time to answer ran out while the closing message was still waiting (the server was down for a day): the survey is over.
@@ -506,6 +599,35 @@ export async function captureSurveyAnswer(
   if (survey.conversation.status !== "CLOSED" || (await hasConversationSince(contact.id, survey.sentAt))) return false;
 
   const closingPending = survey.closingText !== null && survey.closingResolvedAt === null;
+  const pendingClosing = { id: survey.id, closingText: { not: null }, closingResolvedAt: null };
+  const customerName = survey.conversation.contact.name ?? contact.phone ?? "";
+  const firstName = survey.conversation.contact.firstName;
+
+  // Pergunta do motivo: whatever the customer sends next is the reason — a picture or an audio too, kept with its file.
+  const keepReason = () =>
+    message.type && message.type !== "TEXT" && storeMedia ? storeMedia(survey.conversationId) : keepOnClosedConversation(survey.conversationId, message);
+  const reasonPart = message.body?.trim() || REASON_MEDIA_LABEL[message.type ?? ""] || "(mensagem — veja na conversa)";
+  if (survey.reasonAskedAt && !survey.reasonAnsweredAt && survey.closingDueAt && survey.closingDueAt > now) {
+    const recorded = await prisma.satisfactionSurvey.updateMany({
+      where: { id: survey.id, reasonAnsweredAt: null, reasonTimedOutAt: null },
+      data: { reasonText: reasonPart, reasonAnsweredAt: now },
+    });
+    await keepReason();
+    if (recorded.count === 0) return true;
+    const thanks = fillSendTags(survey.config?.reasonThanks || survey.config?.thanks || DEFAULT_THANKS, customerName, firstName);
+    const thanksDueAt = contact.phone ? await sendSurveyText({ id: survey.conversationId }, thanks) : now;
+    // The closing message 10 seconds after the reason — and always after the thanks.
+    const closingDueAt = new Date(Math.max(now.getTime() + CLOSING_AFTER_ANSWER_MS, thanksDueAt.getTime() + 3_000));
+    if (closingPending) await prisma.satisfactionSurvey.updateMany({ where: pendingClosing, data: { closingDueAt } });
+    await notifyLowScoreReason(survey.id);
+    return true;
+  }
+  if (survey.reasonAnsweredAt && now.getTime() - survey.reasonAnsweredAt.getTime() < REASON_MORE_MS) {
+    await prisma.satisfactionSurvey.update({ where: { id: survey.id }, data: { reasonText: [survey.reasonText, reasonPart].filter(Boolean).join("\n") } });
+    await keepReason();
+    return true;
+  }
+
   const score = parseSurveyScore(message.body);
 
   if (score !== null && survey.answeredAt === null) {
@@ -515,9 +637,16 @@ export async function captureSurveyAnswer(
       await keepOnClosedConversation(survey.conversationId, message);
       return true;
     }
+    const reason = survey.config;
+    if (reason?.reasonEnabled && score >= reason.reasonMinScore && score <= reason.reasonMaxScore) {
+      // A low score: what influenced it, before the thanks. The closing message waits for the answer, up to the survey's wait.
+      await prisma.satisfactionSurvey.update({ where: { id: survey.id }, data: { reasonAskedAt: now, closingDueAt: new Date(now.getTime() + reason.closingWaitMinutes * 60_000) } });
+      await keepOnClosedConversation(survey.conversationId, message);
+      if (contact.phone) await sendSurveyText({ id: survey.conversationId }, fillSendTags(reason.reasonQuestion, customerName, firstName));
+      return true;
+    }
     // Now the wait is short: the closing message follows the score by 10 seconds (unless it was claimed this very moment)…
     const closingDueAt = new Date(now.getTime() + CLOSING_AFTER_ANSWER_MS);
-    const pendingClosing = { id: survey.id, closingText: { not: null }, closingResolvedAt: null };
     if (closingPending) await prisma.satisfactionSurvey.updateMany({ where: pendingClosing, data: { closingDueAt } });
     await keepOnClosedConversation(survey.conversationId, message);
     const thanks = survey.config?.thanks ?? DEFAULT_THANKS;

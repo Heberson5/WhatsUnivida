@@ -61,6 +61,16 @@ describe("números do Dashboard", () => {
     expect(compareWithPrevious(null, 10)).toBeNull();
   });
 
+  it("com o nome do dia comparado; contra menos de 10, a diferença e o número em vez da porcentagem", () => {
+    expect(compareWithPrevious(27, 20, false, "sex 30/10 até 14:18", true)).toEqual({ text: "35% vs sex 30/10 até 14:18", good: true, up: true });
+    expect(compareWithPrevious(27, 2, false, "sex 30/10 até 14:18", true)).toEqual({ text: "+25 vs 2 em sex 30/10 até 14:18", good: true, up: true });
+    expect(compareWithPrevious(1, 4, false, "sex 30/10", true)).toEqual({ text: "−3 vs 4 em sex 30/10", good: false, up: false });
+    expect(compareWithPrevious(5, 0, false, "sex 30/10", true)).toEqual({ text: "sem movimento em sex 30/10", good: true, up: true });
+    expect(compareWithPrevious(0, 0, false, "sex 30/10", true)).toBeNull();
+    // A time is never a count: 2 min against 1 min is still a percentage.
+    expect(compareWithPrevious(120_000, 60_000, true, "sex 30/10")).toEqual({ text: "100% vs sex 30/10", good: false, up: true });
+  });
+
   it("minutos e porcentagens", () => {
     expect(formatMinutes(null)).toBe("-");
     expect(formatMinutes(2.6 * 60000)).toBe("3 min");

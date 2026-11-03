@@ -6,6 +6,7 @@ import type { ArrivalsByHourDTO } from "@whatsatendende/types";
 import type { Prisma, WorkSchedule } from "@prisma/client";
 import { findApplicableHoliday } from "../holidays/holidays.service";
 import { isWorkScheduleOpen } from "../work-schedules/work-schedules.service";
+import type { ComparisonWindow } from "../../lib/compare-period";
 
 function avgMs(diffs: number[]): number | null {
   if (diffs.length === 0) return null;
@@ -18,6 +19,8 @@ export interface DashboardParams {
   agentId?: string;
   /** Empty/undefined = every WhatsApp connection — see PROMPT: filtro podendo selecionar várias ou todas. */
   connectionIds?: string[];
+  /** What the cards compare with (compare-period.ts); without it, the same length right before. */
+  compare?: ComparisonWindow;
 }
 
 /**
@@ -25,7 +28,7 @@ export interface DashboardParams {
  * least one conversation created inside the window — a contact who wrote 30
  * messages in the same conversation still counts once.
  */
-export async function getDashboard({ from, to, agentId, connectionIds }: DashboardParams) {
+export async function getDashboard({ from, to, agentId, connectionIds, compare }: DashboardParams) {
   const connectionFilter = connectionIds === undefined ? undefined : { in: connectionIds };
   const whereBase = {
     createdAt: { gte: from, lte: to },
@@ -55,6 +58,8 @@ export async function getDashboard({ from, to, agentId, connectionIds }: Dashboa
       by: ["direction"],
       where: {
         createdAt: { gte: from, lte: to },
+        // Only what people wrote: the automatic messages (fora do expediente, aceite, encerramento...) don't count.
+        automatedBy: null,
         conversation: {
           status: { not: "GROUP" as const },          ...(agentId ? { assignedAgentId: agentId } : {}),
           ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}),
@@ -97,14 +102,10 @@ export async function getDashboard({ from, to, agentId, connectionIds }: Dashboa
 
   const perAgent = await getPerAgentBreakdown(from, to, connectionFilter);
   const users = await getUsersSummary();
-  // Same-length window right before this one, for the "vs período anterior" deltas.
+  // What the cards compare with — the same-length window right before this one when none is given (the presentation).
   const lengthMs = to.getTime() - from.getTime();
-  const previous = await getPeriodTotals({
-    from: new Date(from.getTime() - lengthMs - 1),
-    to: new Date(from.getTime() - 1),
-    agentId,
-    connectionIds,
-  });
+  const window = compare ?? { from: new Date(from.getTime() - lengthMs - 1), to: new Date(from.getTime() - 1), label: "período anterior" };
+  const previous = { ...(await getPeriodTotals({ from: window.from, to: window.to, agentId, connectionIds })), label: window.label };
 
   return {
     conversations: {
@@ -142,7 +143,7 @@ async function getPeriodTotals({ from, to, agentId, connectionIds }: DashboardPa
       where: { createdAt: { gte: from, lte: to }, ...conversationScope },
       select: { contactId: true, status: true, acceptedAt: true, firstResponseAt: true, ...SCHEDULE_SELECT },
     }),
-    prisma.message.count({ where: { createdAt: { gte: from, lte: to }, conversation: conversationScope } }),
+    prisma.message.count({ where: { createdAt: { gte: from, lte: to }, automatedBy: null, conversation: conversationScope } }),
   ]);
   return {
     received: conversations.length,
@@ -254,6 +255,7 @@ async function getPerAgentBreakdown(from: Date, to: Date, connectionFilter?: { i
       const sentCount = await prisma.message.count({
         where: {
           senderAgentId: agent.id,
+          automatedBy: null,
           createdAt: { gte: from, lte: to },
           conversation: { status: { not: "GROUP" as const }, ...(connectionFilter ? { whatsappConnectionId: connectionFilter } : {}) },
         },

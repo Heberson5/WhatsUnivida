@@ -34,6 +34,8 @@ export interface SatisfactionReportParams {
   connectionIds?: string[];
   /** The browser's UTC offset (Date#getTimezoneOffset) — days of the trend are the viewer's days. */
   tzOffsetMinutes?: number;
+  /** What "antes" is (the Dashboard's business-day comparison); without it, the same length right before. */
+  compare?: { from: Date; to: Date; label: string };
 }
 
 const MAX_RESPONSES = 5000;
@@ -70,8 +72,8 @@ const two = (n: number) => String(n).padStart(2, "0");
  * each attendant's NPS, for "▲ 6 pontos em relação ao período anterior".
  */
 async function previousPeriod(params: SatisfactionReportParams): Promise<{ previous: SatisfactionPreviousDTO; npsByAgent: Map<string, number | null> }> {
-  const to = new Date(params.from.getTime() - 1);
-  const from = new Date(params.from.getTime() - (params.to.getTime() - params.from.getTime()) - 1);
+  const to = params.compare?.to ?? new Date(params.from.getTime() - 1);
+  const from = params.compare?.from ?? new Date(params.from.getTime() - (params.to.getTime() - params.from.getTime()) - 1);
   const rows = await prisma.satisfactionSurvey.findMany({
     where: {
       sentAt: { gte: from, lte: to },
@@ -87,7 +89,7 @@ async function previousPeriod(params: SatisfactionReportParams): Promise<{ previ
   const perAgent = new Map<string, number[]>();
   for (const r of rows) if (r.agentId && r.score !== null) perAgent.set(r.agentId, [...(perAgent.get(r.agentId) ?? []), r.score]);
   return {
-    previous: { from: from.toISOString(), to: to.toISOString(), nps: totals.nps, average: totals.average, answered: totals.answered, responseRate: totals.responseRate },
+    previous: { from: from.toISOString(), to: to.toISOString(), label: params.compare?.label ?? null, nps: totals.nps, average: totals.average, answered: totals.answered, responseRate: totals.responseRate },
     npsByAgent: new Map([...perAgent].map(([agentId, s]) => [agentId, stats(s.length, s).nps])),
   };
 }
@@ -112,6 +114,7 @@ export async function getSatisfactionReport(params: SatisfactionReportParams): P
       expiresAt: true,
       score: true,
       answerText: true,
+      reasonText: true,
       originalScore: true,
       scoreCorrectedAt: true,
       scoreCorrectedBy: { select: { displayName: true } },
@@ -195,6 +198,7 @@ export async function getSatisfactionReport(params: SatisfactionReportParams): P
     question: r.question?.text ?? null,
     score: r.score,
     answerText: r.answerText,
+    reasonText: r.reasonText,
     rereadScore: rereadScore(r),
     correction: r.scoreCorrectedAt ? { originalScore: r.originalScore, byName: r.scoreCorrectedBy?.displayName ?? null, at: r.scoreCorrectedAt.toISOString() } : null,
     category: r.score === null ? null : categoryOf(r.score),
@@ -268,6 +272,7 @@ export function responsesToRows(report: SatisfactionReportDTO, tzOffsetMinutes: 
     Pesquisa: r.surveyName ?? "-",
     Nota: r.score ?? "-",
     "Resposta do cliente": r.answerText ?? "-",
+    "Motivo da nota": r.reasonText ?? "-",
     Classificação: r.category ? CATEGORY_LABEL[r.category] : STATUS_LABEL[r.status],
   }));
 }

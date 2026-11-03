@@ -134,6 +134,11 @@ function EvaluationRow({ response: r, chip, opening, onOpen }: { response: Satis
           <span className="block truncate text-[11px] text-muted">
             {r.agentName ?? "–"} · {when(r.answeredAt)}
           </span>
+          {r.reasonText && (
+            <span className="mt-0.5 line-clamp-2 block text-[11px] italic" title={r.reasonText}>
+              “{r.reasonText}”
+            </span>
+          )}
         </span>
       </button>
     </li>

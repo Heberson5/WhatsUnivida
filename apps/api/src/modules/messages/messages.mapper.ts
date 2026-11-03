@@ -3,7 +3,17 @@ import { pollResultsOf } from "./poll-votes.service";
 import type { MessageDTO } from "@whatsatendende/types";
 
 // Messages the system sent on its own show who "wrote" them instead of an agent name.
-const AUTOMATED_SENDER_LABEL: Record<string, string> = { FLOW: "Fluxo automático", SURVEY: "Pesquisa de satisfação", WORK_SCHEDULE: "Fora do expediente", QUEUE_WAIT: "Mensagem de espera" };
+// The agent's name comes first: an Aceite or an Encerramento still shows who it went in the name of.
+const AUTOMATED_SENDER_LABEL: Record<string, string> = {
+  FLOW: "Fluxo automático",
+  SURVEY: "Pesquisa de satisfação",
+  WORK_SCHEDULE: "Fora do expediente",
+  QUEUE_WAIT: "Mensagem de espera",
+  ACCEPT: "Mensagem de aceite",
+  TRANSFER: "Mensagem de transferência",
+  CLOSING: "Mensagem de encerramento",
+  NO_RETURN: "Falta de retorno",
+};
 
 type MessageWithRelations = Message & {
   senderAgent: User | null;

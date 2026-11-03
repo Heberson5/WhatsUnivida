@@ -50,7 +50,8 @@ describe("dashboard: team now and presence durations", () => {
   it("returns the previous period's headline numbers for comparison", async () => {
     const res = await request(app).get("/api/dashboard").query({ period: "today" }).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.previous).toEqual({ received: 0, unique: 0, closed: 0, messagesTotal: 0, avgFirstResponseMs: null });
+    expect(res.body.previous).toMatchObject({ received: 0, unique: 0, closed: 0, messagesTotal: 0, avgFirstResponseMs: null });
+    expect(typeof res.body.previous.label).toBe("string");
   });
 
   it("counts conversations the customer opened, by the hour of their first message, inside and outside the connection's hours", async () => {

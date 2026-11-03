@@ -1469,6 +1469,14 @@ model SatisfactionSurveyConfig {
   answerWindowHours  Int                  @default(24)
   // How long after the question the held closing message goes out if the customer never answers.
   closingWaitMinutes Int                  @default(30)
+  // Pergunta do motivo: a score from reasonMinScore to reasonMaxScore gets reasonQuestion instead of the thanks; the
+  // customer's next message is the reason, answered with reasonThanks. No answer within closingWaitMinutes: the
+  // usual thanks, and the closing message.
+  reasonEnabled      Boolean              @default(false)
+  reasonMinScore     Int                  @default(0)
+  reasonMaxScore     Int                  @default(6)
+  reasonQuestion     String               @default("Sentimos muito pela sua experiência, {{primeiro_nome}}. Pode nos contar o que mais influenciou sua nota?")
+  reasonThanks       String               @default("Obrigado pelo retorno, {{primeiro_nome}}. Vamos usar sua opinião para melhorar nosso atendimento.")
   sent               SatisfactionSurvey[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
@@ -1519,6 +1527,12 @@ model SatisfactionSurvey {
   sentAt               DateTime                  @default(now())
   expiresAt            DateTime
   answeredAt           DateTime?
+  // Pergunta do motivo: asked when the score fell in the survey's range; the reason (its messages joined) and when it
+  // came — or when the wait for it ran out (the thanks went out without it).
+  reasonAskedAt        DateTime?
+  reasonText           String?
+  reasonAnsweredAt     DateTime?
+  reasonTimedOutAt     DateTime?
 
   // The agent's closing message while it waits for the customer's score — kept here
   // (already rendered, with who sent it; it goes out without the agent's name on top) rather than in a timer, so the wait

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PERMISSION, type PermissionMap, type SatisfactionSurveyDTO } from "@whatsatendende/types";
+import { DEFAULT_SURVEY_REASON, PERMISSION, type PermissionMap, type SatisfactionSurveyDTO } from "@whatsatendende/types";
 import { PesquisaTab } from "./PesquisaTab";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
@@ -21,6 +21,7 @@ const survey = (overrides: Partial<SatisfactionSurveyDTO>): SatisfactionSurveyDT
   thanks: "Obrigado pela sua avaliação!",
   answerWindowHours: 24,
   closingWaitMinutes: 30,
+  ...DEFAULT_SURVEY_REASON,
   createdAt: "2026-10-09T10:00:00.000Z",
   updatedAt: "2026-10-09T10:00:00.000Z",
   ...overrides,

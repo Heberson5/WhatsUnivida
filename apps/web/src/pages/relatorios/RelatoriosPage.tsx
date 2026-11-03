@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import type { ArrivalsByHourDTO, AutoMessageBlocksReportDTO } from "@whatsatendende/types";
 import { ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
 import { api } from "../../lib/api";
@@ -60,7 +61,9 @@ const SATISFACTION_EXPORT_COLUMNS: Record<"agents" | "responses", Record<string,
 };
 
 export default function RelatoriosPage() {
-  const [tab, setTab] = useState<ReportKind>("attendance");
+  const [searchParams] = useSearchParams();
+  // ?aba=satisfacao: the notice of a low score with its reason opens straight on the survey report.
+  const [tab, setTab] = useState<ReportKind>(() => (searchParams.get("aba") === "satisfacao" ? "satisfaction" : "attendance"));
   const [period, setPeriod] = useState<PeriodValue>({ period: "month" });
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
