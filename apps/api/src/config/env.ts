@@ -30,7 +30,7 @@ const schema = z.object({
   // Tangará da Serra) — for jobs that run at a local time, like Monday 00:00.
   BUSINESS_TZ_OFFSET_MINUTES: z.coerce.number().default(240),
   UPLOAD_DIR: z.string().default("./uploads"),
-  UPLOAD_MAX_SIZE_MB: z.coerce.number().default(25),
+  UPLOAD_MAX_SIZE_MB: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(300),
 });

@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { whatsappMediaKind } from "./media-kind";
 import type {
   ChatIdentityResolvedEvent,
   ChatReadEvent,
@@ -181,7 +182,9 @@ export class CloudApiWhatsAppProvider implements WhatsAppProvider {
 
   async sendFile(chatId: string, buffer: Buffer, fileName: string, mimeType: string, caption?: string): Promise<SendResult> {
     const mediaId = await this.uploadMedia(buffer, fileName, mimeType);
-    const type = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : "document";
+    // The Cloud API's own audio type is left out here, as before: an audio file goes as a document.
+    const kind = whatsappMediaKind(mimeType);
+    const type = kind === "image" || kind === "video" ? kind : "document";
     const mediaPayload: Record<string, unknown> = { id: mediaId };
     if (caption) mediaPayload.caption = caption;
     if (type === "document") mediaPayload.filename = fileName;

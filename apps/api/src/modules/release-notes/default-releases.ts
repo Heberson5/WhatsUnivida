@@ -11,6 +11,35 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.31.1",
+    date: "3 nov 2026",
+    name: "Qualquer tipo de arquivo e nomes no Dashboard",
+    summary: "O atendimento envia qualquer tipo de arquivo, como no WhatsApp Web, até 100 MB. No Dashboard, os nomes dos atendentes não ficam mais atrás da legenda.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Envie qualquer tipo de arquivo",
+        text: "Agora dá para enviar .rar, .7z, .svg, .xml, .csv, .apk e qualquer outro tipo, até 100 MB (antes, 25 MB). Fotos JPG, PNG e WEBP, vídeos MP4 e áudios vão como no WhatsApp; os outros tipos, inclusive SVG e HEIC, vão como documento, para chegarem inteiros. Um programa (.exe, .bat, .apk...) mostra um aviso de cuidado antes de enviar.",
+        where: "Atendimento › Anexar",
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Arquivos que podem ter código só são baixados",
+        text: "Imagens, vídeos, áudios, PDF e .txt continuam abrindo na tela. Os demais arquivos, inclusive os que os clientes já enviaram, são sempre baixados e nunca abertos no navegador, por segurança. Vale também para o chat interno.",
+        where: "Atendimento e Chat interno",
+      },
+      {
+        type: "correcao",
+        area: "dashboard",
+        title: "Nomes dos atendentes atrás da legenda",
+        text: "Nos gráficos por atendente, a legenda foi para o alto e os nomes ganharam o espaço de que precisam. Um nome muito longo termina em reticências; ao passar o mouse, aparece inteiro.",
+        where: "Dashboard",
+      },
+    ],
+  },
+  {
     version: "2.31.0",
     date: "31 out 2026",
     name: "Avisos com horário e ciente obrigatório",

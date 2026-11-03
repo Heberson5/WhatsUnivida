@@ -17,7 +17,7 @@ import { writeAudit } from "../../lib/audit";
 import { transcodeToOggOpus } from "../../lib/audio-transcode";
 import { toMessageDTO } from "../messages/messages.mapper";
 import { addAttachment } from "../messages/messages.service";
-import { upload, mimeToMessageType } from "../messages/messages.routes";
+import { uploadFile, mimeToMessageType } from "../messages/messages.routes";
 import * as whatsappService from "../whatsapp/whatsapp.service";
 import * as service from "./groups.service";
 
@@ -177,7 +177,7 @@ groupsRouter.post(
 groupsRouter.post(
   "/:id/file",
   requireReplyPermission,
-  upload.single("file"),
+  uploadFile,
   asyncHandler(async (req, res) => {
     const { group, chatId, senderName } = await loadGroupForReply(req);
     if (!req.file) throw Errors.badRequest("Nenhum arquivo enviado");
@@ -205,7 +205,7 @@ groupsRouter.post(
 groupsRouter.post(
   "/:id/audio",
   requireReplyPermission,
-  upload.single("file"),
+  uploadFile,
   asyncHandler(async (req, res) => {
     const { group, chatId, senderName } = await loadGroupForReply(req);
     if (!req.file) throw Errors.badRequest("Nenhum audio enviado");

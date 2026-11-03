@@ -41,6 +41,7 @@ import type {
 import { deliveryEventFromBaileysUpdate } from "./delivery-status";
 import { reactionEventFromBaileys } from "./reaction-event";
 import { groupSenderFromBaileys, isGroupChat } from "./group-message";
+import { whatsappMediaKind } from "./media-kind";
 
 export interface BaileysProviderOptions {
   /** Directory where Baileys persists the multi-device auth/session state. */
@@ -821,8 +822,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     caption?: string
   ): Promise<SendResult> {
     const socket = this.requireSocket();
-    const isImage = mimeType.startsWith("image/");
-    const isVideo = mimeType.startsWith("video/");
+    const kind = whatsappMediaKind(mimeType);
+    const isImage = kind === "image";
+    const isVideo = kind === "video";
     // An audio file (as opposed to a recorded voice note — see sendAudio
     // below) still needs its own `audio` payload, not `document`: WhatsApp
     // only renders the inline playable waveform/player for a message sent
@@ -830,7 +832,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     // recipient's phone as a plain downloadable file, never as playable
     // audio at all — see PROMPT: "está chegando no celular do cliente como
     // um arquivo web".
-    const isAudio = mimeType.startsWith("audio/");
+    const isAudio = kind === "audio";
     const payload = isImage
       ? { image: buffer, caption, mimetype: mimeType }
       : isVideo

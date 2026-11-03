@@ -1,3 +1,4 @@
+import { setConversationFileHeaders } from "../../lib/safe-download";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -22,8 +23,7 @@ internalChatRouter.get(
   asyncHandler(async (req, res) => {
     const oversight = req.auth!.role === "ADMIN" || (await isPermissionAllowed(req.auth!.role, PERMISSION.CHAT_INTERNO_ACOMPANHAR));
     const message = await service.attachmentFor(req.params.messageId, req.auth!.userId, oversight);
-    res.setHeader("Content-Type", message.attachmentMimeType!);
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(message.attachmentName!)}"`);
+    setConversationFileHeaders(res, message.attachmentMimeType!, message.attachmentName!);
     res.sendFile(path.resolve(env.UPLOAD_DIR, message.attachmentKey!));
   })
 );

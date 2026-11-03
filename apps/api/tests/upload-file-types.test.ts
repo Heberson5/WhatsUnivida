@@ -6,7 +6,7 @@ import { resetDatabase, createTestUser, createTestConnection, createWaitingConve
 
 const app = createApp();
 
-describe("sending a file: allowed types", () => {
+describe("sending a file: any type, like WhatsApp Web", () => {
   let accessToken: string;
   let conversationId: string;
 
@@ -52,15 +52,35 @@ describe("sending a file: allowed types", () => {
   });
 
   it.each([
+    ["arquivos.rar", "application/vnd.rar"],
+    ["arquivos.7z", "application/x-7z-compressed"],
     ["dados.csv", "text/csv"],
     ["pagina.html", "text/html"],
     ["programa.exe", "application/x-msdownload"],
-  ])("refuses %s with a clear 400 (it used to be a 500), and records nothing", async (filename, contentType) => {
-    const before = await prisma.message.count({ where: { conversationId } });
+    ["logo.svg", "image/svg+xml"],
+    ["foto.heic", "image/heic"],
+    ["sem-tipo.cdr", "application/octet-stream"],
+  ])("sends %s as a document", async (filename, contentType) => {
     const res = await sendFile("x", filename, contentType);
-    expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Tipo de arquivo não permitido");
-    expect(res.body.message).toContain("Bloco de Notas (.txt)");
-    expect(await prisma.message.count({ where: { conversationId } })).toBe(before);
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe("DOCUMENT");
+  });
+
+  it("sends a JPG as a picture and an MP4 as a video", async () => {
+    expect((await sendFile("x", "foto.jpg", "image/jpeg")).body.type).toBe("IMAGE");
+    expect((await sendFile("x", "video.mp4", "video/mp4")).body.type).toBe("VIDEO");
+  });
+
+  it("a file that could run code is only downloaded; a picture still opens on the screen", async () => {
+    const svg = await sendFile("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>", "logo.svg", "image/svg+xml");
+    const svgDownload = await request(app).get(svg.body.attachments[0].url).set("Authorization", `Bearer ${accessToken}`);
+    expect(svgDownload.status).toBe(200);
+    expect(svgDownload.headers["content-disposition"]).toMatch(/^attachment;/);
+    expect(svgDownload.headers["content-type"]).toContain("application/octet-stream");
+
+    const png = await sendFile("x", "foto.png", "image/png");
+    const pngDownload = await request(app).get(png.body.attachments[0].url).set("Authorization", `Bearer ${accessToken}`);
+    expect(pngDownload.headers["content-disposition"]).toMatch(/^inline;/);
+    expect(pngDownload.headers["content-type"]).toContain("image/png");
   });
 });

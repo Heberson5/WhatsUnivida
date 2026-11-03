@@ -123,6 +123,9 @@ export interface ComposerHandle {
   focus: (insert?: string) => void;
 }
 
+// Programs and scripts: they go like any other file (WhatsApp sends them as documents), with a warning first.
+const EXECUTABLE_FILE = /\.(exe|msi|bat|cmd|com|scr|ps1|vbs|js|jar|apk|sh|app|dmg)$/i;
+
 export const Composer = forwardRef<
   ComposerHandle,
   {
@@ -1031,8 +1034,15 @@ export const Composer = forwardRef<
     const activeUrl = active ? getPreviewUrl(active.file) : null;
     const activeIsImage = active?.file.type.startsWith("image/");
     const activeIsVideo = active?.file.type.startsWith("video/");
+    const executables = pendingFiles.filter((entry) => EXECUTABLE_FILE.test(entry.file.name));
     return (
       <div className="border-t border-border bg-surface p-4">
+        {executables.length > 0 && (
+          <p role="alert" className="mb-3 rounded-card bg-warning-soft px-3 py-2 text-xs text-warning">
+            {executables.length === 1 ? `"${executables[0].file.name}" é um programa` : `${executables.length} arquivos são programas`}: confira se é seguro antes de
+            enviar. O cliente recebe como documento.
+          </p>
+        )}
         {/* Filmstrip — only worth showing once there's more than one file to
             switch between, same as WhatsApp Web's own multi-attachment picker. */}
         {pendingFiles.length > 1 && (

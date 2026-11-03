@@ -41,8 +41,30 @@ const CATEGORY_AXIS_PROPS = {
   interval: 0 as const,
   angle: -35,
   textAnchor: "end" as const,
-  height: 56,
 };
+// The angled names get the room the longest one needs (a fixed height let "Atendente - Léia Maria" run into the
+// legend); past MAX_LABEL_CHARS a name is cut with "…" — the tooltip still shows it whole.
+const MAX_LABEL_CHARS = 28;
+const CHAR_WIDTH_PX = 6;
+const ANGLE_SIN = Math.sin((35 * Math.PI) / 180);
+const ANGLE_COS = Math.cos((35 * Math.PI) / 180);
+// Roughly what the Y axis and half of the first bar already give the first name on its left.
+const ROOM_LEFT_OF_FIRST_PX = 70;
+const shortLabel = (value: unknown) => {
+  const text = String(value ?? "");
+  return text.length > MAX_LABEL_CHARS ? `${text.slice(0, MAX_LABEL_CHARS - 1)}…` : text;
+};
+function categoryAxisHeight(data: Record<string, unknown>[], key: string): number {
+  const longest = Math.max(0, ...data.map((d) => shortLabel(d[key]).length));
+  return Math.max(40, Math.round(longest * CHAR_WIDTH_PX * ANGLE_SIN) + 16);
+}
+/** The first name leans left past the Y axis: the chart moves right just enough for it to show whole. */
+function leftMargin(data: Record<string, unknown>[], key: string): number {
+  const first = shortLabel(data[0]?.[key]).length;
+  return Math.max(0, Math.round(first * CHAR_WIDTH_PX * ANGLE_COS) - ROOM_LEFT_OF_FIRST_PX);
+}
+// Above the plot, out of the way of the names.
+const LEGEND_PROPS = { verticalAlign: "top" as const, align: "right" as const, height: 28, wrapperStyle: { fontSize: 12 } };
 
 /**
  * "Atendimentos por atendente" — the Dashboard's one multi-series card —
@@ -71,6 +93,8 @@ export function SeriesChartCard({
   const [kind, setKind] = useState<SeriesKind>(defaultKind);
   const barIds = series.map((s) => gradientId("sbar", s.color));
   const areaIds = series.map((s) => gradientId("sarea", s.color));
+  const axis = { ...CATEGORY_AXIS_PROPS, dataKey: categoryKey, height: categoryAxisHeight(data, categoryKey), tickFormatter: shortLabel };
+  const margin = { bottom: 8, left: leftMargin(data, categoryKey) };
 
   return (
     <div className={`rounded-card border border-border bg-surface p-4 ${CHART_CARD_SHADOW}`}>
@@ -84,7 +108,7 @@ export function SeriesChartCard({
       ) : (
         <ResponsiveContainer width="100%" height={height}>
           {kind === "bar" ? (
-            <BarChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
+            <BarChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={margin}>
               <defs>
                 {series.map((s, i) => (
                   <linearGradient key={barIds[i]} id={barIds[i]} x1="0" y1="0" x2="0" y2="1">
@@ -94,21 +118,21 @@ export function SeriesChartCard({
                 ))}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
+              <XAxis {...axis} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_PROPS} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Legend {...LEGEND_PROPS} />
               {series.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} name={s.name} fill={`url(#${barIds[i]})`} radius={[4, 4, 0, 0]} />
               ))}
             </BarChart>
           ) : kind === "line" ? (
-            <LineChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
+            <LineChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={margin}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
+              <XAxis {...axis} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_PROPS} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Legend {...LEGEND_PROPS} />
               {series.map((s) => (
                 <Line
                   key={s.key}
@@ -123,7 +147,7 @@ export function SeriesChartCard({
               ))}
             </LineChart>
           ) : (
-            <AreaChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={{ bottom: 8 }}>
+            <AreaChart data={data} style={{ filter: CHART_DEPTH_FILTER }} margin={margin}>
               <defs>
                 {series.map((s, i) => (
                   <linearGradient key={areaIds[i]} id={areaIds[i]} x1="0" y1="0" x2="0" y2="1">
@@ -133,10 +157,10 @@ export function SeriesChartCard({
                 ))}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis {...CATEGORY_AXIS_PROPS} dataKey={categoryKey} />
+              <XAxis {...axis} />
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_PROPS} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Legend {...LEGEND_PROPS} />
               {series.map((s, i) => (
                 <Area
                   key={s.key}

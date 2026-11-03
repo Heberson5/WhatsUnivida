@@ -67,12 +67,12 @@ services:
       WEB_APP_URL: ${WEB_APP_URL:-https://whatsunivida.sauberlich.com.br}
       LANGUAGETOOL_URL: http://languagetool:8010
       UPLOAD_DIR: /data/uploads
-      # Largest single file an agent can attach in Atendimento (video, photo,
-      # PDF, audio) — the API answers "Arquivo muito grande" above it. Set
+      # Largest single file an agent can attach in Atendimento (any type) —
+      # the API answers "Arquivo muito grande" above it. Set
       # UPLOAD_MAX_SIZE_MB in .env to change it; nginx.conf lets up to 300 MB
       # through to the API, so keep it at or below that. The whole file is
       # held in memory while it is sent, so a small VPS wants this modest.
-      UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-25}
+      UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-100}
     volumes:
       - api_uploads:/data/uploads
       - whatsapp_sessions:/data/whatsapp-sessions

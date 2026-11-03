@@ -1,3 +1,6 @@
+import type { RequestHandler } from "express";
+import { whatsappMediaKind } from "@whatsatendende/whatsapp";
+import { setConversationFileHeaders } from "../../lib/safe-download";
 import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
@@ -46,8 +49,7 @@ messagesRouter.get(
     if (!attachment.storageKey) throw Errors.notFound("Arquivo sem conteudo binario (ex.: localizacao/vcard)");
     const filePath = path.join(env.UPLOAD_DIR, attachment.storageKey);
     if (!fs.existsSync(filePath)) throw Errors.notFound("Arquivo nao encontrado no armazenamento");
-    res.setHeader("Content-Type", attachment.mimeType);
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.fileName)}"`);
+    setConversationFileHeaders(res, attachment.mimeType, attachment.fileName);
     res.sendFile(path.resolve(filePath));
   })
 );
@@ -60,52 +62,28 @@ messagesRouter.use(requireAuth);
 // permission as conversations.routes.ts's attendance gate.
 const requireAttendanceAccess = requirePermission(PERMISSION.ATENDIMENTO_ACESSAR);
 
-const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "video/mp4",
-  "video/3gpp",
-  "audio/mpeg",
-  "audio/ogg",
-  "audio/webm",
-  // Safari's MediaRecorder (used by the in-app voice-note recorder) has no
-  // WebM support and falls back to this instead — ffmpeg transcodes it to
-  // OGG/Opus the same as any other recording before it reaches WhatsApp,
-  // see the /conversations/:conversationId/audio route below.
-  "audio/mp4",
-  "application/pdf",
-  // Bloco de Notas (.txt) — o visualizador do sistema abre e imprime. Outros textos (.csv, .html...) continuam de fora.
-  "text/plain",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/zip",
-]);
-
 fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
 
+// Any file, like WhatsApp Web: only the size is limited (UPLOAD_MAX_SIZE_MB). How it reaches the customer — picture,
+// video, audio or document — comes from whatsappMediaKind. See PROMPT: "Permitir enviar todo tipo de extensão que o
+// WhatsApp permite".
 export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: env.UPLOAD_MAX_SIZE_MB * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      // A plain Error here became a 500 "Erro interno do servidor"; this is the customer-facing reason.
-      return cb(Errors.badRequest("Tipo de arquivo não permitido. Envie imagem, vídeo, áudio, PDF, Word, Excel, PowerPoint, Bloco de Notas (.txt) ou .zip."));
-    }
-    cb(null, true);
-  },
 });
 
+/** The single-file upload, saying what the limit is when a file goes over it. */
+export const uploadFile: RequestHandler = (req, res, next) =>
+  upload.single("file")(req, res, (err?: unknown) => {
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      return next(Errors.badRequest(`Arquivo muito grande: o limite é de ${env.UPLOAD_MAX_SIZE_MB} MB.`));
+    }
+    next(err);
+  });
+
 export function mimeToMessageType(mime: string): "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" {
-  if (mime.startsWith("image/")) return "IMAGE";
-  if (mime.startsWith("video/")) return "VIDEO";
-  if (mime.startsWith("audio/")) return "AUDIO";
-  return "DOCUMENT";
+  const kind = whatsappMediaKind(mime);
+  return kind === "image" ? "IMAGE" : kind === "video" ? "VIDEO" : kind === "audio" ? "AUDIO" : "DOCUMENT";
 }
 
 async function loadConversationForAgent(conversationId: string, agentId: string) {
@@ -272,7 +250,7 @@ messagesRouter.post(
 messagesRouter.post(
   "/conversations/:conversationId/file",
   requireAttendanceAccess,
-  upload.single("file"),
+  uploadFile,
   asyncHandler(async (req, res) => {
     const conversation = await loadConversationForAgent(req.params.conversationId, req.auth!.userId);
     assertWhatsAppChannel(conversation, "Envio de arquivos");
@@ -334,7 +312,7 @@ messagesRouter.post(
   // for genuine OGG/Opus — never the browser's raw recorder output (see
   // PROMPT: "está chegando no celular do cliente como um arquivo web").
   requireAttendanceAccess,
-  upload.single("file"),
+  uploadFile,
   asyncHandler(async (req, res) => {
     const conversation = await loadConversationForAgent(req.params.conversationId, req.auth!.userId);
     assertWhatsAppChannel(conversation, "Envio de áudio");

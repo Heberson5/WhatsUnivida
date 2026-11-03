@@ -1,5 +1,7 @@
 export * from "./types";
 export { MockWhatsAppProvider } from "./MockWhatsAppProvider";
+export { whatsappMediaKind } from "./media-kind";
+export type { WhatsAppMediaKind } from "./media-kind";
 export { BaileysWhatsAppProvider } from "./BaileysWhatsAppProvider";
 export type { BaileysProviderOptions } from "./BaileysWhatsAppProvider";
 export { deliveryEventFromBaileysUpdate } from "./delivery-status";
