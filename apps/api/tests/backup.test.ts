@@ -102,4 +102,17 @@ describe("Configurações › Backup", () => {
     // The people of the backup can still log in.
     expect(await loginAs("ana-bk@test.dev")).toBeTruthy();
   });
+
+  it("depois de restaurar num servidor novo, o número sequencial (seq) continua após o maior restaurado", async () => {
+    // A fresh server's sequences start from 1 — simulate that, then restore over it.
+    await prisma.$executeRawUnsafe(`ALTER SEQUENCE "User_seq_seq" RESTART WITH 1`);
+    const restored = await request(app).post("/api/settings/backup/restore").set("Authorization", `Bearer ${adminToken}`).attach("file", backup, "b.tar.gz").field("confirm", "RESTAURAR");
+    expect(restored.status).toBe(200);
+    const { _max } = await prisma.user.aggregate({ _max: { seq: true } });
+    expect(_max.seq).toBeGreaterThan(1);
+    // Without moving the sequence this would reuse seq 1 and fail on the unique index.
+    const created = await createTestUser({ email: "novo-pos-restore@test.dev", role: "AGENT" });
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: created.id } });
+    expect(row.seq).toBe(_max.seq! + 1);
+  });
 });

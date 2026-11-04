@@ -236,6 +236,13 @@ export async function restoreBackup(input: Readable, by: { userId: string; name:
             rows += batch.length;
           }
         }
+        // The restored rows bring their own "seq" values (the human-friendly sequential number every table has next
+        // to its UUID id), but inserting explicit values doesn't move the column's sequence — so point each one right
+        // after the highest restored value, or the next record created would collide with a restored one.
+        const seqTables = await tx.$queryRaw<{ table_name: string }[]>`SELECT table_name FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'seq' AND column_default LIKE 'nextval(%'`;
+        for (const { table_name: table } of seqTables) {
+          await tx.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence($1, 'seq'), COALESCE((SELECT max(seq) FROM ${quote(table)}), 0) + 1, false)`, quote(table));
+        }
       },
       { timeout: 60 * 60_000, maxWait: 60_000 }
     );
