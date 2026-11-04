@@ -8,6 +8,15 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
+// IDs: every model keeps its UUID `id` as the primary key (used by the API,
+// URLs and every foreign key — not guessable, so one record's id can't be
+// incremented to reach another's) PLUS a human-friendly `seq` column
+// (1, 2, 3...) per table, for looking rows up by hand in SQL, e.g.
+//   SELECT * FROM "Conversation" WHERE seq = 152;
+// `seq` is never used as a relation key — it is a lookup convenience only.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Identity / RBAC
 // ---------------------------------------------------------------------------
 
@@ -30,6 +39,7 @@ enum AgentPresence {
 
 model User {
   id                String        @id @default(uuid())
+  seq               Int           @unique @default(autoincrement())
   fullName          String
   displayName       String
   // Repeats only across inactive users: at most one ACTIVE user per e-mail (enforced in users.service — see assertEmailFreeForActive).
@@ -169,6 +179,7 @@ model User {
 
 model PauseReason {
   id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   name      String
   // "Excluir" in the UI always deactivates rather than deleting the row —
   // a reason already used in AgentStatusLog/User.pauseReasonId must stick
@@ -189,6 +200,7 @@ model PauseReason {
 // dia" chart.
 model AgentStatusLog {
   id            String        @id @default(uuid())
+  seq           Int           @unique @default(autoincrement())
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        String
   status        AgentPresence
@@ -204,6 +216,7 @@ model AgentStatusLog {
 
 model PasswordResetToken {
   id        String    @id @default(uuid())
+  seq       Int       @unique @default(autoincrement())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   tokenHash String    @unique
@@ -216,6 +229,7 @@ model PasswordResetToken {
 
 model RefreshToken {
   id             String    @id @default(uuid())
+  seq            Int       @unique @default(autoincrement())
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId         String
   tokenHash      String    @unique
@@ -263,6 +277,7 @@ enum WhatsAppConnectionMode {
 // disconnect, and hold their own QR code independently of one another.
 model WhatsAppConnection {
   id                 String                   @id @default(uuid())
+  seq                Int                      @unique @default(autoincrement())
   name               String                   @unique
   // Distinguishes this connection's conversations at a glance — every
   // conversation card is tinted with its originating connection's color, so
@@ -363,6 +378,7 @@ model WhatsAppConnection {
 // not the DB, same precedent as User.whatsappConnectionId being AGENT-only.
 model ManagerConnectionAccess {
   id                      String             @id @default(uuid())
+  seq                     Int                @unique @default(autoincrement())
   manager                 User               @relation(fields: [managerId], references: [id], onDelete: Cascade)
   managerId               String
   whatsappConnection      WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id], onDelete: Cascade)
@@ -384,6 +400,7 @@ model ManagerConnectionAccess {
 // their own set without stepping on each other's shortcuts.
 model QuickReply {
   id              String               @id @default(uuid())
+  seq             Int                  @unique @default(autoincrement())
   name            String
   // Stored without the leading "/" (e.g. "boasvindas", not "/boasvindas") —
   // the slash is purely a UI trigger, added back only when displayed.
@@ -425,6 +442,7 @@ enum AutoMessageTrigger {
 // quando o atendente aceita a conversa".
 model AutoMessageTemplate {
   id             String               @id @default(uuid())
+  seq            Int                  @unique @default(autoincrement())
   trigger        AutoMessageTrigger
   name           String
   text           String
@@ -450,6 +468,7 @@ model AutoMessageTemplate {
 // one schedule can serve several connections. `state`/`city` decide the time zone and which holidays apply.
 model WorkSchedule {
   id                  String               @id @default(uuid())
+  seq                 Int                  @unique @default(autoincrement())
   name                String
   // UF — also decides the time zone (see packages/types BR_STATE_UTC_OFFSET_MINUTES).
   state               String
@@ -474,6 +493,7 @@ model WorkSchedule {
 // conversations.routes.ts's close route for where this actually fires.
 model ClosingMessage {
   id              String               @id @default(uuid())
+  seq             Int                  @unique @default(autoincrement())
   name            String
   text            String
   // Inactive = kept on file but never auto-sent, without losing its user
@@ -501,6 +521,7 @@ model ClosingMessage {
 // an agent accepts or after the last one. Never carries an agent's name.
 model QueueWaitMessage {
   id              String               @id @default(uuid())
+  seq             Int                  @unique @default(autoincrement())
   position        Int
   delayMinutes    Int
   text            String
@@ -559,6 +580,7 @@ enum MessageTemplateStatus {
 
 model MessageTemplate {
   id       String                  @id @default(uuid())
+  seq      Int                     @unique @default(autoincrement())
   // Meta's own naming rule: lowercase snake_case, unique per (WABA, language).
   name     String
   category MessageTemplateCategory
@@ -634,6 +656,7 @@ enum MetaConnectionStatus {
 // path for no benefit — additive instead.
 model MetaConnection {
   id             String               @id @default(uuid())
+  seq            Int                  @unique @default(autoincrement())
   channel        Channel
   name           String
   color          String               @default("#0097B4")
@@ -658,6 +681,7 @@ model MetaConnection {
 
 model Contact {
   id                     String              @id @default(uuid())
+  seq                    Int                 @unique @default(autoincrement())
   // Defaults to WHATSAPP for every row created before this field existed.
   // Determines which of whatsappConnection*/metaConnection* below is set —
   // exactly one of the two connection FKs is populated, never both.
@@ -758,6 +782,7 @@ enum ConversationStatus {
 
 model Conversation {
   id                    String              @id @default(uuid())
+  seq                   Int                 @unique @default(autoincrement())
   // Denormalized from contact.channel at creation time, same reasoning as
   // whatsappConnectionId below.
   channel               Channel             @default(WHATSAPP)
@@ -862,6 +887,7 @@ model Conversation {
 
 model ConversationAssignment {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   conversationId String
   fromAgent      User?        @relation("AssignmentFromAgent", fields: [fromAgentId], references: [id])
@@ -876,6 +902,7 @@ model ConversationAssignment {
 
 model ConversationTransfer {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   conversationId String
   fromAgent      User         @relation("TransferFromAgent", fields: [fromAgentId], references: [id])
@@ -892,6 +919,7 @@ model ConversationTransfer {
 
 model ConversationEvent {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   conversationId String
   type           String // CREATED | ACCEPTED | TRANSFERRED | CLOSED | REOPENED | ACCEPT_CONFLICT | HANDLED_EXTERNALLY | MANAGER_ASSIGNED | RETURNED_TO_QUEUE
@@ -939,6 +967,7 @@ enum MessageStatus {
 
 model Message {
   id                String           @id @default(uuid())
+  seq               Int              @unique @default(autoincrement())
   conversation      Conversation     @relation(fields: [conversationId], references: [id])
   conversationId    String
   direction         MessageDirection
@@ -1005,6 +1034,7 @@ model Message {
 
 model MessageAttachment {
   id               String      @id @default(uuid())
+  seq              Int         @unique @default(autoincrement())
   message          Message     @relation(fields: [messageId], references: [id])
   messageId        String
   fileName         String
@@ -1041,6 +1071,7 @@ model MessageAttachment {
 
 model MessageReaction {
   id           String   @id @default(uuid())
+  seq          Int      @unique @default(autoincrement())
   message      Message  @relation(fields: [messageId], references: [id])
   messageId    String
   user         User?    @relation(fields: [userId], references: [id])
@@ -1063,6 +1094,7 @@ model MessageReaction {
 
 model AuditLog {
   id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   user      User?    @relation(fields: [userId], references: [id])
   userId    String?
   action    String
@@ -1101,6 +1133,7 @@ model GroupReadState {
 
 model Notification {
   id         String    @id @default(uuid())
+  seq        Int       @unique @default(autoincrement())
   user       User      @relation(fields: [userId], references: [id])
   userId     String
   type       String
@@ -1122,6 +1155,7 @@ model Notification {
 // screen that controls this table.
 model RolePermission {
   id         String   @id @default(uuid())
+  seq        Int      @unique @default(autoincrement())
   role       Role
   permission String
   allowed    Boolean
@@ -1161,6 +1195,7 @@ enum HolidaySource {
 // sync naturally writes one row per city it fetched anyway.
 model Holiday {
   id        String        @id @default(uuid())
+  seq       Int           @unique @default(autoincrement())
   date      DateTime      @db.Date
   name      String
   scope     HolidayScope
@@ -1199,6 +1234,7 @@ model Holiday {
 // every month.
 model HolidaySyncCursor {
   id       String       @id @default(uuid())
+  seq      Int          @unique @default(autoincrement())
   scope    HolidayScope
   state    String?
   city     String?
@@ -1238,6 +1274,7 @@ enum FlowNodeType {
 
 model Flow {
   id          String  @id @default(uuid())
+  seq         Int     @unique @default(autoincrement())
   name        String
   description String?
   // See PROMPT: "função de ativar e desativar o fluxo". Starts false so a
@@ -1264,6 +1301,7 @@ model Flow {
 // (not "every connection"), mirroring how a brand-new flow starts inactive.
 model FlowConnection {
   id                   String             @id @default(uuid())
+  seq                  Int                @unique @default(autoincrement())
   flow                 Flow               @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowId               String
   whatsappConnection   WhatsAppConnection @relation(fields: [whatsappConnectionId], references: [id], onDelete: Cascade)
@@ -1275,6 +1313,7 @@ model FlowConnection {
 
 model FlowNode {
   id        String       @id @default(uuid())
+  seq       Int          @unique @default(autoincrement())
   flow      Flow         @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowId    String
   type      FlowNodeType
@@ -1297,6 +1336,7 @@ model FlowNode {
 
 model FlowEdge {
   id     String @id @default(uuid())
+  seq    Int    @unique @default(autoincrement())
   flow   Flow   @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowId String
 
@@ -1319,6 +1359,7 @@ model FlowEdge {
 // and how many invalid answers they gave to it.
 model FlowSession {
   id              String        @id @default(uuid())
+  seq             Int           @unique @default(autoincrement())
   flow            Flow          @relation(fields: [flowId], references: [id], onDelete: Cascade)
   flowId          String
   contact         Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -1342,6 +1383,7 @@ model FlowSession {
 /// Internal note on a conversation — visible only to the team, never sent to the customer.
 model ConversationNote {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId String
   // No author = written by the system (e.g. why a conversation came from Abandonados).
@@ -1356,6 +1398,7 @@ model ConversationNote {
 /// Label an agent puts on a customer (e.g. "Cliente recorrente"), shared by the whole team.
 model Tag {
   id         String       @id @default(uuid())
+  seq        Int          @unique @default(autoincrement())
   name       String       @unique
   color      String       @default("#0097B4")
   // "Não enviar estas mensagens automáticas": AutoMessageKind values (packages/types) contacts with this tag never get.
@@ -1374,6 +1417,7 @@ model Tag {
 // sending (still closed? the customer answered? a tag now blocks it?) and dropped when it no longer fits.
 model PendingAutoMessage {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId String
   kind           String
@@ -1392,6 +1436,7 @@ model PendingAutoMessage {
 // Relatórios › Mensagens automáticas bloqueadas: each automatic message a tag stopped.
 model AutoMessageBlockLog {
   id                   String              @id @default(uuid())
+  seq                  Int                 @unique @default(autoincrement())
   conversation         Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId       String
   kind                 String
@@ -1411,6 +1456,7 @@ model AutoMessageBlockLog {
 // Empty options = the vote was taken back.
 model PollVote {
   id           String            @id @default(uuid())
+  seq          Int               @unique @default(autoincrement())
   attachment   MessageAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
   attachmentId String
   voterJid     String
@@ -1425,6 +1471,7 @@ model PollVote {
 
 model ContactNameChange {
   id        String    @id @default(uuid())
+  seq       Int       @unique @default(autoincrement())
   batchId   String
   contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   contactId String
@@ -1456,6 +1503,7 @@ model ContactTag {
 // PROMPT: "Cadastre ao menos 4 pesquisas desligadas, para servir de modelo".
 model SatisfactionSurveyConfig {
   id                 String               @id @default(uuid())
+  seq                Int                  @unique @default(autoincrement())
   name               String
   active             Boolean              @default(false)
   // Sent for conversations of every connection, or only of `connections`. One chosen for the connection wins
@@ -1487,6 +1535,7 @@ model SatisfactionSurveyConfig {
 // per question and the answers to an older wording stay in the history.
 model SatisfactionQuestion {
   id        String               @id @default(uuid())
+  seq       Int                  @unique @default(autoincrement())
   text      String
   createdAt DateTime             @default(now())
   surveys   SatisfactionSurvey[]
@@ -1498,6 +1547,7 @@ model SatisfactionQuestion {
 // is recorded here instead of opening a new conversation.
 model SatisfactionSurvey {
   id                   String                    @id @default(uuid())
+  seq                  Int                       @unique @default(autoincrement())
   conversation         Conversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId       String                    @unique
   contactId            String
@@ -1564,6 +1614,7 @@ model SatisfactionSurvey {
 // and each one is only shown to who can open its area.
 model ReleaseNoteVersion {
   id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   // "2.2.0" — the newest by number is the current one.
   version   String   @unique
   // As shown, e.g. "09 out 2026".
@@ -1580,6 +1631,7 @@ model ReleaseNoteVersion {
 /// administrator's view be used by others (Configurações › Visões de colunas).
 model ColumnView {
   id         String   @id @default(uuid())
+  seq        Int      @unique @default(autoincrement())
   screen     String
   name       String
   /// Ordered [{ key, visible }].
@@ -1622,6 +1674,7 @@ model ConversationPin {
 /// "Lembrar de retornar": a notice to the attendant at remindAt. firedAt once it went off; dismissed by deleting it.
 model ConversationReminder {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversationId String
@@ -1638,6 +1691,7 @@ model ConversationReminder {
 /// A message an attendant wrote to go out by itself at sendAt. Exactly one of sentAt / canceledAt / failedAt ends it.
 model ScheduledMessage {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversationId String
@@ -1671,6 +1725,7 @@ enum GoalScope {
 
 model Goal {
   id            String    @id @default(uuid())
+  seq           Int       @unique @default(autoincrement())
   type          GoalType
   target        Int
   active        Boolean   @default(true)
@@ -1692,6 +1747,7 @@ enum DataSourceKind {
 
 model DataSource {
   id                  String          @id @default(uuid())
+  seq                 Int             @unique @default(autoincrement())
   name                String
   kind                DataSourceKind
   active              Boolean         @default(false)
@@ -1725,6 +1781,7 @@ model DataSource {
 
 model DataSourceRow {
   id           String     @id @default(uuid())
+  seq          Int        @unique @default(autoincrement())
   dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   dataSourceId String
   // 55 + DDD + last 8 digits: matches with or without 55 and with or without the extra 9.
@@ -1745,6 +1802,7 @@ enum ChatRoomKind {
 
 model ChatRoom {
   id        String        @id @default(uuid())
+  seq       Int           @unique @default(autoincrement())
   kind      ChatRoomKind
   name      String?
   // GROUP only: who manages it. When the owner leaves it passes to the oldest admin, else the oldest member.
@@ -1766,6 +1824,7 @@ model ChatRoom {
 
 model ChatMember {
   id          String    @id @default(uuid())
+  seq         Int       @unique @default(autoincrement())
   room        ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   roomId      String
   userId      String
@@ -1790,6 +1849,7 @@ model ChatMember {
 /// Every time someone opened a room (lastReadAt only keeps the latest): when each message was read — "Lida por".
 model ChatReadMark {
   id     String   @id @default(uuid())
+  seq    Int      @unique @default(autoincrement())
   roomId String
   userId String
   readAt DateTime @default(now())
@@ -1800,6 +1860,7 @@ model ChatReadMark {
 /// Every time someone's app received new messages: when each message was delivered — "Entregue a" and ✓✓.
 model ChatDeliveryMark {
   id          String   @id @default(uuid())
+  seq         Int      @unique @default(autoincrement())
   userId      String
   deliveredAt DateTime @default(now())
 
@@ -1817,6 +1878,7 @@ enum ChatMessageKind {
 // Kept forever — also what disappeared for the people talking (temporary, deleted, edited): Gestão sees it all.
 model ChatMessage {
   id                 String          @id @default(uuid())
+  seq                Int             @unique @default(autoincrement())
   room               ChatRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
   roomId             String
   kind               ChatMessageKind @default(TEXT)
@@ -1860,6 +1922,7 @@ model ChatMessage {
 /// The text a message had before each edit.
 model ChatMessageEdit {
   id        String      @id @default(uuid())
+  seq       Int         @unique @default(autoincrement())
   message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String
   body      String?
@@ -1871,6 +1934,7 @@ model ChatMessageEdit {
 /// One reaction per person per message, like WhatsApp.
 model ChatReaction {
   id        String      @id @default(uuid())
+  seq       Int         @unique @default(autoincrement())
   message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String
   userId    String
@@ -1882,6 +1946,7 @@ model ChatReaction {
 
 model ChatPoll {
   id        String           @id @default(uuid())
+  seq       Int              @unique @default(autoincrement())
   message   ChatMessage      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String           @unique
   question  String
@@ -1892,6 +1957,7 @@ model ChatPoll {
 
 model ChatPollOption {
   id       String         @id @default(uuid())
+  seq      Int            @unique @default(autoincrement())
   poll     ChatPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
   pollId   String
   text     String
@@ -1901,6 +1967,7 @@ model ChatPollOption {
 
 model ChatPollVote {
   id        String         @id @default(uuid())
+  seq       Int            @unique @default(autoincrement())
   poll      ChatPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
   pollId    String
   option    ChatPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
@@ -1915,6 +1982,7 @@ model ChatPollVote {
 /// "Fixar mensagem": up to 3 per room, each until a date or until taken off.
 model ChatPin {
   id         String    @id @default(uuid())
+  seq        Int       @unique @default(autoincrement())
   room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   roomId     String
   messageId  String
@@ -1928,6 +1996,7 @@ model ChatPin {
 /// Who opened a "visualização única" file, and when.
 model ChatMessageView {
   id        String      @id @default(uuid())
+  seq       Int         @unique @default(autoincrement())
   message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String
   userId    String
@@ -1939,6 +2008,7 @@ model ChatMessageView {
 /// Dados › Layouts de boleto: how a bank's boleto PDF looks. `settings` holds BoletoLayoutSettings (see types).
 model BoletoLayout {
   id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
   name      String
   bankCode  String
   model     String
@@ -1954,6 +2024,7 @@ model BoletoLayout {
 /// A layout brings them in with {mensagem:Nome}.
 model BoletoInstruction {
   id                   String   @id @default(uuid())
+  seq                  Int      @unique @default(autoincrement())
   name                 String   @unique
   finePercent          Float    @default(0)
   interestMonthPercent Float    @default(0)
@@ -1970,6 +2041,7 @@ enum BirthdayKind {
 /// Respostas › Aniversários: the message suggested in the birthday pop-up, one per kind (created with the defaults).
 model BirthdayMessage {
   id              String       @id @default(uuid())
+  seq             Int          @unique @default(autoincrement())
   kind            BirthdayKind @unique
   text            String
   active          Boolean      @default(true)
@@ -1985,6 +2057,7 @@ model BirthdayMessage {
 /// Who was congratulated, by whom and when — each person once a year, whatever the conversation.
 model BirthdayGreeting {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   contactId      String
   personKey      String
   personName     String
@@ -2032,6 +2105,7 @@ enum AnnouncementRecurrence {
 
 model Announcement {
   id          String                 @id @default(uuid())
+  seq         Int                    @unique @default(autoincrement())
   title       String
   body        String
   kind        AnnouncementKind       @default(INFO)
@@ -2073,6 +2147,7 @@ model Announcement {
 /// One per person: when they first opened it and when they confirmed "Li e estou ciente".
 model AnnouncementReceipt {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   announcementId String
   userId         String
@@ -2087,6 +2162,7 @@ model AnnouncementReceipt {
 /// How many times the pop-up was shown to a person on a day (at most 2) and in which login sessions.
 model AnnouncementDelivery {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   announcementId String
   userId         String
@@ -2100,6 +2176,7 @@ model AnnouncementDelivery {
 
 model AnnouncementReaction {
   id             String       @id @default(uuid())
+  seq            Int          @unique @default(autoincrement())
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   announcementId String
   userId         String
@@ -2133,6 +2210,7 @@ enum ReportScheduleRunStatus {
 
 model ReportSchedule {
   id               String                  @id @default(uuid())
+  seq              Int                     @unique @default(autoincrement())
   name             String
   enabled          Boolean                 @default(true)
   subject          String
@@ -2187,6 +2265,7 @@ model ReportSchedule {
 
 model ReportScheduleRun {
   id           String                  @id @default(uuid())
+  seq          Int                     @unique @default(autoincrement())
   schedule     ReportSchedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   scheduleId   String
   scheduledFor DateTime
