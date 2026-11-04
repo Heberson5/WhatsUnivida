@@ -11,6 +11,29 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.34.0",
+    date: "4 nov 2026",
+    name: "Tipo padrão dos gráficos do Dashboard",
+    summary: "O administrador escolhe o tipo de cada gráfico do Dashboard, como barras, linha, área, rosca ou pizza, e todos passam a abrir o Dashboard assim. A apresentação em PowerPoint usa os mesmos tipos.",
+    notes: [
+      {
+        type: "novo",
+        area: "dashboard",
+        title: "O administrador define o tipo de cada gráfico",
+        text: "No menu de tipo de cada gráfico, o administrador escolhe o tipo e toca em \"Usar este tipo como padrão para todos\". O tipo padrão aparece com uma estrela. Gestores e atendentes continuam podendo trocar o tipo, mas só na própria tela: ao recarregar, volta o padrão. Cada mudança do padrão fica registrada na Auditoria.",
+        where: "Dashboard › menu de tipo de cada gráfico",
+        images: [{ src: "/notas-de-versao/dashboard-tipo-padrao.webp", caption: "Linha escolhida; a estrela marca o padrão atual, Barras", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "dashboard",
+        title: "A apresentação segue o mesmo tipo",
+        text: "A apresentação em PowerPoint, baixada ou enviada por e-mail pelo agendamento, desenha cada gráfico no tipo padrão do Dashboard: presença, chegadas por hora, conversas por status, mensagens, pesquisa, conversas e mensagens por atendente.",
+        where: "Dashboard › Apresentação (PPT)",
+      },
+    ],
+  },
+  {
     version: "2.33.0",
     date: "3 nov 2026",
     name: "Motivo das notas baixas e comparação por dia útil",

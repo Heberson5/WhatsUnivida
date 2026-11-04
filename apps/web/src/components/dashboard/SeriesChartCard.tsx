@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -79,6 +79,7 @@ export function SeriesChartCard({
   series,
   categoryKey,
   defaultKind = "bar",
+  onSaveDefaultKind,
   height = 280,
   emptyMessage = "Sem dados no período selecionado.",
 }: {
@@ -87,10 +88,14 @@ export function SeriesChartCard({
   series: Series[];
   categoryKey: string;
   defaultKind?: SeriesKind;
+  /** Administrators: makes the type on screen everyone's default. */
+  onSaveDefaultKind?: (kind: SeriesKind) => void;
   height?: number;
   emptyMessage?: string;
 }) {
   const [kind, setKind] = useState<SeriesKind>(defaultKind);
+  // The default arrives after the first paint (and changes when an administrator sets it): the chart follows it.
+  useEffect(() => setKind(defaultKind), [defaultKind]);
   const barIds = series.map((s) => gradientId("sbar", s.color));
   const areaIds = series.map((s) => gradientId("sarea", s.color));
   const axis = { ...CATEGORY_AXIS_PROPS, dataKey: categoryKey, height: categoryAxisHeight(data, categoryKey), tickFormatter: shortLabel };
@@ -100,7 +105,7 @@ export function SeriesChartCard({
     <div className={`rounded-card border border-border bg-surface p-4 ${CHART_CARD_SHADOW}`}>
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-medium text-muted">{title}</p>
-        <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} />
+        <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} defaultKey={defaultKind} onSaveDefault={onSaveDefaultKind} />
       </div>
 
       {data.length === 0 ? (

@@ -32,6 +32,8 @@ export function PresenceByHourChart({
   secondaryColor,
   initialRange,
   onSaveDefaultRange,
+  defaultKind = "bar",
+  onSaveDefaultKind,
   onActiveRangeChange,
 }: {
   data: PresenceByHourDTO | undefined;
@@ -41,6 +43,9 @@ export function PresenceByHourChart({
   secondaryColor: string;
   initialRange: HourRange | null;
   onSaveDefaultRange: (range: HourRange | null) => void;
+  /** The type everyone sees first; administrators can make the one on screen everyone's. */
+  defaultKind?: SeriesKind;
+  onSaveDefaultKind?: (kind: SeriesKind) => void;
   // Reports whatever range is currently displayed (including the initial
   // one) so the parent can reuse it for the PPT export's own presence
   // slide — see PROMPT: "Novo gráfico de colunas empilhadas nativo...
@@ -48,7 +53,8 @@ export function PresenceByHourChart({
   onActiveRangeChange?: (range: HourRange | null) => void;
 }) {
   const [range, setRange] = useState<HourRange | null>(initialRange);
-  const [kind, setKind] = useState<SeriesKind>("bar");
+  const [kind, setKind] = useState<SeriesKind>(defaultKind);
+  useEffect(() => setKind(defaultKind), [defaultKind]);
 
   useEffect(() => {
     onActiveRangeChange?.(range);
@@ -74,7 +80,7 @@ export function PresenceByHourChart({
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-medium text-muted">Presença ao longo do dia</p>
         <div className="flex items-center gap-1">
-        <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} />
+        <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} defaultKey={defaultKind} onSaveDefault={onSaveDefaultKind} />
         <HourRangeMenu
           range={range}
           onChange={(next, asDefault) => {

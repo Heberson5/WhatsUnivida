@@ -33,6 +33,8 @@ describe("Dashboard: com o que os cartões comparam", () => {
   });
 
   afterAll(async () => {
+    // The holiday would close 02/11 for the other tests of the same database.
+    await prisma.holiday.deleteMany({ where: { date: new Date("2026-11-02"), name: "Finados", source: "MANUAL" } });
     await prisma.$disconnect();
   });
 

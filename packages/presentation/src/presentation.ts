@@ -1,5 +1,12 @@
 import type PptxGenJS from "pptxgenjs";
-import { ANNOUNCEMENT_KIND_LABEL, NPS_SMALL_SAMPLE, type AnnouncementStatsDTO } from "@whatsatendende/types";
+import {
+  ANNOUNCEMENT_KIND_LABEL,
+  NPS_SMALL_SAMPLE,
+  type AnnouncementStatsDTO,
+  type DashboardChartKindsDTO,
+  type DistributionChartKind,
+  type SeriesChartKind,
+} from "@whatsatendende/types";
 import {
   AUTO_MESSAGE_KIND_LABEL,
   type ArrivalsByHourDTO,
@@ -77,7 +84,64 @@ export interface PresentationInput {
    * time zone, the server (UTC) shifts them by the schedule's offset in minutes (240 for UTC-4).
    */
   clockShiftMinutes?: number;
+  /** Each chart's type as the Dashboard shows it first (an administrator sets it); missing = the slide's own. */
+  chartKinds?: Partial<DashboardChartKindsDTO>;
   now: Date;
+}
+
+type ChartSeries = { name: string; labels: string[]; values: number[] };
+
+/**
+ * A series chart drawn as the Dashboard's type for it: bars keep the slide's own options; a line or an area reads
+ * left to right (horizontal bars come bottom-up, so their order is turned back) and drops the bars' options.
+ */
+function addSeriesChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, kind: SeriesChartKind | undefined, data: ChartSeries[], options: PptxGenJS.IChartOpts): void {
+  if (!kind || kind === "bar") {
+    slide.addChart(pptx.ChartType.bar, data, options);
+    return;
+  }
+  const ordered = options.barDir === "bar" ? data.map((s) => ({ ...s, labels: [...s.labels].reverse(), values: [...s.values].reverse() })) : data;
+  const { barDir: _barDir, barGapWidthPct: _gap, dataLabelPosition: _position, barGrouping, dataLabelColor: _labelColor, ...rest } = options;
+  if (kind === "line") {
+    slide.addChart(pptx.ChartType.line, ordered, { ...rest, lineSize: 2.5, lineDataSymbol: "circle", lineDataSymbolSize: 7, dataLabelPosition: "t", dataLabelColor: INK });
+  } else {
+    slide.addChart(pptx.ChartType.area, ordered, { ...rest, ...(barGrouping === "stacked" ? { barGrouping: "stacked" as const } : {}), showValue: false });
+  }
+}
+
+/** A distribution (parts of a whole) drawn as the Dashboard's type for it: rosca, pizza or one bar per part. */
+function addDistributionChart(
+  pptx: PptxGenJS,
+  slide: PptxGenJS.Slide,
+  kind: DistributionChartKind | undefined,
+  name: string,
+  parts: { label: string; value: number; color: string }[],
+  options: PptxGenJS.IChartOpts
+): void {
+  const { holeSize: _hole, ...withoutHole } = options;
+  if (kind === "bar") {
+    const { dataBorder: _border, showPercent: _percent, ...rest } = withoutHole;
+    slide.addChart(
+      pptx.ChartType.bar,
+      parts.map((p) => ({ name: p.label, labels: [name], values: [p.value] })),
+      {
+        ...rest,
+        barDir: "bar",
+        barGapWidthPct: 30,
+        chartColors: parts.map((p) => p.color),
+        showValue: true,
+        dataLabelPosition: "outEnd",
+        dataLabelFormatCode: "#,##0",
+        dataLabelColor: INK,
+        catAxisHidden: true,
+        valAxisHidden: true,
+        valGridLine: { style: "none" },
+      }
+    );
+    return;
+  }
+  const data = [{ name, labels: parts.map((p) => p.label), values: parts.map((p) => p.value) }];
+  slide.addChart(kind === "pie" ? pptx.ChartType.pie : pptx.ChartType.doughnut, data, kind === "pie" ? withoutHole : options);
 }
 
 // ---- canvas (16:9 wide) and type ----
@@ -295,6 +359,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
   const periodLine = `${period.name} · ${period.dates}`;
   const generatedAt = input.now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const { data } = input;
+  const kinds = input.chartKinds ?? {};
 
   pptx.layout = "LAYOUT_WIDE";
   pptx.theme = { headFontFace: FONT, bodyFontFace: FONT };
@@ -501,6 +566,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
     const blocks = [
       {
         title: "Conversas por status",
+        kind: kinds.conversationsByStatus,
         unit: "conversas",
         parts: [
           { label: "Aguardando (agora)", value: data.conversations.waiting, color: AMBER },
@@ -510,6 +576,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       },
       {
         title: "Mensagens recebidas x enviadas",
+        kind: kinds.messagesReceivedSent,
         unit: "mensagens",
         parts: [
           { label: "Recebidas", value: data.messages.received, color: C.brand },
@@ -527,7 +594,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       const cx = x + 0.3;
       const cy = y + 1.15;
       if (total > 0) {
-        slide.addChart(pptx.ChartType.doughnut, [{ name: block.title, labels: block.parts.map((p) => p.label), values: block.parts.map((p) => p.value) }], {
+        addDistributionChart(pptx, slide, block.kind, block.title, block.parts, {
           x: cx,
           y: cy,
           w: chartSize,
@@ -947,8 +1014,10 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       if (agents.length > 0) {
         const bottomUp = [...agents].reverse();
         const box = fitBars(agents.length, CONTENT_TOP + 0.8, cardH - 1.0, 0.5, 0.5);
-        slide.addChart(
-          pptx.ChartType.bar,
+        addSeriesChart(
+          pptx,
+          slide,
+          kinds.surveyByAgent,
           [
             { name: "Responderam", labels: bottomUp.map((a) => a.agentName), values: bottomUp.map((a) => a.answered) },
             { name: "Não responderam", labels: bottomUp.map((a) => a.agentName), values: bottomUp.map((a) => a.unanswered) },
@@ -1059,7 +1128,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       // A horizontal bar chart draws its first category at the bottom: reversed, the one with most is on top.
       const bottomUp = [...shown].reverse();
       const box = fitBars(shown.length, CONTENT_TOP + 0.2, chartH - 0.35, 0.62, 0.4);
-      slide.addChart(pptx.ChartType.bar, [{ name: "Conversas", labels: bottomUp.map((a) => a.agentName), values: bottomUp.map((a) => a.conversations) }], {
+      addSeriesChart(pptx, slide, kinds.conversationsByAgent, [{ name: "Conversas", labels: bottomUp.map((a) => a.agentName), values: bottomUp.map((a) => a.conversations) }], {
         x: M + 0.3,
         y: box.start,
         w: CONTENT_W - 0.6,
@@ -1091,8 +1160,10 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       const slide = contentSlide("Equipe", "Equipe", "Mensagens enviadas e recebidas por atendente");
       card(slide, M, CONTENT_TOP, CONTENT_W, CONTENT_BOTTOM - CONTENT_TOP, "Mensagens por atendente");
       const box = fitBars(shown.length, M + 0.3, CONTENT_W - 0.6, 1.4, 1.4);
-      slide.addChart(
-        pptx.ChartType.bar,
+      addSeriesChart(
+        pptx,
+        slide,
+        kinds.messagesByAgent,
         [
           { name: "Enviadas", labels: shown.map((a) => a.agentName), values: shown.map((a) => a.messagesSent) },
           { name: "Recebidas", labels: shown.map((a) => a.agentName), values: shown.map((a) => a.messagesReceived) },
@@ -1206,8 +1277,10 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       const labels = points.map((p) => `${String(p.hour).padStart(2, "0")}h`);
       // People are whole: with a small team the automatic axis would count 0,2 – 0,4 – 0,6 people.
       const tallest = Math.max(...points.map((p) => input.presenceByHour!.series.reduce((sum, key) => sum + (p.counts[key] ?? 0), 0)));
-      slide.addChart(
-        pptx.ChartType.bar,
+      addSeriesChart(
+        pptx,
+        slide,
+        kinds.presenceByHour,
         input.presenceByHour.series.map((key) => ({ name: key, labels, values: points.map((p) => p.counts[key] ?? 0) })),
         {
           x: M + 0.3,
@@ -1279,12 +1352,18 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       addCombo(
         [
           {
-            type: pptx.ChartType.bar,
+            type: kinds.arrivalsByHour === "line" ? pptx.ChartType.line : kinds.arrivalsByHour === "area" ? pptx.ChartType.area : pptx.ChartType.bar,
             data: [
               { name: "Dentro do expediente", labels, values: points.map((p) => p.inside) },
               { name: "Fora do expediente", labels, values: points.map((p) => p.outside) },
             ],
-            options: { barDir: "col", barGrouping: "stacked", barGapWidthPct: 40, chartColors: [C.brand, AMBER] },
+            // The Dashboard's type for Chegadas por hora; the online line stays a line on its own scale.
+            options:
+              kinds.arrivalsByHour === "line"
+                ? { chartColors: [C.brand, AMBER], lineSize: 2.5, lineDataSymbol: "circle", lineDataSymbolSize: 6 }
+                : kinds.arrivalsByHour === "area"
+                  ? { barGrouping: "stacked", chartColors: [C.brand, AMBER] }
+                  : { barDir: "col", barGrouping: "stacked", barGapWidthPct: 40, chartColors: [C.brand, AMBER] },
           },
           {
             type: pptx.ChartType.line,

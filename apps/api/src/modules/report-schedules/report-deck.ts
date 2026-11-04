@@ -10,7 +10,7 @@ import { env } from "../../config/env";
 import { resolvePeriod } from "../../lib/period";
 import { resolveAllowedConnectionIds } from "../../lib/connection-access";
 import { getExportBranding } from "../settings/settings.service";
-import { getArrivalsByHour, getDashboard, getPresenceByHour, getTeam, getWordCloud } from "../dashboard/dashboard.service";
+import { getArrivalsByHour, getChartKinds, getDashboard, getPresenceByHour, getTeam, getWordCloud } from "../dashboard/dashboard.service";
 import { getSatisfactionOverview, getSatisfactionReport } from "../satisfaction/satisfaction-report.service";
 import { getAutoMessageBlocks } from "../reports/auto-message-blocks.service";
 import { stats as announcementStats } from "../announcements/announcements.service";
@@ -144,7 +144,9 @@ export async function buildScheduledDeck(schedule: DeckSchedule, now = new Date(
   const localNow = new Date(now.getTime() - tz * 60_000);
   const range = (start: number | null, end: number | null) => (start !== null && end !== null ? { start, end } : null);
   const periodValue = { period: key };
+  const chartKinds = await getChartKinds();
   const pptx = buildDashboardPresentation(PptxGenJS, {
+    chartKinds,
     companyName: branding.companyName ?? "WhatsAtendende",
     primaryColor: branding.primaryColor ?? "#0097B4",
     logo: loadLogo(branding.logoUrl),

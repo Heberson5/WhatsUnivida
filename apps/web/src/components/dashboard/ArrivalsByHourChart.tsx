@@ -30,6 +30,8 @@ export function ArrivalsByHourChart({
   primaryColor,
   initialRange,
   onSaveDefaultRange,
+  defaultKind = "bar",
+  onSaveDefaultKind,
   onActiveRangeChange,
   onOpenInGestao,
 }: {
@@ -39,12 +41,16 @@ export function ArrivalsByHourChart({
   primaryColor: string;
   initialRange: HourRange | null;
   onSaveDefaultRange: (range: HourRange | null) => void;
+  /** The type everyone sees first; administrators can make the one on screen everyone's. */
+  defaultKind?: SeriesKind;
+  onSaveDefaultKind?: (kind: SeriesKind) => void;
   onActiveRangeChange?: (range: HourRange | null) => void;
   /** Gestão with the conversations the customer opened in the period — at `hour` (a bar), or all of them (null). */
   onOpenInGestao?: (hour: number | null) => void;
 }) {
   const [range, setRange] = useState<HourRange | null>(initialRange);
-  const [kind, setKind] = useState<SeriesKind>("bar");
+  const [kind, setKind] = useState<SeriesKind>(defaultKind);
+  useEffect(() => setKind(defaultKind), [defaultKind]);
 
   useEffect(() => {
     onActiveRangeChange?.(range);
@@ -78,7 +84,7 @@ export function ArrivalsByHourChart({
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} />
+          <ChartTypeMenu value={kind} onChange={setKind} options={SERIES_KIND_OPTIONS} defaultKey={defaultKind} onSaveDefault={onSaveDefaultKind} />
           <HourRangeMenu
             range={range}
             onChange={(next, asDefault) => {

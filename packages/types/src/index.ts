@@ -3930,3 +3930,43 @@ export interface SmsAvailabilityDTO {
   available: boolean;
   providerLabel: string | null;
 }
+
+// --- Dashboard › tipo padrão dos gráficos -----------------------------------------------------------------------------
+
+export type SeriesChartKind = "bar" | "line" | "area";
+export type DistributionChartKind = "donut" | "pie" | "bar";
+export const SERIES_CHART_KINDS: readonly SeriesChartKind[] = ["bar", "line", "area"];
+export const DISTRIBUTION_CHART_KINDS: readonly DistributionChartKind[] = ["donut", "pie", "bar"];
+
+/** Each Dashboard chart's type as everyone first sees it — on screen and in the presentation. Only an administrator sets it. */
+export interface DashboardChartKindsDTO {
+  presenceByHour: SeriesChartKind;
+  arrivalsByHour: SeriesChartKind;
+  conversationsByStatus: DistributionChartKind;
+  messagesReceivedSent: DistributionChartKind;
+  surveyByAgent: SeriesChartKind;
+  conversationsByAgent: SeriesChartKind;
+  messagesByAgent: SeriesChartKind;
+}
+export type DashboardChartId = keyof DashboardChartKindsDTO;
+
+export const DEFAULT_DASHBOARD_CHART_KINDS: DashboardChartKindsDTO = {
+  presenceByHour: "bar",
+  arrivalsByHour: "bar",
+  conversationsByStatus: "donut",
+  messagesReceivedSent: "donut",
+  surveyByAgent: "bar",
+  conversationsByAgent: "bar",
+  messagesByAgent: "bar",
+};
+
+/** The chart's name (for the Auditoria) and the types it can be drawn as. */
+export const DASHBOARD_CHARTS: Record<DashboardChartId, { label: string; kinds: readonly string[] }> = {
+  presenceByHour: { label: "Presença ao longo do dia", kinds: SERIES_CHART_KINDS },
+  arrivalsByHour: { label: "Chegadas por hora", kinds: SERIES_CHART_KINDS },
+  conversationsByStatus: { label: "Conversas por status", kinds: DISTRIBUTION_CHART_KINDS },
+  messagesReceivedSent: { label: "Mensagens recebidas x enviadas", kinds: DISTRIBUTION_CHART_KINDS },
+  surveyByAgent: { label: "Pesquisa por atendente", kinds: SERIES_CHART_KINDS },
+  conversationsByAgent: { label: "Conversas por atendente", kinds: SERIES_CHART_KINDS },
+  messagesByAgent: { label: "Mensagens enviadas x recebidas por atendente", kinds: SERIES_CHART_KINDS },
+};

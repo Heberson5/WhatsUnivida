@@ -150,6 +150,24 @@ describe("apresentação do Dashboard", () => {
     expect(charts).toHaveLength(7);
   });
 
+  it("cada gráfico sai no tipo padrão do Dashboard: pizza, barras, linha e área — e a linha lê da esquerda para a direita", async () => {
+    const { charts, xmlParts } = await open(
+      input({ chartKinds: { conversationsByStatus: "pie", messagesReceivedSent: "bar", conversationsByAgent: "line", messagesByAgent: "area", presenceByHour: "line" } })
+    );
+    expect(charts).toHaveLength(7);
+    expect(chartWith(xmlParts, "Aguardando (agora)")).toContain("<c:pieChart>");
+    expect(chartWith(xmlParts, "Recebidas")).toContain("<c:barChart>");
+    const conversations = chartWith(xmlParts, "Conversas");
+    expect(conversations).toContain("<c:lineChart>");
+    // The bars came bottom-up; the line has the one with most conversations first, on the left.
+    expect(conversations.indexOf("Ana Souza")).toBeLessThan(conversations.indexOf("Carla Mendes"));
+    // "Enviadas" is also a part of the messages distribution: the one per attendant is the area.
+    expect(xmlParts.some(([part, xml]) => part.startsWith("ppt/charts/") && xml.includes("<c:areaChart>") && xml.includes("<c:v>Enviadas</c:v>"))).toBe(true);
+    for (const [, xml] of xmlParts) {
+      for (const match of xml.matchAll(/<a:srgbClr val="([^"]*)"/g)) expect(match[1]).toMatch(/^[0-9A-F]{6}$/i);
+    }
+  });
+
   it("toda cor no arquivo é hexadecimal de 6 dígitos (cor com # ou com transparência no hex corrompe o arquivo)", async () => {
     const { xmlParts } = await open(input());
     for (const [, xml] of xmlParts) {

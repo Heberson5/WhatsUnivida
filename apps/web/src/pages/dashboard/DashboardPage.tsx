@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Inbox, MessageSquare, MessageSquareOff, Presentation, Timer, Users } from "lucide-react";
 import { toast } from "sonner";
-import { PERMISSION, type AnnouncementStatsDTO, type ArrivalsByHourDTO, type AutoMessageBlocksReportDTO, type PresenceByHourDTO, type SatisfactionOverviewDTO, type SatisfactionReportDTO } from "@whatsatendende/types";
+import { DEFAULT_DASHBOARD_CHART_KINDS, PERMISSION, type DashboardChartId, type DashboardChartKindsDTO, type AnnouncementStatsDTO, type ArrivalsByHourDTO, type AutoMessageBlocksReportDTO, type PresenceByHourDTO, type SatisfactionOverviewDTO, type SatisfactionReportDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { PeriodFilter, type PeriodValue } from "../../components/common/PeriodFilter";
@@ -59,6 +59,26 @@ export default function DashboardPage() {
   const canOpenUsuarios = permissions?.[PERMISSION.USUARIOS_VISUALIZAR];
   // The presentation is for the board: managers and administrators make it, even where agents were given the Dashboard.
   const canExportPresentation = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const queryClient = useQueryClient();
+
+  // Each chart's type as everyone first sees it. Only an administrator sets it; anyone can still change it on their own screen.
+  const { data: savedChartKinds } = useQuery({
+    queryKey: ["dashboard-chart-kinds"],
+    queryFn: async () => (await api.get<DashboardChartKindsDTO>("/dashboard/chart-kinds")).data,
+    staleTime: 60_000,
+  });
+  const chartKinds = savedChartKinds ?? DEFAULT_DASHBOARD_CHART_KINDS;
+  const saveChartKindMutation = useMutation({
+    mutationFn: async ({ chart, kind }: { chart: DashboardChartId; kind: string }) =>
+      (await api.put<DashboardChartKindsDTO>(`/dashboard/chart-kinds/${chart}`, { kind })).data,
+    onSuccess: (kinds) => {
+      queryClient.setQueryData(["dashboard-chart-kinds"], kinds);
+      toast.success("Tipo de gráfico salvo como padrão para todos.");
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
+  const saveChartKind = (chart: DashboardChartId) =>
+    user?.role === "ADMIN" ? (kind: string) => saveChartKindMutation.mutate({ chart, kind }) : undefined;
 
   // "Aguardando" never carries the dashboard's period filter — the count
   // itself isn't period-scoped server-side (it's "right now", same as
@@ -299,6 +319,7 @@ export default function DashboardPage() {
         presenceHourRange: activeHourRange,
         arrivalsByHour: arrivalsByHour ?? null,
         arrivalsHourRange: activeArrivalsRange,
+        chartKinds,
         autoMessageBlocks,
         announcements: announcementStats ?? null,
       });
@@ -418,6 +439,8 @@ export default function DashboardPage() {
               }
               onSaveDefaultRange={(range) => saveDefaultHourRangeMutation.mutate(range)}
               onActiveRangeChange={setActiveHourRange}
+              defaultKind={chartKinds.presenceByHour}
+              onSaveDefaultKind={saveChartKind("presenceByHour")}
             />
           </section>
 
@@ -430,6 +453,8 @@ export default function DashboardPage() {
               initialRange={savedArrivalsRange}
               onSaveDefaultRange={(range) => saveDefaultArrivalsRangeMutation.mutate(range)}
               onActiveRangeChange={setActiveArrivalsRange}
+              defaultKind={chartKinds.arrivalsByHour}
+              onSaveDefaultKind={saveChartKind("arrivalsByHour")}
               onOpenInGestao={canOpenGestao ? goToArrivals : undefined}
             />
           </section>
@@ -470,6 +495,8 @@ export default function DashboardPage() {
                   { name: "Encerradas", value: data.conversations.closed },
                 ]}
                 colors={statusColors}
+                defaultKind={chartKinds.conversationsByStatus}
+                onSaveDefaultKind={saveChartKind("conversationsByStatus")}
               />
               <DistributionChartCard
                 title="Mensagens recebidas x enviadas"
@@ -478,6 +505,8 @@ export default function DashboardPage() {
                   { name: "Enviadas", value: data.messages.sent },
                 ]}
                 colors={messageColors}
+                defaultKind={chartKinds.messagesReceivedSent}
+                onSaveDefaultKind={saveChartKind("messagesReceivedSent")}
               />
             </div>
           </section>
@@ -500,6 +529,8 @@ export default function DashboardPage() {
                 { key: "answered", name: "Responderam", color: agentSeriesColors[0] },
                 { key: "unanswered", name: "Não responderam", color: SURVEY_UNANSWERED_COLOR },
               ]}
+              defaultKind={chartKinds.surveyByAgent}
+              onSaveDefaultKind={saveChartKind("surveyByAgent")}
             />
           )}
 
@@ -527,6 +558,8 @@ export default function DashboardPage() {
                 data={data.perAgent}
                 categoryKey="agentName"
                 series={[{ key: "conversations", name: "Conversas", color: agentSeriesColors[0] }]}
+                defaultKind={chartKinds.conversationsByAgent}
+                onSaveDefaultKind={saveChartKind("conversationsByAgent")}
               />
               <SeriesChartCard
                 title="Mensagens enviadas x recebidas por atendente"
@@ -536,6 +569,8 @@ export default function DashboardPage() {
                   { key: "messagesSent", name: "Enviadas", color: messageColors[1] },
                   { key: "messagesReceived", name: "Recebidas", color: messageColors[0] },
                 ]}
+                defaultKind={chartKinds.messagesByAgent}
+                onSaveDefaultKind={saveChartKind("messagesByAgent")}
               />
             </div>
           </section>

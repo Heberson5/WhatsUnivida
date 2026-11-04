@@ -2,11 +2,33 @@ import { prisma } from "../../lib/prisma";
 import { NO_RETURN_CLOSE_REASON } from "../conversations/conversations.service";
 import { firstResponseDiffs, SCHEDULE_SELECT, spanDiffs } from "../../lib/conversation-timings";
 import { cachedHolidayLookup } from "../../lib/business-time";
-import type { ArrivalsByHourDTO } from "@whatsatendende/types";
+import { DASHBOARD_CHARTS, DEFAULT_DASHBOARD_CHART_KINDS, type ArrivalsByHourDTO, type DashboardChartId, type DashboardChartKindsDTO } from "@whatsatendende/types";
 import type { Prisma, WorkSchedule } from "@prisma/client";
 import { findApplicableHoliday } from "../holidays/holidays.service";
 import { isWorkScheduleOpen } from "../work-schedules/work-schedules.service";
 import type { ComparisonWindow } from "../../lib/compare-period";
+
+const CHART_KINDS_KEY = "dashboard-chart-kinds";
+
+/** Each chart's type as everyone first sees it — the ones an administrator never set keep the system's. */
+export async function getChartKinds(): Promise<DashboardChartKindsDTO> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: CHART_KINDS_KEY } });
+  const saved = (row?.value ?? {}) as Partial<Record<string, string>>;
+  const kinds = { ...DEFAULT_DASHBOARD_CHART_KINDS };
+  for (const id of Object.keys(kinds) as DashboardChartId[]) {
+    const kind = saved[id];
+    // A kind the chart can't be drawn as (an old value) is ignored.
+    if (kind && DASHBOARD_CHARTS[id].kinds.includes(kind)) (kinds as Record<string, string>)[id] = kind;
+  }
+  return kinds;
+}
+
+export async function setChartKind(chart: DashboardChartId, kind: string): Promise<DashboardChartKindsDTO> {
+  const kinds = { ...(await getChartKinds()), [chart]: kind };
+  const value = kinds as unknown as Prisma.InputJsonValue;
+  await prisma.systemSetting.upsert({ where: { key: CHART_KINDS_KEY }, update: { value }, create: { key: CHART_KINDS_KEY, value } });
+  return kinds;
+}
 
 function avgMs(diffs: number[]): number | null {
   if (diffs.length === 0) return null;
