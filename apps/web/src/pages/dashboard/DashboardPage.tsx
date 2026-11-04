@@ -20,7 +20,7 @@ import { ArrivalsByHourChart } from "../../components/dashboard/ArrivalsByHourCh
 import { useBranding } from "../../hooks/useBranding";
 import { useExportBranding } from "../../hooks/useExportBranding";
 import { NEUTRAL_SERIES_COLOR } from "../../lib/chart-theme";
-import { exportDashboardPptx } from "../../lib/exportDashboardPptx";
+import { exportDashboardHtml, exportDashboardPptx } from "../../lib/exportDashboardPptx";
 import { AnnouncementsCard } from "../../components/dashboard/AnnouncementsCard";
 import { useBoardName } from "../../hooks/useAnnouncements";
 
@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [agentId, setAgentId] = useState("all");
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
   const [exportingPptx, setExportingPptx] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const navigate = useNavigate();
   const permissions = useAuthStore((s) => s.permissions);
   const user = useAuthStore((s) => s.user);
@@ -256,8 +257,9 @@ export default function DashboardPage() {
   // The board presentation (see lib/dashboardPresentation.ts): the same numbers already loaded here,
   // as native and editable PowerPoint slides — see PROMPT: "forma de exportar em Power Point bem
   // formatado para ser apresentável à diretoria".
-  async function handleExportPptx() {
+  async function handleExportPptx(format: "pptx" | "html") {
     if (!data) return;
+    setExportMenuOpen(false);
     setExportingPptx(true);
     try {
       const selectedNames = connectionIds.map((id) => connections?.find((c) => c.id === id)?.name).filter((n): n is string => Boolean(n));
@@ -306,7 +308,7 @@ export default function DashboardPage() {
           .catch(() => null);
       }
       const agentText = agentId === "all" ? "todos os atendentes" : `atendente: ${agents?.find((a) => a.id === agentId)?.displayName ?? "1 atendente"}`;
-      await exportDashboardPptx({
+      await (format === "html" ? exportDashboardHtml : exportDashboardPptx)({
         data,
         period,
         branding: exportBranding ?? null,
@@ -356,14 +358,29 @@ export default function DashboardPage() {
           </select>
           <ConnectionFilter value={connectionIds} onChange={setConnectionIds} />
           {canExportPresentation && (
-            <button
-              onClick={handleExportPptx}
-              disabled={!data || exportingPptx}
-              title="Baixa uma apresentação de PowerPoint com os números e gráficos deste Dashboard, para a diretoria"
-              className="focus-ring flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] font-medium hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Presentation className="h-4 w-4" /> {exportingPptx ? "Gerando apresentação..." : "Apresentação (PPT)"}
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setExportMenuOpen((open) => !open)}
+                disabled={!data || exportingPptx}
+                aria-expanded={exportMenuOpen}
+                title="Baixa uma apresentação com os números e gráficos deste Dashboard, para a diretoria"
+                className="focus-ring flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] font-medium hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Presentation className="h-4 w-4" /> {exportingPptx ? "Gerando apresentação..." : "Apresentação"}
+              </button>
+              {exportMenuOpen && (
+                <div className="shadow-soft absolute right-0 top-full z-30 mt-1 w-64 rounded-card border border-border bg-surface p-1">
+                  <button onClick={() => handleExportPptx("pptx")} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-alt">
+                    <span className="font-medium">PowerPoint (.pptx)</span>
+                    <span className="block text-xs text-muted">Slides editáveis, para apresentar ou enviar.</span>
+                  </button>
+                  <button onClick={() => handleExportPptx("html")} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-alt">
+                    <span className="font-medium">Página HTML (.html)</span>
+                    <span className="block text-xs text-muted">Abre no navegador e no celular, sem internet, com gráficos clicáveis.</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

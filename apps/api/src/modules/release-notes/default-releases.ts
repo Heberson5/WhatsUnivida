@@ -11,6 +11,39 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.35.0",
+    date: "4 nov 2026",
+    name: "Apresentação em página HTML",
+    summary: "A apresentação do Dashboard também sai como uma página HTML: abre em qualquer navegador e no celular, sem internet, com gráficos clicáveis. É o mesmo conteúdo do PowerPoint.",
+    notes: [
+      {
+        type: "novo",
+        area: "dashboard",
+        title: "Apresentação em HTML, para o navegador e o celular",
+        text: "O botão Apresentação do Dashboard agora oferece PowerPoint (.pptx) ou Página HTML (.html). A página traz as mesmas seções e os mesmos números da apresentação e abre em qualquer navegador, sem internet e sem instalar nada. No computador, mostra um slide por tela: avance com as setas, a barra de espaço ou os botões, pule pelo índice e aperte F para tela cheia. No celular, as seções ficam uma embaixo da outra.",
+        where: "Dashboard › Apresentação › Página HTML",
+        images: [
+          { src: "/notas-de-versao/apresentacao-html-computador.webp", caption: "No computador, um slide por tela" },
+          { src: "/notas-de-versao/apresentacao-html-celular.webp", caption: "No celular, as seções uma embaixo da outra", size: "small" },
+        ],
+      },
+      {
+        type: "novo",
+        area: "dashboard",
+        title: "Gráficos e tabelas clicáveis",
+        text: "Passe o mouse ou toque num gráfico para ver o número exato. Clique na legenda para esconder ou mostrar uma série, e no nome de uma coluna da tabela de desempenho para ordenar. Nas últimas avaliações, \"motivo\" abre o que o cliente disse da nota baixa. Os gráficos usam o tipo padrão de cada um, a página segue o modo claro ou escuro do aparelho, e imprimir ou salvar em PDF pelo navegador sai um slide por página.",
+        where: "Dashboard › Apresentação › Página HTML",
+      },
+      {
+        type: "melhoria",
+        area: "dashboard",
+        title: "A apresentação diz com que dia compara",
+        text: "Na apresentação baixada do Dashboard, em PowerPoint ou HTML, os indicadores dizem com que dia comparam, como os cartões do Dashboard. Por exemplo, \"35% vs sex 30/10 até 14:18\".",
+        where: "Dashboard › Apresentação",
+      },
+    ],
+  },
+  {
     version: "2.34.0",
     date: "4 nov 2026",
     name: "Tipo padrão dos gráficos do Dashboard",

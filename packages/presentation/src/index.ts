@@ -1,4 +1,5 @@
 export * from "./presentation";
+export * from "./html";
 export * from "./metrics";
 export * from "./colors";
 export * from "./shared";

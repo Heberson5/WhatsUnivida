@@ -6,10 +6,10 @@ import { PERMISSION, type PermissionMap } from "@whatsatendende/types";
 import DashboardPage from "./DashboardPage";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
-import { exportDashboardPptx } from "../../lib/exportDashboardPptx";
+import { exportDashboardHtml, exportDashboardPptx } from "../../lib/exportDashboardPptx";
 
 vi.mock("../../lib/api", () => ({ api: { get: vi.fn(), patch: vi.fn() }, getApiErrorMessage: () => "erro" }));
-vi.mock("../../lib/exportDashboardPptx", () => ({ exportDashboardPptx: vi.fn(async () => undefined) }));
+vi.mock("../../lib/exportDashboardPptx", () => ({ exportDashboardPptx: vi.fn(async () => undefined), exportDashboardHtml: vi.fn(async () => undefined) }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 // The charts themselves are not under test here.
 vi.mock("../../components/dashboard/TeamCards", () => ({ TeamNowCard: () => null, AgentsTable: () => null }));
@@ -52,13 +52,15 @@ describe("Dashboard: apresentação para a diretoria", () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset();
     vi.mocked(exportDashboardPptx).mockClear();
+    vi.mocked(exportDashboardHtml).mockClear();
   });
 
   it.each(["ADMIN", "MANAGER"] as const)("%s vê o botão e baixa a apresentação com o período e os filtros da tela", async (role) => {
     renderAs(role);
-    const button = await screen.findByRole("button", { name: /Apresentação \(PPT\)/ });
+    const button = await screen.findByRole("button", { name: /^Apresentação$/ });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: /PowerPoint \(\.pptx\)/ }));
     await waitFor(() => expect(exportDashboardPptx).toHaveBeenCalledTimes(1));
     expect(vi.mocked(exportDashboardPptx).mock.calls[0][0]).toMatchObject({
       period: { period: "today" },
@@ -66,11 +68,16 @@ describe("Dashboard: apresentação para a diretoria", () => {
       data: DASHBOARD,
       branding: { companyName: "Empresa Demo" },
     });
+    // The same presentation as an HTML page, from the same menu.
+    fireEvent.click(await screen.findByRole("button", { name: /^Apresentação$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Página HTML \(\.html\)/ }));
+    await waitFor(() => expect(exportDashboardHtml).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(exportDashboardHtml).mock.calls[0][0]).toMatchObject({ period: { period: "today" }, data: DASHBOARD });
   });
 
   it("um atendente que recebeu acesso ao Dashboard não vê o botão", async () => {
     renderAs("AGENT");
     await screen.findByText("Conversas recebidas");
-    expect(screen.queryByRole("button", { name: /Apresentação \(PPT\)/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Apresentação$/ })).not.toBeInTheDocument();
   });
 });

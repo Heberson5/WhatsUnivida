@@ -35,6 +35,7 @@ export default defineConfig({
       "@whatsatendende/presentation/colors",
       "@whatsatendende/presentation/shared",
       "@whatsatendende/presentation/presentation",
+      "@whatsatendende/presentation/html",
     ],
   },
   build: {

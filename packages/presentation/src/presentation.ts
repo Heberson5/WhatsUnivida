@@ -48,7 +48,7 @@ export interface DashboardSnapshot {
   timings: { avgAcceptMs: number | null; avgFirstResponseMs: number | null; avgHandlingMs: number | null; avgClosingMs: number | null };
   perAgent: { agentId: string; agentName: string; conversations: number; messagesSent: number; messagesReceived: number; avgHandlingMs: number | null }[];
   users: { online: number; active: number; total: number };
-  previous: { received: number; unique: number; closed: number; messagesTotal: number; avgFirstResponseMs: number | null };
+  previous: { received: number; unique: number; closed: number; messagesTotal: number; avgFirstResponseMs: number | null; label?: string };
 }
 
 export const PRESENTATION_ICONS = ["inbox", "users", "clock", "timer", "check", "messages", "star", "trophy", "flag", "headset"] as const;
@@ -509,9 +509,11 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
   {
     const slide = contentSlide("Abertura", "Visão geral", "Indicadores do período");
     const generatedTime = input.now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    // What the Dashboard's cards compared with ("sex 30/10 até 14:18"); the e-mailed deck compares with the period before.
+    const prevLabel = data.previous.label ?? "período anterior";
     const kpis: { label: string; value: string; icon: PresentationIconName; delta?: StatDelta | null; hint?: string; alert?: boolean }[] = [
-      { label: "Conversas recebidas", value: formatNumber(data.conversations.received), icon: "inbox", delta: compareWithPrevious(data.conversations.received, data.previous.received) },
-      { label: "Atendimentos únicos", value: formatNumber(data.conversations.unique), icon: "users", delta: compareWithPrevious(data.conversations.unique, data.previous.unique) },
+      { label: "Conversas recebidas", value: formatNumber(data.conversations.received), icon: "inbox", delta: compareWithPrevious(data.conversations.received, data.previous.received, false, prevLabel, true) },
+      { label: "Atendimentos únicos", value: formatNumber(data.conversations.unique), icon: "users", delta: compareWithPrevious(data.conversations.unique, data.previous.unique, false, prevLabel, true) },
       {
         label: "Na fila ao gerar o relatório",
         value: formatNumber(data.conversations.waiting),
@@ -523,10 +525,10 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
         label: "1ª resposta (média)",
         value: formatMinutes(data.timings.avgFirstResponseMs),
         icon: "timer",
-        delta: compareWithPrevious(data.timings.avgFirstResponseMs, data.previous.avgFirstResponseMs, true),
+        delta: compareWithPrevious(data.timings.avgFirstResponseMs, data.previous.avgFirstResponseMs, true, prevLabel),
       },
-      { label: "Encerradas", value: formatNumber(data.conversations.closed), icon: "check", delta: compareWithPrevious(data.conversations.closed, data.previous.closed) },
-      { label: "Mensagens", value: formatNumber(data.messages.total), icon: "messages", delta: compareWithPrevious(data.messages.total, data.previous.messagesTotal) },
+      { label: "Encerradas", value: formatNumber(data.conversations.closed), icon: "check", delta: compareWithPrevious(data.conversations.closed, data.previous.closed, false, prevLabel, true) },
+      { label: "Mensagens", value: formatNumber(data.messages.total), icon: "messages", delta: compareWithPrevious(data.messages.total, data.previous.messagesTotal, false, prevLabel, true) },
     ];
     const gap = 0.3;
     const cardW = (CONTENT_W - 2 * gap) / 3;
@@ -549,7 +551,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
     });
     slide.addNotes(
       [
-        "Os mesmos cartões do topo do Dashboard. As setas comparam com um período do mesmo tamanho logo antes deste: verde é bom (mais conversas, ou menos tempo), vermelho é ruim.",
+        `Os mesmos cartões do topo do Dashboard. As setas comparam com ${prevLabel === "período anterior" ? "um período do mesmo tamanho logo antes deste" : prevLabel}: verde é bom (mais conversas, ou menos tempo), vermelho é ruim.`,
         `"Na fila" é uma fotografia do momento em que o relatório foi gerado (${generatedAt}), não um total do período.`,
         "Atendimentos únicos contam clientes diferentes: o mesmo cliente com duas conversas conta uma vez.",
       ].join("\n")
@@ -737,7 +739,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
     const delta = npsDelta(nps.nps, nps.previous.nps);
     const side: PptxGenJS.TextProps[] = [];
     if (delta) side.push({ text: delta.text, options: { bold: true, color: delta.tone === "up" ? GREEN : delta.tone === "down" ? RED : MUTED, fontSize: 15, breakLine: true } });
-    if (delta) side.push({ text: "vs. período anterior", options: { color: MUTED, fontSize: 11, breakLine: nps.goal !== null } });
+    if (delta) side.push({ text: `vs. ${nps.previous.label ?? "período anterior"}`, options: { color: MUTED, fontSize: 11, breakLine: nps.goal !== null } });
     if (nps.goal !== null) {
       side.push({ text: `Meta ${nps.goal}: ${nps.nps >= nps.goal ? "acima" : "abaixo"}`, options: { bold: true, color: nps.nps >= nps.goal ? GREEN : RED, fontSize: 13 } });
     }
@@ -1615,7 +1617,9 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       ["1ª resposta", "Tempo médio do aceite até o atendente escrever — a mensagem automática de aceite não conta."],
       ["Atendimento", "Tempo médio do aceite até o encerramento da conversa."],
       ["NPS (0 a 100)", "Promotores (9–10) e detratores (0–6) numa nota de 0 a 100: 0 todos detratores, 50 empate, 100 todos promotores."],
-      ["Período anterior", "Um período do mesmo tamanho logo antes deste — base das setas de comparação."],
+      data.previous.label && data.previous.label !== "período anterior"
+        ? ["Comparação", `Os cartões comparam com ${data.previous.label}, conforme o Horário de expediente e os Feriados.`]
+        : ["Período anterior", "Um período do mesmo tamanho logo antes deste — base das setas de comparação."],
     ];
     const gapX = 0.35;
     const gapY = 0.25;

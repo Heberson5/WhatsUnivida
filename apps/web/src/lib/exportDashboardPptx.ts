@@ -43,6 +43,38 @@ async function loadLogo(url: string | null | undefined): Promise<PresentationInp
  * for the slides). Logo, company name and color come from Configurações › Exportações. pptxgenjs, the
  * slide builder and the icon drawing are loaded on demand, so viewing the Dashboard doesn't pay for them.
  */
+/**
+ * The same presentation as one HTML page (see packages/presentation/src/html.ts): opens in any browser, offline,
+ * one slide per screen on a computer and scrolling on a phone. Same logo, icons and numbers as the PowerPoint.
+ */
+export async function exportDashboardHtml(
+  input: Omit<PresentationInput, "companyName" | "primaryColor" | "logo" | "icons" | "now"> & { branding: ExportBranding | null }
+): Promise<void> {
+  const { branding, ...rest } = input;
+  const [{ buildDashboardHtml }, { renderPresentationIcons }, logo] = await Promise.all([
+    import("@whatsatendende/presentation/html"),
+    import("./presentationIcons"),
+    loadLogo(branding?.logoUrl),
+  ]);
+  const now = new Date();
+  const html = buildDashboardHtml({
+    ...rest,
+    companyName: branding?.companyName ?? "WhatsAtendende",
+    primaryColor: branding?.primaryColor ?? "#0097B4",
+    logo,
+    icons: await renderPresentationIcons(),
+    now,
+  });
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `apresentacao-atendimento-${rest.period.period}-${now.toISOString().slice(0, 10)}.html`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export async function exportDashboardPptx(
   input: Omit<PresentationInput, "companyName" | "primaryColor" | "logo" | "icons" | "now"> & { branding: ExportBranding | null }
 ): Promise<void> {
