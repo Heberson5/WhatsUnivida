@@ -14,6 +14,12 @@ import { spawn } from "node:child_process";
  * ffmpeg sniffs the real input format itself (it does not trust a file
  * extension or mimetype), so this works regardless of which container the
  * browser actually used.
+ *
+ * Encoded the way WhatsApp's own phones record a voice note: mono, 16 kHz,
+ * about 24 kbps, starting at zero and without the recorder's tags. The
+ * encoder's defaults (48 kHz, ~70 kbps, a slightly negative start) made a
+ * 2:24 note 1.2 MB, and an iPhone answered "Não foi possível baixar o áudio";
+ * this way the same note is about 430 KB.
  */
 export function transcodeToOggOpus(input: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -23,8 +29,23 @@ export function transcodeToOggOpus(input: Buffer): Promise<Buffer> {
       "error",
       "-i",
       "pipe:0",
+      "-vn",
+      "-map_metadata",
+      "-1",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
       "-c:a",
       "libopus",
+      "-b:a",
+      "24k",
+      "-vbr",
+      "constrained",
+      "-application",
+      "voip",
+      "-avoid_negative_ts",
+      "make_zero",
       "-f",
       "ogg",
       "pipe:1",

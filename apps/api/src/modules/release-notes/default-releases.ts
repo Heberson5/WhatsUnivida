@@ -11,6 +11,21 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.35.1",
+    date: "5 nov 2026",
+    name: "Áudio gravado no formato do WhatsApp",
+    summary: "O áudio gravado no atendimento passa a sair no mesmo formato da nota de voz do próprio WhatsApp, cerca de três vezes menor.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Áudio longo que o iPhone do cliente não baixava",
+        text: "Um áudio de 2:24 enviado pela plataforma chegou ao iPhone do cliente com \"Não foi possível baixar o áudio\". Agora o áudio gravado sai como o WhatsApp grava: mono, 16 kHz, cerca de 24 kbps. Um áudio de 2:24 passa de 1,2 MB para cerca de 430 KB, mais leve para baixar no 4G e no 5G. A qualidade da voz continua a mesma do WhatsApp.",
+        where: "Atendimento › Gravar áudio",
+      },
+    ],
+  },
+  {
     version: "2.35.0",
     date: "4 nov 2026",
     name: "Apresentação em página HTML",

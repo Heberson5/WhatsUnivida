@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { transcodeToOggOpus } from "../src/lib/audio-transcode";
 
 function makeSampleWebmOpus(): Buffer {
@@ -33,6 +36,27 @@ describe("transcodeToOggOpus", () => {
     // label without ever actually re-encoding them).
     expect(ogg.subarray(0, 4).toString("ascii")).toBe("OggS");
     expect(ogg.length).toBeGreaterThan(0);
+  });
+
+  it("sai como a nota de voz do próprio WhatsApp: mono, 16 kHz, cerca de 24 kbps, começando no zero", async () => {
+    // A 2:24 stereo recording at 48 kHz, as a browser may hand it over (the note an iPhone could not download).
+    const webm = execFileSync("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=144",
+      "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-f", "webm", "pipe:1",
+    ], { maxBuffer: 20_000_000 });
+    const ogg = await transcodeToOggOpus(webm);
+    const file = join(mkdtempSync(join(tmpdir(), "voz-")), "nota.ogg");
+    writeFileSync(file, ogg);
+    const probe = JSON.parse(execFileSync("ffprobe", ["-hide_banner", "-loglevel", "error", "-show_streams", "-show_format", "-of", "json", file]).toString());
+    const stream = probe.streams[0];
+    expect(stream).toMatchObject({ codec_name: "opus", channels: 1 });
+    expect(Number(probe.format.start_time)).toBeGreaterThanOrEqual(0);
+    expect(Number(probe.format.duration)).toBeCloseTo(144, 0);
+    // About 24 kbps: well under the 1.2 MB the encoder's defaults gave.
+    expect(ogg.length).toBeLessThan(600_000);
+    // The rate the note was recorded at, kept in the Opus header (decoders play it at 48 kHz).
+    expect(ogg.readUInt32LE(ogg.indexOf("OpusHead") + 12)).toBe(16000);
   });
 
   it("rejects input that isn't audio at all, instead of silently passing it through", async () => {
