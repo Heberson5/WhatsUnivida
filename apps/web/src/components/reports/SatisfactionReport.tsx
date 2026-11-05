@@ -16,6 +16,7 @@ import { useColumnView } from "../../hooks/useColumnView";
 import { useAuthStore } from "../../store/auth-store";
 import { ChartTypeMenu } from "../dashboard/ChartTypeMenu";
 import { SERIES_KIND_OPTIONS, type SeriesKind } from "../dashboard/SeriesChartCard";
+import { SkeletonBlock } from "../common/Skeleton";
 
 const formatNps = (nps: number | null) => (nps === null ? "–" : String(nps));
 const DELTA_TONE = { up: "text-success", down: "text-danger", same: "text-muted" } as const;
@@ -154,7 +155,7 @@ export function SatisfactionReport({
     return byFilter && bySearch;
   });
 
-  if (isLoading && !data) return <p className="py-10 text-center text-sm text-muted">Carregando...</p>;
+  if (isLoading && !data) return <SkeletonBlock />;
   if (!data || data.totals.sent === 0) {
     return <p className="py-10 text-center text-sm text-muted">Nenhuma pesquisa de satisfação enviada no período selecionado.</p>;
   }

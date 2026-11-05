@@ -6,6 +6,7 @@ import { CheckCircle2, Lock } from "lucide-react";
 import { PERMISSION, type BoletoBankValidationDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 /**
  * Before a bank sends boletos, its boletos must match real ones: type the
@@ -57,7 +58,7 @@ export function BoletoValidationSection() {
             {canEdit && bank.matched > 0 && (
               <button
                 type="button"
-                onClick={() => window.confirm(`Bloquear de novo o ${bank.name} e apagar as conferências?`) && resetMutation.mutate(bank.code)}
+                onClick={async () => (await confirmAction({ title: `Bloquear de novo o ${bank.name}?`, message: "As conferências feitas para este banco são apagadas e ele volta a precisar de validação.", confirmLabel: "Bloquear e apagar" })) && resetMutation.mutate(bank.code)}
                 className="focus-ring mt-1 text-xs text-danger hover:underline"
               >
                 Bloquear de novo

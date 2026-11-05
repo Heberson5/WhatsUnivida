@@ -37,6 +37,8 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { downloadFile } from "../../lib/download";
 import { ChipsInput } from "../../components/common/ChipsInput";
 import { ConnectionFilter } from "../../components/common/ConnectionFilter";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 interface ListResponse {
   schedules: ReportScheduleDTO[];
@@ -270,7 +272,7 @@ export function ReportSchedulesPanel() {
               </button>
               {canEdit && (
                 <button
-                  onClick={() => window.confirm(`Excluir o agendamento "${s.name}"? Os próximos envios não acontecem mais.`) && remove.mutate(s)}
+                  onClick={async () => (await confirmAction({ title: "Excluir agendamento?", message: <><strong>{s.name}</strong> deixa de ser enviado. Os relatórios já enviados não são afetados.</>, confirmLabel: "Excluir agendamento" })) && remove.mutate(s)}
                   className="focus-ring ml-auto flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Excluir
@@ -313,9 +315,11 @@ function ScheduleForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscapeKey(onClose);
   const [form, setForm] = useState<ReportScheduleInput>(initial);
   const [lastFocused, setLastFocused] = useState<FocusableField>("bodyText");
   const [warnings, setWarnings] = useState<CheckResponse | null>(null);
+  useEscapeKey(() => setWarnings(null), Boolean(warnings));
   const [upcoming, setUpcoming] = useState<string[]>([]);
   const [previewHtml, setPreviewHtml] = useState("");
   const set = <K extends keyof ReportScheduleInput>(key: K, value: ReportScheduleInput[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -770,6 +774,7 @@ function ScheduleForm({
 }
 
 function RunsModal({ schedule, onClose }: { schedule: ReportScheduleDTO; onClose: () => void }) {
+  useEscapeKey(onClose);
   const { data } = useQuery({ queryKey: ["report-schedule-runs", schedule.id], queryFn: async () => (await api.get<ReportScheduleRunDTO[]>(`/report-schedules/${schedule.id}/runs`)).data });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>

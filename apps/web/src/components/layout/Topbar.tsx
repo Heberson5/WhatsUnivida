@@ -41,6 +41,8 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
   const { preference, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pausePickerOpen, setPausePickerOpen] = useState(false);
+  // Phone: pausing lives in the avatar menu (the top bar keeps only menu, title, chat, notifications and avatar).
+  const [menuPauseOpen, setMenuPauseOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const pauseRef = useRef<HTMLDivElement>(null);
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
@@ -48,13 +50,14 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
   const { pause, resume } = usePauseActions(() => {
     setPausePickerOpen(false);
     setMenuOpen(false);
+    setMenuPauseOpen(false);
   });
   const paused = user?.presence === "AWAY";
 
   const { data: pauseReasons } = useQuery({
     queryKey: ["pause-reasons-active"],
     queryFn: async () => (await api.get<PauseReasonDTO[]>("/pause-reasons/active")).data,
-    enabled: pausePickerOpen,
+    enabled: pausePickerOpen || menuPauseOpen,
   });
 
   async function handleLogout() {
@@ -75,12 +78,13 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{title}</h1>
+        {/* The title keeps its full width; the search box next to it is what shrinks. */}
+        <h1 className="min-w-0 truncate text-base font-semibold tracking-tight sm:shrink-0 sm:text-lg">{title}</h1>
         {canSearch && (
         <button
           type="button"
           onClick={() => openPalette(true)}
-          className="focus-ring hidden h-9 w-full max-w-xs items-center gap-2 rounded-lg border border-border bg-surface-alt px-3 text-sm text-muted transition-colors hover:border-primary/40 lg:flex"
+          className="focus-ring hidden h-9 w-full min-w-[9rem] max-w-xs items-center gap-2 rounded-lg border border-border bg-surface-alt px-3 text-sm text-muted transition-colors hover:border-primary/40 lg:flex"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 truncate text-left">Buscar contato, tela ou ação…</span>
@@ -99,7 +103,8 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
             <Search className="h-5 w-5" />
           </button>
         )}
-        <div className="relative" ref={pauseRef}>
+        {/* On a phone the pause button only shows while paused (one tap to resume); pausing is in the avatar menu. */}
+        <div className={clsx("relative", !paused && "hidden sm:block")} ref={pauseRef}>
           <button
             className={clsx(
               "focus-ring flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold sm:px-3 sm:text-sm",
@@ -148,9 +153,13 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
           )}
         </div>
         <InternalChatButton />
-        <ComunicadosButton />
+        <span className="hidden sm:contents">
+          <ComunicadosButton />
+        </span>
         <NotificationBell />
-        <InstallAppButton />
+        <span className="hidden sm:contents">
+          <InstallAppButton />
+        </span>
         <div className="hidden items-center gap-0.5 rounded-full border border-border p-1 sm:flex">
           {(
             [
@@ -176,6 +185,7 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
             className={clsx("focus-ring flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-surface-alt sm:px-1.5", menuOpen && "bg-surface-alt")}
             onClick={() => {
               setMenuOpen((o) => !o);
+              setMenuPauseOpen(false);
               setPausePickerOpen(false);
             }}
             aria-haspopup="menu"
@@ -218,6 +228,59 @@ export function Topbar({ title, onMenuClick }: { title: string; onMenuClick?: ()
               >
                 <UserCircle className="h-4 w-4" /> Meu Perfil
               </button>
+              {/* Phone only: what the top bar hides at this width. */}
+              <div className="sm:hidden">
+                {!paused && (
+                  <>
+                    <button
+                      role="menuitem"
+                      aria-expanded={menuPauseOpen}
+                      onClick={() => setMenuPauseOpen((o) => !o)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-surface-alt"
+                    >
+                      <PauseCircle className="h-4 w-4" /> <span className="flex-1 text-left">Pausar atendimento</span>
+                      <ChevronDown className={clsx("h-3.5 w-3.5 text-muted transition-transform", menuPauseOpen && "rotate-180")} />
+                    </button>
+                    {menuPauseOpen && (
+                      <div className="mb-1 ml-6 max-h-48 space-y-0.5 overflow-y-auto border-l border-border pl-2">
+                        {pauseReasons?.length === 0 && <p className="px-1 py-1 text-xs text-muted">Nenhum motivo cadastrado.</p>}
+                        {pauseReasons?.map((reason) => (
+                          <button
+                            key={reason.id}
+                            role="menuitem"
+                            onClick={() => pause.mutate(reason.id)}
+                            disabled={pause.isPending}
+                            className="block w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-surface-alt disabled:opacity-60"
+                          >
+                            {reason.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                <ComunicadosButton variant="menuitem" onDone={() => setMenuOpen(false)} />
+                <InstallAppButton variant="menuitem" onDone={() => setMenuOpen(false)} />
+                <div className="flex items-center gap-1 px-2.5 py-1.5">
+                  <span className="flex-1 text-sm">Tema</span>
+                  {(
+                    [
+                      { value: "LIGHT", icon: Sun, label: "Tema claro" },
+                      { value: "DARK", icon: Moon, label: "Tema escuro" },
+                      { value: "AUTO", icon: Monitor, label: "Tema automático" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={clsx("focus-ring rounded-full p-1.5", preference === opt.value ? "bg-secondary text-secondary-fg" : "text-muted")}
+                      onClick={() => setTheme(opt.value)}
+                      aria-label={opt.label}
+                    >
+                      <opt.icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-danger hover:bg-surface-alt">
                 <LogOut className="h-4 w-4" /> Sair
               </button>

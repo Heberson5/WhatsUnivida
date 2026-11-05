@@ -13,6 +13,7 @@ import { InternalNoteCard } from "../atendimento/ChatPanel";
 import { TagChip } from "../../pages/contatos/contactFormat";
 import { ContactPhoto } from "../common/ContactPhoto";
 import { ConversationSearchBar, ConversationSearchButton, useConversationSearch } from "../atendimento/ConversationSearch";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 async function fetchMessages(conversationId: string, cursor?: string) {
   const res = await api.get<PaginatedResult<MessageDTO>>(`/messages/conversations/${conversationId}`, {
@@ -37,6 +38,7 @@ export function ReadOnlyConversationDrawer({
   onClose: () => void;
   variant?: "drawer" | "inline";
 }) {
+  useEscapeKey(onClose, variant === "drawer");
   const [messages, setMessages] = useState<MessageDTO[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const scrollContainerRef = useRef<HTMLDivElement>(null);

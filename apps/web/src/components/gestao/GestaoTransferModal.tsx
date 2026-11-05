@@ -5,6 +5,7 @@ import { AlertTriangle, Check, X } from "lucide-react";
 import type { ConversationListItemDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { contactDisplayName } from "../../lib/contact-display";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface AgentOption {
   id: string;
@@ -41,6 +42,7 @@ export function GestaoTransferModal({
   onClose: () => void;
   onTransferred: () => void;
 }) {
+  useEscapeKey(onClose);
   const conversation = conversations[0];
   const isBulk = conversations.length > 1;
   const queryClient = useQueryClient();

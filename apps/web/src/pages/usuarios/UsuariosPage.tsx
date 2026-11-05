@@ -9,6 +9,9 @@ import { useAuthStore } from "../../store/auth-store";
 import { UserFormModal, type UserFormValues } from "./UserFormModal";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { RowActionsMenu } from "../../components/common/RowActionsMenu";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const ROLE_LABEL: Record<string, string> = { ADMIN: "Administrador", MANAGER: "Gestor", AGENT: "Atendente" };
 const PRESENCE_LABEL: Record<string, string> = { ONLINE: "Online", AWAY: "Ausente", OFFLINE: "Offline" };
@@ -85,6 +88,7 @@ export default function UsuariosPage() {
   const columnView = useColumnView("usuarios");
   const [modalUser, setModalUser] = useState<UserDTO | null | "new">(null);
   const [deletingUser, setDeletingUser] = useState<UserDTO | null>(null);
+  useEscapeKey(() => setDeletingUser(null), Boolean(deletingUser));
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "paused" | "inactive">("all");
 
@@ -231,16 +235,12 @@ export default function UsuariosPage() {
                   {columnLabel(key)}
                 </th>
               ))}
-              <th className="px-4 py-3 text-right">Ações</th>
+              <th className="sticky right-0 bg-surface-alt px-3 py-3 text-right shadow-[-10px_0_12px_-10px_rgba(15,23,42,0.25)]">Ações</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && visibleUsers.length === 0 && (
               <tr>
@@ -250,61 +250,47 @@ export default function UsuariosPage() {
               </tr>
             )}
             {visibleUsers.map((u) => (
-              <tr key={u.id} className="border-t border-border hover:bg-surface-alt">
+              <tr key={u.id} className="group border-t border-border hover:bg-surface-alt">
                 <td className="w-0 p-0" />
                 {columnView.visibleKeys.map((key) => (
                   <td key={key} className={USER_CELLS[key].className}>
                     {USER_CELLS[key].render(u)}
                   </td>
                 ))}
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-1">
+                <td className="sticky right-0 bg-surface px-3 py-2.5 shadow-[-10px_0_12px_-10px_rgba(15,23,42,0.25)] group-hover:bg-surface-alt">
+                  {/* Fixed to the right edge: the actions never end up cut off by a narrow screen, and each has its name. */}
+                  <div className="flex items-center justify-end gap-1.5">
                     {canEditar && (
-                      <button onClick={() => setModalUser(u)} className="focus-ring rounded-card p-1.5 text-muted hover:bg-surface-alt" aria-label="Editar" title="Editar">
-                        <Pencil className="h-4 w-4" />
+                      <button onClick={() => setModalUser(u)} className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-surface-alt">
+                        <Pencil className="h-3.5 w-3.5" /> Editar
                       </button>
                     )}
-                    {canInativar && (
-                      <button
-                        onClick={() => statusMutation.mutate({ id: u.id, activate: u.status !== "ACTIVE" })}
-                        className="focus-ring rounded-card p-1.5 text-muted hover:bg-surface-alt"
-                        aria-label={u.status === "ACTIVE" ? "Inativar" : "Ativar"}
-                        title={u.status === "ACTIVE" ? "Inativar" : "Ativar"}
-                      >
-                        {u.status === "ACTIVE" ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                      </button>
-                    )}
-                    {canEditar && u.presence !== "OFFLINE" && u.id !== currentUserId && (
-                      <button
-                        onClick={() => forceLogoutMutation.mutate(u.id)}
-                        disabled={forceLogoutMutation.isPending && forceLogoutMutation.variables === u.id}
-                        className="focus-ring rounded-card p-1.5 text-muted hover:bg-surface-alt disabled:opacity-60"
-                        aria-label="Desconectar agora"
-                        title="Desconectar agora"
-                      >
-                        <LogOut className="h-4 w-4" />
-                      </button>
-                    )}
-                    {canEditar && (
-                      <button
-                        onClick={() => resetPasswordMutation.mutate(u.id)}
-                        className="focus-ring rounded-card p-1.5 text-muted hover:bg-surface-alt"
-                        aria-label="Redefinir senha"
-                        title="Redefinir senha"
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </button>
-                    )}
-                    {currentUserRole === "ADMIN" && u.id !== currentUserId && (
-                      <button
-                        onClick={() => setDeletingUser(u)}
-                        className="focus-ring rounded-card p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
-                        aria-label="Excluir"
-                        title="Excluir"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
+                    <RowActionsMenu
+                      label={`Mais ações para ${u.fullName}`}
+                      actions={[
+                        ...(canInativar
+                          ? [
+                              {
+                                label: u.status === "ACTIVE" ? "Inativar usuário" : "Ativar usuário",
+                                icon: u.status === "ACTIVE" ? UserX : UserCheck,
+                                onSelect: () => statusMutation.mutate({ id: u.id, activate: u.status !== "ACTIVE" }),
+                              },
+                            ]
+                          : []),
+                        ...(canEditar && u.presence !== "OFFLINE" && u.id !== currentUserId
+                          ? [
+                              {
+                                label: "Desconectar agora",
+                                icon: LogOut,
+                                disabled: forceLogoutMutation.isPending && forceLogoutMutation.variables === u.id,
+                                onSelect: () => forceLogoutMutation.mutate(u.id),
+                              },
+                            ]
+                          : []),
+                        ...(canEditar ? [{ label: "Redefinir senha", icon: KeyRound, onSelect: () => resetPasswordMutation.mutate(u.id) }] : []),
+                        ...(currentUserRole === "ADMIN" && u.id !== currentUserId ? [{ label: "Excluir usuário", icon: Trash2, danger: true, onSelect: () => setDeletingUser(u) }] : []),
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>

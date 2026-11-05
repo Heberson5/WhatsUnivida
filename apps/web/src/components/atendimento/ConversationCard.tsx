@@ -82,6 +82,7 @@ export function ConversationCard({
   transferredOutView,
   pinned,
   reminder,
+  connectionWarningShown,
 }: {
   conversation: ConversationListItemDTO;
   selected?: boolean;
@@ -101,6 +102,8 @@ export function ConversationCard({
   /** "Meus" only: pinned to the top by this attendant, and their "lembrar de retornar" for it. */
   pinned?: boolean;
   reminder?: ConversationReminderDTO | null;
+  /** The page already shows a "your connection is disconnected" banner for this conversation's connection — don't repeat it on every card. */
+  connectionWarningShown?: boolean;
 }) {
   const now = useNow();
   const userId = useAuthStore((s) => s.user?.id);
@@ -144,15 +147,21 @@ export function ConversationCard({
       onKeyDown={(e) => onSelect && e.key === "Enter" && onSelect()}
       aria-current={selected ? "true" : undefined}
       className={clsx(
-        "focus-ring relative flex items-start gap-3 border-b border-border px-3 py-3 transition-colors",
+        // Each card is its own rounded block; an alert/selected state colors its LEFT border, which — being a real
+        // border on a rounded box — curves into the 8px corners and tapers down to the thin top/bottom edge, like
+        // a quoted message in WhatsApp.
+        "focus-ring relative mx-1.5 my-1 flex items-start gap-3 rounded-lg border border-border py-3 pr-2.5 transition-colors",
         onSelect && "cursor-pointer",
-        selected ? "bg-primary/[0.07]" : alertDanger ? "bg-danger-soft/60 hover:bg-danger-soft" : alertWarning ? "bg-warning-soft/60 hover:bg-warning-soft" : "hover:bg-surface-alt"
+        selected || alertDanger || alertWarning ? "border-l-[5px] pl-[11px]" : "pl-3.5",
+        selected
+          ? "border-l-primary bg-primary/[0.07]"
+          : alertDanger
+            ? "border-l-danger bg-danger-soft/60 hover:bg-danger-soft"
+            : alertWarning
+              ? "border-l-warning bg-warning-soft/60 hover:bg-warning-soft"
+              : "bg-surface hover:bg-surface-alt"
       )}
     >
-      {!selected && (alertDanger || alertWarning) && (
-        <span className={clsx("absolute inset-y-0 left-0 w-[3px]", alertDanger ? "bg-danger" : "bg-warning")} aria-hidden />
-      )}
-      {selected && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-primary" aria-hidden />}
       <div className="relative shrink-0">
         {conversation.contact.photoUrl ? (
           <ContactPhoto photoUrl={conversation.contact.photoUrl} name={displayName} phone={conversation.contact.phone}>
@@ -230,7 +239,7 @@ export function ConversationCard({
               {transferredOutView ? `para ${conversation.transfer.toAgentName}` : `de ${conversation.transfer.fromAgentName}`}
             </span>
           )}
-          {connectionDisconnected && (
+          {connectionDisconnected && !connectionWarningShown && (
             <span className="inline-flex items-center rounded-full bg-danger-soft px-2 py-0.5 text-[10.5px] font-semibold text-danger">Conexão desconectada</span>
           )}
           {reminder && (

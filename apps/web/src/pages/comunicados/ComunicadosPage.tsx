@@ -8,6 +8,7 @@ import { ANNOUNCEMENT_KIND_LABEL, type AnnouncementDTO } from "@whatsatendende/t
 import { api } from "../../lib/api";
 import { useAnnouncementBoard, type BoardResponse } from "../../hooks/useAnnouncements";
 import { AnnouncementBody, KIND_STYLE, KindBadge, reducedMotion, announcementUntil } from "../../components/announcements/announcement-ui";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const HERO_MS = 5000;
 
@@ -296,6 +297,7 @@ function Tile({ item, delay, onOpen }: { item: AnnouncementDTO; delay: number; o
 }
 
 function DetailModal({ item, onClose }: { item: AnnouncementDTO; onClose: () => void }) {
+  useEscapeKey(onClose);
   const queryClient = useQueryClient();
   const style = KIND_STYLE[item.kind];
   const [imageIndex, setImageIndex] = useState(0);

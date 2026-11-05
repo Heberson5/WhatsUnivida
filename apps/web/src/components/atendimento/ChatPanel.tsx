@@ -28,6 +28,7 @@ import { useCustomerTyping } from "../../store/typing-store";
 import { WhenPicker } from "./WhenPicker";
 import { NoReturnStatus, useNoReturnHold, useNoReturnSettings } from "./NoReturn";
 import { ConversationSearchBar, ConversationSearchButton, useConversationSearch } from "./ConversationSearch";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 async function fetchMessages(conversationId: string, cursor?: string) {
   // 100 (the API's own max) rather than a smaller page, since every page
@@ -75,6 +76,7 @@ export function ChatPanel({
   const [replyTo, setReplyTo] = useState<MessageDTO | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  useEscapeKey(() => setCloseConfirmOpen(false), closeConfirmOpen);
   // "Responder" sends to the customer; "Nota interna" only saves a note the team sees.
   const [composerModeChoice, setComposerMode] = useState<"reply" | "note">("reply");
   const composerMode = lockedByIntervention ? "note" : composerModeChoice;

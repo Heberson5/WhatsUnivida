@@ -14,6 +14,10 @@ import { ArrivalsByHourChart } from "../../components/dashboard/ArrivalsByHourCh
 import { formatHour, type HourRange } from "../../components/dashboard/HourRangeMenu";
 import { useAuthStore } from "../../store/auth-store";
 import { useBranding } from "../../hooks/useBranding";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { HorizontalScrollArea } from "../../components/common/HorizontalScrollArea";
+import { formatPhone } from "../../lib/format-phone";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 type ReportKind = "attendance" | "per-agent" | "messages" | "arrivals" | "satisfaction" | "auto-message-blocks";
 
@@ -67,6 +71,7 @@ export default function RelatoriosPage() {
   const [period, setPeriod] = useState<PeriodValue>({ period: "month" });
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  useEscapeKey(() => setExportMenuOpen(false), exportMenuOpen);
   // Each tabular report has its own column view (⋮ in the table header) — it
   // drives both the on-screen table and every export format.
   const attendanceView = useColumnView("relatorioAtendimentos");
@@ -247,7 +252,7 @@ export default function RelatoriosPage() {
       {tab === "auto-message-blocks" && <AutoMessageBlocksReport data={data as AutoMessageBlocksReportDTO | undefined} isLoading={isLoading} />}
 
       {tab !== "messages" && tab !== "satisfaction" && tab !== "arrivals" && tab !== "auto-message-blocks" && (
-        <div className="shadow-soft flex-1 overflow-auto rounded-card border border-border bg-surface">
+        <HorizontalScrollArea className="shadow-soft flex-1 rounded-card border border-border bg-surface">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-surface-alt text-left text-xs uppercase tracking-wide text-muted">
               <tr>
@@ -263,11 +268,7 @@ export default function RelatoriosPage() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr>
-                  <td colSpan={visibleColumns.length + 1} className="px-4 py-8 text-center text-muted">
-                    Carregando...
-                  </td>
-                </tr>
+                <SkeletonRows columns={visibleColumns.length + 1} />
               )}
               {!isLoading && rows.length === 0 && (
                 <tr>
@@ -281,17 +282,24 @@ export default function RelatoriosPage() {
                   <td className="w-0 p-0" />
                   {visibleColumns.map((key) => (
                     <td key={key} className="whitespace-nowrap px-4 py-2.5">
-                      {String(row[key] ?? "-")}
+                      {cellText(key, row[key])}
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </HorizontalScrollArea>
       )}
     </div>
   );
+}
+
+/** A report cell as it reads on screen — phones the same way as in Atendimento (+55 65 99911-0201). Exports keep the raw value. */
+function cellText(column: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  if (/telefone/i.test(column) && typeof value === "string" && /^\d{10,15}$/.test(value)) return formatPhone(value);
+  return String(value);
 }
 
 /** Relatórios › Chegadas por hora: the Dashboard's chart (same saved range) and the hour-by-hour table the exports carry. */

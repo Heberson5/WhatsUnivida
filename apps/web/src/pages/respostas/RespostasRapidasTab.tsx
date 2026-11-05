@@ -10,6 +10,8 @@ import { QuickReplyFormModal, type QuickReplyFormValues } from "./QuickReplyForm
 import { saveReplyMediaOrWarn, type ReplyMediaChange } from "./ReplyMediaField";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 export function RespostasRapidasTab() {
   const columnView = useColumnView("respostasRapidas");
@@ -20,6 +22,7 @@ export function RespostasRapidasTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_RAPIDAS_EXCLUIR];
   const [modalQuickReply, setModalQuickReply] = useState<QuickReplyDTO | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<QuickReplyDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: quickReplies, isLoading } = useQuery({
     queryKey: ["quick-replies"],
@@ -119,11 +122,7 @@ export function RespostasRapidasTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && quickReplies?.length === 0 && (
               <tr>

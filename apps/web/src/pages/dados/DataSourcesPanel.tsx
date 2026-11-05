@@ -17,6 +17,7 @@ import {
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { ConnectionScopePicker } from "../respostas/ConnectionScopePicker";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 const KIND_LABEL: Record<DataSourceKind, string> = {
   LINK: "Planilha por link (OneDrive ou Google)",
@@ -379,7 +380,7 @@ export function DataSourcesPanel() {
                 )}
                 {canDelete && (
                   <button
-                    onClick={() => window.confirm(`Excluir a fonte "${source.name}" e os dados que ela trouxe?`) && deleteMutation.mutate(source.id)}
+                    onClick={async () => (await confirmAction({ title: "Excluir fonte de dados?", message: <><strong>{source.name}</strong> e os dados que ela trouxe são apagados.</>, confirmLabel: "Excluir fonte" })) && deleteMutation.mutate(source.id)}
                     className="focus-ring inline-flex items-center gap-1 rounded-card border border-border px-2.5 py-1 text-xs text-danger hover:bg-danger-soft"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Excluir

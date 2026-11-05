@@ -14,6 +14,7 @@ import { ImportContactsModal } from "./ImportContactsModal";
 import { TagChip, formatContactPhone } from "./contactFormat";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -422,11 +423,7 @@ export default function ContatosPage() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + (canAttend ? 2 : 1)} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + (canAttend ? 2 : 1)} />
             )}
             {!isLoading && data?.items.length === 0 && (
               <tr>

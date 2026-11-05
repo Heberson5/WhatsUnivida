@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { PERMISSION } from "@whatsatendende/types";
 import { useBootstrapSession } from "./hooks/useBootstrapSession";
@@ -7,25 +8,28 @@ import { AppLayout } from "./components/layout/AppLayout";
 import LoginPage from "./pages/login/LoginPage";
 import ResetPasswordPage from "./pages/login/ResetPasswordPage";
 import AtendimentoPage from "./pages/atendimento/AtendimentoPage";
-import GestaoPage from "./pages/gestao/GestaoPage";
-import AcompanharChatPage from "./pages/chat-interno/AcompanharChatPage";
-import DashboardPage from "./pages/dashboard/DashboardPage";
-import RelatoriosPage from "./pages/relatorios/RelatoriosPage";
-import UsuariosPage from "./pages/usuarios/UsuariosPage";
-import RespostasPage from "./pages/respostas/RespostasPage";
-import EtiquetasPage from "./pages/etiquetas/EtiquetasPage";
-import ContatosPage from "./pages/contatos/ContatosPage";
-import ConexoesPage from "./pages/conexoes/ConexoesPage";
-import FluxoPage from "./pages/fluxo/FluxoPage";
-import FlowEditorPage from "./pages/fluxo/FlowEditorPage";
-import ConfiguracoesPage from "./pages/configuracoes/ConfiguracoesPage";
-import DadosPage from "./pages/dados/DadosPage";
-import AuditoriaPage from "./pages/auditoria/AuditoriaPage";
-import MeuPerfilPage from "./pages/perfil/MeuPerfilPage";
-import LandingPagePage from "./pages/landing-page/LandingPagePage";
-import NotasDeVersaoPage from "./pages/notas-de-versao/NotasDeVersaoPage";
-import PopUpPage from "./pages/popup/PopUpPage";
-import ComunicadosPage from "./pages/comunicados/ComunicadosPage";
+
+// Each screen is its own download, fetched the first time it opens — an attendant no longer downloads the Fluxo
+// editor, the PDF viewer and every report just to use Atendimento (the screen most people land on, kept in the main file).
+const GestaoPage = lazy(() => import("./pages/gestao/GestaoPage"));
+const AcompanharChatPage = lazy(() => import("./pages/chat-interno/AcompanharChatPage"));
+const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
+const RelatoriosPage = lazy(() => import("./pages/relatorios/RelatoriosPage"));
+const UsuariosPage = lazy(() => import("./pages/usuarios/UsuariosPage"));
+const RespostasPage = lazy(() => import("./pages/respostas/RespostasPage"));
+const EtiquetasPage = lazy(() => import("./pages/etiquetas/EtiquetasPage"));
+const ContatosPage = lazy(() => import("./pages/contatos/ContatosPage"));
+const ConexoesPage = lazy(() => import("./pages/conexoes/ConexoesPage"));
+const FluxoPage = lazy(() => import("./pages/fluxo/FluxoPage"));
+const FlowEditorPage = lazy(() => import("./pages/fluxo/FlowEditorPage"));
+const ConfiguracoesPage = lazy(() => import("./pages/configuracoes/ConfiguracoesPage"));
+const DadosPage = lazy(() => import("./pages/dados/DadosPage"));
+const AuditoriaPage = lazy(() => import("./pages/auditoria/AuditoriaPage"));
+const MeuPerfilPage = lazy(() => import("./pages/perfil/MeuPerfilPage"));
+const LandingPagePage = lazy(() => import("./pages/landing-page/LandingPagePage"));
+const NotasDeVersaoPage = lazy(() => import("./pages/notas-de-versao/NotasDeVersaoPage"));
+const PopUpPage = lazy(() => import("./pages/popup/PopUpPage"));
+const ComunicadosPage = lazy(() => import("./pages/comunicados/ComunicadosPage"));
 
 // Where "/" lands depends on what this user's role can actually reach —
 // picks the first permitted destination in this priority order rather than

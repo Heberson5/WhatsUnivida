@@ -15,10 +15,10 @@ const RELEASES: ReleaseDTO[] = [
   { id: "a", version: "2.1.1", date: "06 out 2026", name: "Já vista", summary: "Antiga.", notes: [{ type: "novo", area: "geral", title: "Novidade antiga", text: "Já vista." }] },
 ];
 
-function renderModal(seen: string | null) {
+function renderModal(seen: string | null, role: UserDTO["role"] = "MANAGER") {
   vi.mocked(api.get).mockResolvedValue({ data: RELEASES } as never);
   vi.mocked(api.patch).mockResolvedValue({ data: {} } as never);
-  useAuthStore.setState({ user: { id: "u1", role: "AGENT", releaseNotesSeenVersion: seen } as UserDTO });
+  useAuthStore.setState({ user: { id: "u1", role, releaseNotesSeenVersion: seen } as UserDTO });
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter>
@@ -53,5 +53,22 @@ describe("O que há de novo", () => {
     renderModal(null);
     expect(await screen.findByRole("heading", { name: "O que há de novo: Logoff por inatividade" })).toBeInTheDocument();
     expect(screen.queryByText("Novidade antiga")).not.toBeInTheDocument();
+  });
+
+  it("Esc fecha a janela e marca as novidades como vistas", async () => {
+    renderModal("2.1.9");
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith("/profile/release-notes-seen", { version: "2.2.1" }));
+  });
+
+  it("para o atendente, as novidades aparecem num aviso no canto, sem janela cobrindo a fila", async () => {
+    renderModal("2.1.1", "AGENT");
+    expect(await screen.findByText("2 novidades desde a sua última visita")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver novidades" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Depois" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith("/profile/release-notes-seen", { version: "2.2.1" }));
   });
 });

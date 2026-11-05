@@ -98,6 +98,9 @@ export default function AtendimentoPage() {
   const canSeeGroups = Boolean(useAuthStore((s) => s.permissions?.[PERMISSION.ATENDIMENTO_GRUPOS_VISUALIZAR]));
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
   const hasFixedConnection = Boolean(user?.whatsappConnectionName);
+  // The connection the top banner is already warning about — its cards skip their own "Conexão desconectada" badge.
+  const bannerConnectionId = hasFixedConnection && user?.whatsappConnectionStatus !== "CONNECTED" ? (user?.whatsappConnectionId ?? null) : null;
+  const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
 
   // Realtime listening itself (toasts, desktop notifications, the socket
   // room join that keeps an open chat live) now lives in AppLayout so it
@@ -271,6 +274,7 @@ export default function AtendimentoPage() {
       <ConversationCard
         key={c.id}
         conversation={c}
+        connectionWarningShown={c.whatsappConnectionId === bannerConnectionId}
         selected={c.id === selectedId}
         pinned={pinnedIds.has(c.id)}
         reminder={reminderByConversation.get(c.id) ?? null}
@@ -351,9 +355,25 @@ export default function AtendimentoPage() {
           chatOpen ? "hidden" : "flex"
         )}
       >
-        {hasFixedConnection && user?.whatsappConnectionStatus !== "CONNECTED" && (
-          <div className="border-b border-danger/20 bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
-            Sua conexão de WhatsApp está desconectada — não é possível enviar mensagens nem aceitar conversas até que ela seja reconectada. Avise um administrador.
+        {bannerConnectionId && (
+          <div className="border-b border-danger/20 bg-danger-soft px-3 py-2 text-xs text-danger" role="status">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden />
+              <strong className="min-w-0 truncate font-semibold">WhatsApp desconectado</strong>
+              <button
+                type="button"
+                onClick={() => setConnectionDetailsOpen((open) => !open)}
+                aria-expanded={connectionDetailsOpen}
+                className="focus-ring ms-auto shrink-0 rounded font-semibold underline underline-offset-2"
+              >
+                {connectionDetailsOpen ? "Ocultar" : "Detalhes"}
+              </button>
+            </div>
+            {connectionDetailsOpen && (
+              <p className="mt-1.5 font-medium">
+                Sua conexão de WhatsApp está desconectada — não é possível enviar mensagens nem aceitar conversas até que ela seja reconectada. Avise um administrador.
+              </p>
+            )}
           </div>
         )}
         <div className="space-y-2.5 border-b border-border px-3 pb-3 pt-3">
@@ -451,7 +471,7 @@ export default function AtendimentoPage() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto py-1">
           {tab === "mine" &&
             (visibleMine.length ? (
               <>
@@ -470,6 +490,7 @@ export default function AtendimentoPage() {
                 <ConversationCard
                   key={c.id}
                   conversation={c}
+                  connectionWarningShown={c.whatsappConnectionId === bannerConnectionId}
                   onAccept={() => acceptMutation.mutate(c.id)}
                   accepting={acceptMutation.isPending && acceptMutation.variables === c.id}
                   agentPaused={user?.presence === "AWAY"}
@@ -489,6 +510,7 @@ export default function AtendimentoPage() {
                   <ConversationCard
                     key={c.id}
                     conversation={c}
+                    connectionWarningShown={c.whatsappConnectionId === bannerConnectionId}
                     onAccept={() => acceptMutation.mutate(c.id)}
                     accepting={acceptMutation.isPending && acceptMutation.variables === c.id}
                     agentPaused={user?.presence === "AWAY"}
@@ -513,6 +535,7 @@ export default function AtendimentoPage() {
                 <ConversationCard
                   key={c.id}
                   conversation={c}
+                  connectionWarningShown={c.whatsappConnectionId === bannerConnectionId}
                   transferredOutView
                   selected={c.id === watchingConversation?.id}
                   onSelect={() => {

@@ -6,6 +6,7 @@ import { ChartTypeMenu } from "./ChartTypeMenu";
 import { SERIES_KIND_OPTIONS, type SeriesKind } from "./SeriesChartCard";
 import { HourRangeMenu, formatHour, type HourRange } from "./HourRangeMenu";
 import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, CHART_TOOLTIP_PROPS, darken, gradientId, lighten } from "../../lib/chart-theme";
+import { SkeletonBlock } from "../common/Skeleton";
 
 const OUTSIDE_COLOR = "#F59E0B";
 const ONLINE_LINE_COLOR = "#334155";
@@ -129,7 +130,7 @@ export function ArrivalsByHourChart({
       )}
 
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        <SkeletonBlock />
       ) : summary.total === 0 ? (
         <p className="py-8 text-center text-sm text-muted">Nenhuma conversa nova no período selecionado.</p>
       ) : (

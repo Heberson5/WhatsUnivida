@@ -6,6 +6,7 @@ import type { UserDTO, Role, ManagerConnectionAccessDTO, AccessSchedule, Weekday
 import { WEEKDAY_KEYS } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { StateCitySelect } from "../../components/common/StateCitySelect";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const WEEKDAY_LABELS: Record<WeekdayKey, string> = {
   MON: "Segunda",
@@ -97,6 +98,7 @@ export function UserFormModal({
   const [changingPassword, setChangingPassword] = useState(false);
   // Renaming someone into another person would rewrite their past reports — asked before saving.
   const [confirmingRename, setConfirmingRename] = useState(false);
+  useEscapeKey(() => setConfirmingRename(false), confirmingRename);
   const renamed = Boolean(user && (!sameName(user.fullName, values.fullName) || !sameName(user.displayName, values.displayName)));
 
   // Who already uses the typed e-mail: an active user blocks saving; inactive ones only inform.

@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -8,6 +8,7 @@ import { AppUpdateBanner } from "./AppUpdateBanner";
 import { NewVersionModal } from "./NewVersionModal";
 import { CommandPalette } from "./CommandPalette";
 import { WhatsNewModal } from "./WhatsNewModal";
+import { ConfirmHost } from "../common/ConfirmDialog";
 import { AnnouncementsHost } from "../announcements/AnnouncementsHost";
 import { useAuthStore } from "../../store/auth-store";
 import { useActiveConversationStore } from "../../store/active-conversation-store";
@@ -16,6 +17,7 @@ import { useIdleLogout } from "../../hooks/useIdleLogout";
 import { useAccessWindow } from "../../hooks/useAccessWindow";
 import { useSocketEvents } from "../../hooks/useSocketEvents";
 import { useLandingPageSettings } from "../../hooks/useLandingPageSettings";
+import { PageSkeleton } from "../common/Skeleton";
 
 // Exported so LandingPagePage.tsx can list every overridable page title
 // without duplicating (and risking drifting from) this map.
@@ -31,7 +33,7 @@ export const TITLES: Record<string, string> = {
   "/configuracoes": "Configurações",
   "/auditoria": "Auditoria",
   "/perfil": "Meu Perfil",
-  "/landing-page": "Landing Page",
+  "/landing-page": "Personalização",
   "/respostas": "Respostas",
   "/fluxo": "Fluxo",
   "/etiquetas": "Etiquetas",
@@ -125,7 +127,10 @@ export function AppLayout() {
         <NewVersionModal />
         <Topbar title={title} onMenuClick={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-hidden">
-          <Outlet />
+          {/* A screen opened for the first time downloads its own code (see App.tsx): show its outline meanwhile. */}
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
         </main>
         {/* Hidden while a conversation is open on mobile (Atendimento swaps
             its list for the chat panel in place, not a route change) — the
@@ -139,6 +144,7 @@ export function AppLayout() {
       {/* The shortcut search (Ctrl K) is for managers and administrators — see Topbar. */}
       {(role === "MANAGER" || role === "ADMIN") && <CommandPalette />}
       <WhatsNewModal />
+      <ConfirmHost />
       {/* Pop Up › Avisos: after login, and live while logged in. */}
       <AnnouncementsHost />
     </div>

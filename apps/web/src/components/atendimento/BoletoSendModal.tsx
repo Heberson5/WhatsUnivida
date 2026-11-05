@@ -4,9 +4,11 @@ import { toast } from "sonner";
 import { AlertTriangle, Copy, FileText, QrCode, X } from "lucide-react";
 import type { BoletoPreviewDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /** Preview of the boletos (linha digitável of each) with the editable message; sending needs any overdue one confirmed. */
 export function BoletoSendModal({ conversationId, parcelIds, onClose, onSent }: { conversationId: string; parcelIds: string[]; onClose: () => void; onSent: () => void }) {
+  useEscapeKey(onClose);
   const [preview, setPreview] = useState<BoletoPreviewDTO | null>(null);
   const [message, setMessage] = useState("");
   const [confirmOverdue, setConfirmOverdue] = useState(false);

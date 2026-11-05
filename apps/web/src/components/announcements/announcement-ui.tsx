@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { AlertTriangle, ExternalLink, FileText, Info, Megaphone, PartyPopper, Sparkles, Speaker, X, type LucideIcon } from "lucide-react";
 import { ANNOUNCEMENT_KIND_LABEL, type AnnouncementDTO, type AnnouncementKind } from "@whatsatendende/types";
 import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /** Each kind's color (the story's background) and the lighter tint of the board's cards. */
 export const KIND_STYLE: Record<AnnouncementKind, { solid: string; tint: string; ink: string; icon: LucideIcon }> = {
@@ -218,6 +219,7 @@ export function useStoryProgress(durationMs: number, paused: boolean, resetKey: 
 }
 
 export function Overlay({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+  useEscapeKey(() => onClose?.(), Boolean(onClose));
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="story-in w-full" onClick={(e) => e.stopPropagation()}>

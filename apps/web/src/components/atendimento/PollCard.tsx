@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ListChecks, X } from "lucide-react";
 import type { MessageAttachmentDTO } from "@whatsatendende/types";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /**
  * A group poll as WhatsApp Web shows it: each option with its bar, share and number of votes, and "Ver votos" with who
@@ -8,6 +9,7 @@ import type { MessageAttachmentDTO } from "@whatsatendende/types";
  */
 export function PollCard({ att }: { att: MessageAttachmentDTO }) {
   const [showVotes, setShowVotes] = useState(false);
+  useEscapeKey(() => setShowVotes(false), showVotes);
   const results = att.pollResults;
   const options = results?.options ?? (att.pollOptions ?? []).map((option) => ({ option, count: 0, voters: [] }));
   const voters = results?.voters ?? 0;

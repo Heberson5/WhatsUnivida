@@ -3,6 +3,7 @@ import { Megaphone, ShieldCheck } from "lucide-react";
 import type { AnnouncementStatsDTO } from "@whatsatendende/types";
 import { CHART_CARD_SHADOW } from "../../lib/chart-theme";
 import { KIND_STYLE } from "../announcements/announcement-ui";
+import { SkeletonBlock } from "../common/Skeleton";
 
 /**
  * Dashboard › Comunicados (Gestor e Administrador): the notices of Pop Up › Avisos in the period — how many people read
@@ -29,7 +30,7 @@ export function AnnouncementsCard({ stats, isLoading, boardName }: { stats: Anno
         </Link>
       </div>
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        <SkeletonBlock />
       ) : !stats?.published ? (
         <p className="py-8 text-center text-sm text-muted">Nenhum aviso apareceu no período selecionado.</p>
       ) : (

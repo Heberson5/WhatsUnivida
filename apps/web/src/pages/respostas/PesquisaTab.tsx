@@ -10,6 +10,8 @@ import { PesquisaFormModal, toPesquisaFormValues, type PesquisaFormValues } from
 import { SatisfactionSettingsCard } from "./SatisfactionSettingsCard";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const QUERY_KEY = ["satisfaction-surveys"];
 
@@ -33,6 +35,7 @@ export function PesquisaTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_PESQUISA_EXCLUIR];
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SatisfactionSurveyDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: surveys, isLoading } = useQuery({
     queryKey: QUERY_KEY,
@@ -138,11 +141,7 @@ export function PesquisaTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && surveys?.length === 0 && (
               <tr>

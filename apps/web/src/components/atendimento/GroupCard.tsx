@@ -27,11 +27,11 @@ export function GroupCard({ group, selected, onSelect }: { group: GroupListItemD
       aria-current={selected ? "true" : undefined}
       aria-label={`Grupo ${group.name}${unread ? `, ${group.unreadCount} não lidas` : ""}`}
       className={clsx(
-        "focus-ring relative flex cursor-pointer items-start gap-3 border-b border-border px-3 py-3 transition-colors",
-        selected ? "bg-primary/[0.07]" : "hover:bg-surface-alt"
+        // Same rounded block as ConversationCard — see the note there about the tapering left border.
+        "focus-ring relative mx-1.5 my-1 flex cursor-pointer items-start gap-3 rounded-lg border border-border py-3 pr-2.5 transition-colors",
+        selected ? "border-l-[5px] border-l-primary bg-primary/[0.07] pl-[11px]" : "bg-surface pl-3.5 hover:bg-surface-alt"
       )}
     >
-      {selected && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-primary" aria-hidden />}
       {group.photoUrl ? (
         <img src={group.photoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
       ) : (

@@ -16,6 +16,7 @@ import {
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { TagButtons, insertTag } from "./TagButtons";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 // The example boleto of the preview and the hints.
 const EXAMPLE = { cents: 12758, contract: "C-10", document: "D-1", due: "10/11/2026" };
@@ -168,7 +169,7 @@ export function BoletoInstructionsPanel() {
               {draft.id ? (
                 <button
                   type="button"
-                  onClick={() => window.confirm(`Excluir a mensagem "${selected?.name}"?`) && deleteMutation.mutate(draft.id!)}
+                  onClick={async () => (await confirmAction({ title: "Excluir mensagem?", message: <><strong>{selected?.name}</strong> deixa de ser usada nos boletos.</>, confirmLabel: "Excluir mensagem" })) && deleteMutation.mutate(draft.id!)}
                   className="focus-ring inline-flex items-center gap-1 rounded-card border border-border px-3 py-2 text-sm text-danger hover:bg-danger-soft"
                 >
                   <Trash2 className="h-4 w-4" /> Excluir

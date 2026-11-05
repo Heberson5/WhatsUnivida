@@ -12,6 +12,7 @@ import { MediaLightbox, type LightboxMedia } from "./MediaLightbox";
 import { DocumentAttachment } from "./DocumentPreview";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { groupReactions } from "../../lib/reactions";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -245,6 +246,7 @@ export function MessageBubble({
   const [showReactors, setShowReactors] = useState(false);
   const [openMedia, setOpenMedia] = useState<LightboxMedia | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  useEscapeKey(() => setConfirmDelete(false), confirmDelete);
   const isOutbound = message.direction === "OUTBOUND";
 
   const bubble = (

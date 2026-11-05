@@ -14,6 +14,7 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { formatPhone } from "../../lib/format-phone";
 import { usePhoneSettings } from "../../hooks/usePhoneSettings";
 import { useAuthStore } from "../../store/auth-store";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface ConnectionOption {
   id: string;
@@ -41,6 +42,7 @@ export function NovaConversaModal({
   onClose: () => void;
   onStarted: (conversation: ConversationListItemDTO) => void;
 }) {
+  useEscapeKey(onClose);
   const [connectionId, setConnectionId] = useState<string | null>(fixedConnectionId ?? null);
   const [search, setSearch] = useState("");
   const [manualPhone, setManualPhone] = useState("");

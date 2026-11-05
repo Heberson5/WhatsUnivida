@@ -23,6 +23,7 @@ import { NEUTRAL_SERIES_COLOR } from "../../lib/chart-theme";
 import { exportDashboardHtml, exportDashboardPptx } from "../../lib/exportDashboardPptx";
 import { AnnouncementsCard } from "../../components/dashboard/AnnouncementsCard";
 import { useBoardName } from "../../hooks/useAnnouncements";
+import { SkeletonTiles } from "../../components/common/Skeleton";
 
 interface AgentOption {
   id: string;
@@ -385,7 +386,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted">Carregando indicadores...</p>}
+      {isLoading && <SkeletonTiles />}
 
       {isError && (
         <p className="text-sm text-danger">

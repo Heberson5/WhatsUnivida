@@ -16,6 +16,8 @@ import { downloadFile } from "../../lib/download";
 import { useBoardName } from "../../hooks/useAnnouncements";
 import { KIND_STYLE, KindBadge, announcementPeriod } from "../../components/announcements/announcement-ui";
 import { AnnouncementFormModal } from "./AnnouncementFormModal";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 const STATUS: Record<AnnouncementStatus, { label: string; className: string }> = {
   ACTIVE: { label: "No ar", className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
@@ -209,7 +211,7 @@ export function AvisosTab() {
                 )}
                 {can.edit && a.status === "ACTIVE" && (
                   <button
-                    onClick={() => window.confirm(`Encerrar "${a.title}" agora? Ele deixa de abrir para quem ainda não viu.`) && endNow.mutate(a)}
+                    onClick={async () => (await confirmAction({ title: "Encerrar agora?", message: <><strong>{a.title}</strong> deixa de abrir para quem ainda não viu.</>, confirmLabel: "Encerrar agora", tone: "neutral" })) && endNow.mutate(a)}
                     className="focus-ring flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-alt"
                   >
                     <Power className="h-3.5 w-3.5" /> Encerrar agora
@@ -217,7 +219,7 @@ export function AvisosTab() {
                 )}
                 {can.remove && (
                   <button
-                    onClick={() => window.confirm(`Enviar "${a.title}" para a Lixeira?`) && trash.mutate(a)}
+                    onClick={async () => (await confirmAction({ title: "Enviar para a Lixeira?", message: <><strong>{a.title}</strong> vai para a Lixeira, de onde ainda pode ser restaurado.</>, confirmLabel: "Enviar para a Lixeira" })) && trash.mutate(a)}
                     className="focus-ring flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Excluir
@@ -249,6 +251,7 @@ export function AvisosTab() {
 const ROLE_LABEL = { ADMIN: "Administrador", MANAGER: "Gestor", AGENT: "Atendente" } as const;
 
 function ReceiptsModal({ announcement, canRemind, onClose }: { announcement: AnnouncementAdminDTO; canRemind: boolean; onClose: () => void }) {
+  useEscapeKey(onClose);
   const { data } = useQuery({
     queryKey: ["announcements", "receipts", announcement.id],
     queryFn: async () => (await api.get<AnnouncementReceiptRowDTO[]>(`/announcements/admin/${announcement.id}/receipts`)).data,

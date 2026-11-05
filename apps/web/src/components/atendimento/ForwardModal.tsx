@@ -6,11 +6,13 @@ import clsx from "clsx";
 import type { ConversationListItemDTO, MessageDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { contactDisplayName } from "../../lib/contact-display";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const MAX_TARGETS = 10;
 
 /** "Encaminhar": picks one or more of the agent's own conversations to send a copy of `message` to. */
 export function ForwardModal({ message, currentConversationId, onClose }: { message: MessageDTO; currentConversationId: string; onClose: () => void }) {
+  useEscapeKey(onClose);
   const { data: conversations } = useQuery({
     queryKey: ["mine"],
     queryFn: async () => (await api.get<ConversationListItemDTO[]>("/conversations/mine")).data,

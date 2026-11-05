@@ -446,9 +446,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(function ChatC
                   if (e.key === "ArrowDown") return e.preventDefault(), setMentionIndex((i) => (i + 1) % mentionOptions.length);
                   if (e.key === "ArrowUp") return e.preventDefault(), setMentionIndex((i) => (i - 1 + mentionOptions.length) % mentionOptions.length);
                   if (e.key === "Enter" || e.key === "Tab") return e.preventDefault(), pickMention(mentionOptions[mentionIndex]);
-                  if (e.key === "Escape") return setMentionQuery(null);
+                  if (e.key === "Escape") return e.preventDefault(), setMentionQuery(null);
                 }
-                if (e.key === "Escape" && editing) return onCancelEdit(), setText("");
+                if (e.key === "Escape" && editing) return e.preventDefault(), onCancelEdit(), setText("");
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void send();

@@ -5,6 +5,7 @@ import { RotateCcw, Trash2 } from "lucide-react";
 import type { AnnouncementAdminDTO, AnnouncementBoardSettingsDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { KindBadge } from "../../components/announcements/announcement-ui";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 type TrashItem = AnnouncementAdminDTO & { purgeOn: string };
 
@@ -85,7 +86,7 @@ export function LixeiraTab() {
               <RotateCcw className="h-3.5 w-3.5" /> Restaurar
             </button>
             <button
-              onClick={() => window.confirm(`Excluir de vez "${a.title}"? Não tem como desfazer.`) && purge.mutate(a.id)}
+              onClick={async () => (await confirmAction({ title: "Excluir de vez?", message: <><strong>{a.title}</strong> é apagado para sempre. Não tem como desfazer.</>, confirmLabel: "Excluir de vez" })) && purge.mutate(a.id)}
               className="focus-ring flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10"
             >
               <Trash2 className="h-3.5 w-3.5" /> Excluir de vez

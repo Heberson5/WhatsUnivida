@@ -1,12 +1,13 @@
 import { format } from "date-fns";
 import { AUTO_MESSAGE_KIND_LABEL, type AutoMessageBlocksReportDTO } from "@whatsatendende/types";
+import { SkeletonBlock } from "../common/Skeleton";
 
 /**
  * Relatórios › Mensagens bloqueadas: the automatic messages the tags stopped (Etiquetas › Bloqueia) — the totals by
  * message and by tag, then each one with the customer, connection and attendant.
  */
 export function AutoMessageBlocksReport({ data, isLoading }: { data: AutoMessageBlocksReportDTO | undefined; isLoading: boolean }) {
-  if (isLoading) return <p className="py-8 text-center text-sm text-muted">Carregando...</p>;
+  if (isLoading) return <SkeletonBlock />;
   if (!data || data.total === 0) {
     return <p className="py-8 text-center text-sm text-muted">Nenhuma mensagem automática bloqueada por etiqueta no período.</p>;
   }

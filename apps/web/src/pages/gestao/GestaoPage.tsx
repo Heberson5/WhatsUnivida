@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import clsx from "clsx";
-import { ArrowRightLeft, CheckCircle2, ChevronLeft, ChevronRight, Eye, GitMerge, Hand, Inbox, Search, Undo2, X } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, ChevronLeft, ChevronRight, Eye, GitMerge, Hand, Inbox, Lock, Search, SearchX, Undo2, X } from "lucide-react";
 import { COLUMN_SCREENS, OVERSIGHT_PAGE_SIZES, PERMISSION, type ConversationListItemDTO, type ConversationStatus, type OversightPageDTO, type OversightPageSize } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { contactDisplayName } from "../../lib/contact-display";
@@ -25,6 +25,9 @@ import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
 import { ContactPhoto } from "../../components/common/ContactPhoto";
 import { useIsPhone } from "../../hooks/useIsPhone";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { formatPhone } from "../../lib/format-phone";
+import { SkeletonRows, SkeletonBlock } from "../../components/common/Skeleton";
 
 // Same "still active" scope the backend enforces (see
 // assignConversationFromGestao/returnConversationToQueue) — CLOSED/ABANDONED
@@ -98,6 +101,7 @@ export default function GestaoPage() {
   const [merging, setMerging] = useState<ConversationListItemDTO | null>(null);
   const [transferring, setTransferring] = useState<ConversationListItemDTO[] | null>(null);
   const [closing, setClosing] = useState<ConversationListItemDTO | null>(null);
+  useEscapeKey(() => setClosing(null), Boolean(closing));
   const isAdmin = useAuthStore((s) => s.user?.role === "ADMIN");
   // Transferir/Enviar p/ fila hit /conversations/:id/gestao-transfer and
   // /gestao-return-to-queue, both gated backend-side by GESTAO_GERENCIAR on
@@ -109,6 +113,7 @@ export default function GestaoPage() {
   const myId = useAuthStore((s) => s.user?.id);
   // Gestão › Intervir: the conversation open with this manager replying in place of the agent.
   const [interveningSnapshot, setInterveningSnapshot] = useState<ConversationListItemDTO | null>(null);
+  useEscapeKey(() => setInterveningSnapshot(null), Boolean(interveningSnapshot));
   const interveningId = interveningSnapshot?.id ?? null;
   const queryClient = useQueryClient();
 
@@ -218,6 +223,25 @@ export default function GestaoPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<OversightPageSize>(savedPageSize);
   const filterKey = JSON.stringify([period, agentId, debouncedSearch, connectionIds, status, pageSize, arrival]);
+  // Empty list: say WHY — a manager with no connection released to them sees nothing at all, which used to read like
+  // "no results for these filters". Same list the connection filter uses (already scoped to this manager).
+  const role = useAuthStore((st) => st.user?.role);
+  const { data: myConnections } = useQuery({
+    queryKey: ["whatsapp-connections"],
+    queryFn: async () => (await api.get<{ id: string }[]>("/whatsapp/connections")).data,
+    enabled: role === "MANAGER" || role === "ADMIN",
+  });
+  const noConnectionAccess = role === "MANAGER" && myConnections !== undefined && myConnections.length === 0;
+  const filtersActive = agentId !== "all" || status !== "all" || debouncedSearch.trim() !== "" || connectionIds.length > 0 || arrival !== null || period.period !== "today";
+  function clearFilters() {
+    setAgentId("all");
+    setStatus("all");
+    setSearch("");
+    setConnectionIds([]);
+    setArrival(null);
+    setPeriod({ period: "today" });
+  }
+  const emptyState = <GestaoEmptyState noAccess={noConnectionAccess} filtersActive={filtersActive} onClear={clearFilters} />;
   useEffect(() => setPage(1), [filterKey]);
   const { data: pageData, isLoading } = useQuery({
     queryKey: ["oversight", "page", period, agentId, debouncedSearch, connectionIds, status, page, pageSize, arrival],
@@ -368,7 +392,7 @@ export default function GestaoPage() {
               {clientAvatar(c, "h-8 w-8")}
               <div className="min-w-0">
                 <div className="truncate font-medium">{contactDisplayName(c.contact)}</div>
-                {c.contact.phone && <div className="text-xs text-muted">{c.contact.phone}</div>}
+                {c.contact.phone && <div className="text-xs tabular-nums text-muted">{formatPhone(c.contact.phone)}</div>}
               </div>
             </div>
           </td>
@@ -598,8 +622,8 @@ export default function GestaoPage() {
 
       {isPhone ? (
       <div className="space-y-2.5">
-        {isLoading && <p className="py-8 text-center text-sm text-muted">Carregando...</p>}
-        {!isLoading && visible.length === 0 && <p className="py-8 text-center text-sm text-muted">Nenhuma conversa encontrada para os filtros selecionados.</p>}
+        {isLoading && <SkeletonBlock />}
+        {!isLoading && visible.length === 0 && emptyState}
         {visible.map((c) => {
           const wait = waitInfo(c);
           const isSelected = selectedIds.has(c.id);
@@ -630,7 +654,7 @@ export default function GestaoPage() {
                 <div onClick={(e) => e.stopPropagation()}>{clientAvatar(c, "h-9 w-9")}</div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{contactDisplayName(c.contact)}</div>
-                  {c.contact.phone && <div className="truncate text-xs text-muted">{c.contact.phone}</div>}
+                  {c.contact.phone && <div className="truncate text-xs tabular-nums text-muted">{formatPhone(c.contact.phone)}</div>}
                 </div>
                 {columnView.visibleKeys.includes("status") && <div className="shrink-0">{statusBadge(c)}</div>}
               </div>
@@ -682,16 +706,12 @@ export default function GestaoPage() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && visible.length === 0 && (
               <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Nenhuma conversa encontrada para os filtros selecionados.
+                <td colSpan={columnView.visibleKeys.length + 2} className="px-4">
+                  {emptyState}
                 </td>
               </tr>
             )}
@@ -886,6 +906,33 @@ export default function GestaoPage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** What an empty Gestão list means, and what to do about it. */
+function GestaoEmptyState({ noAccess, filtersActive, onClear }: { noAccess: boolean; filtersActive: boolean; onClear: () => void }) {
+  const Icon = noAccess ? Lock : SearchX;
+  return (
+    <div className="flex flex-col items-center gap-2.5 px-4 py-10 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <Icon className="h-6 w-6" />
+      </span>
+      <p className="text-[15px] font-semibold text-[var(--color-text)]">
+        {noAccess ? "Você ainda não tem acesso a nenhuma conexão" : filtersActive ? "Nenhuma conversa com estes filtros" : "Nenhuma conversa hoje"}
+      </p>
+      <p className="max-w-sm text-[13px] text-muted">
+        {noAccess
+          ? "As conversas aparecem aqui quando o administrador liberar uma conexão para você no seu cadastro, em Usuários."
+          : filtersActive
+            ? "Tente outro período, atendente ou status — ou limpe os filtros para ver tudo de hoje."
+            : "Assim que um cliente escrever, a conversa aparece aqui."}
+      </p>
+      {!noAccess && filtersActive && (
+        <button type="button" onClick={onClear} className="focus-ring mt-1 rounded-lg border border-border px-3.5 py-2 text-sm font-semibold hover:bg-surface-alt">
+          Limpar filtros
+        </button>
       )}
     </div>
   );

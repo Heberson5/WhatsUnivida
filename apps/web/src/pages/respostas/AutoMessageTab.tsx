@@ -10,6 +10,8 @@ import { describeUserScope } from "./UserScopePicker";
 import { AutoMessageFormModal, type AutoMessageFormValues } from "./AutoMessageFormModal";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const TRIGGER_PERMISSION: Record<AutoMessageTrigger, { adicionar: Permission; editar: Permission; excluir: Permission }> = {
   TRANSFER: {
@@ -35,6 +37,7 @@ export function AutoMessageTab({ trigger, description, emptyMessage }: { trigger
   const canExcluir = permissions?.[TRIGGER_PERMISSION[trigger].excluir];
   const [modalTarget, setModalTarget] = useState<AutoMessageTemplateDTO | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<AutoMessageTemplateDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const queryKey = ["auto-message-templates", trigger];
   const { data: templates, isLoading } = useQuery({
@@ -132,11 +135,7 @@ export function AutoMessageTab({ trigger, description, emptyMessage }: { trigger
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && templates?.length === 0 && (
               <tr>
