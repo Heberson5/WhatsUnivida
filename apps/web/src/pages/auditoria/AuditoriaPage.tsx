@@ -6,6 +6,7 @@ import type { AuditLogDTO, PaginatedResult } from "@whatsatendende/types";
 import { api } from "../../lib/api";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 // Every distinct `entity` string ever passed to writeAudit() across the API
 // — see e.g. auth.service.ts, users.routes.ts, conversations.routes.ts. The
@@ -216,11 +217,7 @@ export default function AuditoriaPage() {
           </thead>
           <tbody>
             {query.isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 1} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 1} />
             )}
             {!query.isLoading && logs.length === 0 && (
               <tr>

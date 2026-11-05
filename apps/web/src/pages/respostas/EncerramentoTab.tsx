@@ -12,6 +12,8 @@ import { MediaBadge } from "./RespostasRapidasTab";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
 import { NoReturnSettingsCard } from "./NoReturnSettingsCard";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 /** Cadastro de mensagens de encerramento automático — ver PROMPT: "Encerramento, o cadastro deverá ser similar com a resposta rápida, mas com alguns diferenciais." */
 export function EncerramentoTab() {
@@ -23,6 +25,7 @@ export function EncerramentoTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_ENCERRAMENTO_EXCLUIR];
   const [modalTarget, setModalTarget] = useState<ClosingMessageDTO | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<ClosingMessageDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: closingMessages, isLoading } = useQuery({
     queryKey: ["closing-messages"],
@@ -125,11 +128,7 @@ export function EncerramentoTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && closingMessages?.length === 0 && (
               <tr>

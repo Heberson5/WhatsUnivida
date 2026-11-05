@@ -20,6 +20,7 @@ import {
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { TagButtons, insertTag } from "./TagButtons";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 const PREVIEW_DEBOUNCE_MS = 600;
 const inputClass = "focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm";
@@ -300,7 +301,7 @@ export function BoletoLayoutsPanel() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.confirm(`Excluir o layout "${draft.name}"?`) && deleteMutation.mutate(draft.id!)}
+                      onClick={async () => (await confirmAction({ title: "Excluir layout?", message: <>O layout <strong>{draft.name}</strong> é apagado.</>, confirmLabel: "Excluir layout" })) && deleteMutation.mutate(draft.id!)}
                       className="focus-ring inline-flex items-center gap-1 rounded-card border border-border px-3 py-2 text-sm text-danger hover:bg-danger-soft"
                     >
                       <Trash2 className="h-4 w-4" /> Excluir

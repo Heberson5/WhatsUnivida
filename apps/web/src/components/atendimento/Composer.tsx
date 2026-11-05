@@ -590,13 +590,13 @@ export const Composer = forwardRef<
     // that distinctly (instead of a generic "failed" alert) is the only way
     // to tell that apart from the agent simply denying the permission.
     if (!window.isSecureContext) {
-      alert(
+      toast.error(
         "Não foi possível obter sua localização: o navegador só permite isso em sites com HTTPS. Este site está em HTTP — é preciso configurar um certificado antes de usar este recurso."
       );
       return;
     }
     if (!navigator.geolocation) {
-      alert("Este navegador não suporta compartilhar localização.");
+      toast.error("Este navegador não suporta compartilhar localização.");
       return;
     }
     setLocationRequesting(true);
@@ -613,11 +613,11 @@ export const Composer = forwardRef<
       (err) => {
         setLocationRequesting(false);
         if (err.code === err.PERMISSION_DENIED) {
-          alert("Permissão de localização negada. Permita o acesso à localização nas configurações do navegador para este site.");
+          toast.error("Permissão de localização negada. Permita o acesso à localização nas configurações do navegador para este site.");
         } else if (err.code === err.TIMEOUT) {
-          alert("Tempo esgotado ao tentar obter sua localização. Tente novamente.");
+          toast.error("Tempo esgotado ao tentar obter sua localização. Tente novamente.");
         } else {
-          alert("Não foi possível obter sua localização no momento.");
+          toast.error("Não foi possível obter sua localização no momento.");
         }
       },
       { timeout: 10_000 }
@@ -730,7 +730,7 @@ export const Composer = forwardRef<
       timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
       startWaveformSampling();
     } catch {
-      alert("Permissão de microfone negada ou indisponível.");
+      toast.error("Permissão de microfone negada ou indisponível.");
     }
   }
 

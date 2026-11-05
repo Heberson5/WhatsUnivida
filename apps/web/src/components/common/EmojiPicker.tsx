@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { Search } from "lucide-react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface EmojiEntry {
   label: string;
@@ -159,6 +160,7 @@ export function EmojiPicker({ onPick, className }: { onPick: (emoji: string) => 
 
 /** The same panel over the page: reacting with any emoji, from a bubble that has no room of its own for it. */
 export function EmojiPickerDialog({ onPick, onClose }: { onPick: (emoji: string) => void; onClose: () => void }) {
+  useEscapeKey(onClose);
   return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"

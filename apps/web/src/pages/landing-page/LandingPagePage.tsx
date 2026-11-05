@@ -10,6 +10,7 @@ import { useLandingPageSettings } from "../../hooks/useLandingPageSettings";
 import { MENU_ITEMS, type MenuItem } from "../../components/layout/Sidebar";
 import { TITLES } from "../../components/layout/AppLayout";
 import { ICON_LIBRARY } from "../../lib/icon-library";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface MenuRow {
   to: string;
@@ -69,6 +70,7 @@ export default function LandingPagePage() {
   // ---- Menu principal ----
   const [menuRows, setMenuRows] = useState<MenuRow[]>([]);
   const [openPickerFor, setOpenPickerFor] = useState<string | null>(null);
+  useEscapeKey(() => setOpenPickerFor(null), Boolean(openPickerFor));
   const menuInitialized = useRef(false);
   if (landingPage && !menuInitialized.current) {
     menuInitialized.current = true;
@@ -133,7 +135,7 @@ export default function LandingPagePage() {
 
   return (
     <div className="h-full overflow-auto p-3 sm:p-6">
-      <h1 className="mb-6 text-xl font-semibold">Landing Page</h1>
+      <h1 className="mb-6 text-xl font-semibold">Personalização</h1>
 
       <fieldset disabled={!canEditar} className="m-0 max-w-4xl space-y-6 border-0 p-0">
         {/* ---- Tela de login ---- */}

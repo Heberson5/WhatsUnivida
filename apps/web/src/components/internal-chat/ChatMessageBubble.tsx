@@ -27,6 +27,7 @@ import { ChatAttachment } from "./ChatAttachment";
 import { ChatAudioPlayer } from "./ChatAudioPlayer";
 import { ChatPollCard } from "./ChatPollCard";
 import { PersonAvatar, personColor } from "./ChatAvatar";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -100,6 +101,7 @@ function Ticks({ status }: { status: ChatMessageDTO["status"] }) {
 
 function ViewOnceCard({ message, mine, oversight }: { message: ChatMessageDTO; mine: boolean; oversight: boolean }) {
   const [opened, setOpened] = useState<{ url: string; mime: string } | null>(null);
+  useEscapeKey(() => { if (opened) URL.revokeObjectURL(opened.url); setOpened(null); }, Boolean(opened));
   const available = Boolean(message.attachment);
   async function open() {
     if (!message.attachment) return;

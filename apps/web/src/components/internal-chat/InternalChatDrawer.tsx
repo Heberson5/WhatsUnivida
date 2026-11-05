@@ -12,6 +12,7 @@ import { typingLabel, useInternalChatStore } from "../../store/internal-chat-sto
 import { ChatRoomView } from "./ChatRoomView";
 import { PersonAvatar, RoomIcon } from "./ChatAvatar";
 import { GROUP_ICONS } from "./GroupSettings";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 export const chatRoomsKey = ["internal-chat", "rooms"];
 
@@ -24,6 +25,7 @@ type Filter = "all" | "unread" | "groups" | "direct";
 
 /** The side panel: #Geral, groups and direct conversations on the left, the open one on the right. */
 export function InternalChatDrawer() {
+  useEscapeKey(() => setOpen(false));
   const queryClient = useQueryClient();
   const me = useAuthStore((s) => s.user?.id);
   const { setOpen, activeRoomId, setActiveRoom } = useInternalChatStore();

@@ -5,12 +5,20 @@ import { useAuthStore } from "../../store/auth-store";
 import { useAnnouncementBoard, useBoardName } from "../../hooks/useAnnouncements";
 
 /** The newspaper in the top bar: opens Comunicados, with how many of today's notices are still unread. */
-export function ComunicadosButton() {
+export function ComunicadosButton({ variant = "button", onDone }: { variant?: "button" | "menuitem"; onDone?: () => void } = {}) {
   const canReceive = useAuthStore((s) => Boolean(s.permissions?.[PERMISSION.COMUNICADOS_VER]));
   const { data } = useAnnouncementBoard();
   const name = useBoardName();
   if (!canReceive) return null;
   const unread = data?.unread ?? 0;
+  if (variant === "menuitem") {
+    return (
+      <NavLink role="menuitem" to="/comunicados" onClick={onDone} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-surface-alt">
+        <Newspaper className="h-4 w-4" /> <span className="flex-1">{name}</span>
+        {unread > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-fg">{unread > 9 ? "9+" : unread}</span>}
+      </NavLink>
+    );
+  }
   return (
     <NavLink
       to="/comunicados"

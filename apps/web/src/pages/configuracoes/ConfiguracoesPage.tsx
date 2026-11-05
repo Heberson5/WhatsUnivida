@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, ShieldCheck, CalendarDays, Sparkles, SpellCheck, type LucideIcon } from "lucide-react";
+import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, Search, ShieldCheck, CalendarDays, Sparkles, SpellCheck, type LucideIcon } from "lucide-react";
 import { PERMISSION, type Permission } from "@whatsatendende/types";
 import { BrandingPanel } from "./BrandingPanel";
 import { AppInstallPanel } from "./AppInstallPanel";
@@ -22,22 +23,25 @@ import { useAuthStore } from "../../store/auth-store";
 type Tab = "corretor" | "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
 
 // Grouped by subject in the left-hand section menu.
-const TABS: { key: Tab; label: string; group: string; icon: LucideIcon }[] = [
-  { key: "fila", label: "Fila", group: "Atendimento", icon: Clock3 },
-  { key: "corretor", label: "Corretor", group: "Atendimento", icon: SpellCheck },
-  { key: "feriados", label: "Feriados", group: "Atendimento", icon: CalendarDays },
-  { key: "telefone", label: "Números de telefone", group: "Atendimento", icon: Phone },
-  { key: "branding", label: "Identidade visual", group: "Aparência", icon: Palette },
-  { key: "exportacoes", label: "Exportações", group: "Aparência", icon: FileDown },
-  { key: "visoes", label: "Visões de colunas", group: "Aparência", icon: Columns3 },
-  { key: "email", label: "E-mail", group: "E-mail", icon: Mail },
-  { key: "email-templates", label: "Modelos de e-mail", group: "E-mail", icon: MailPlus },
-  { key: "sms", label: "SMS", group: "E-mail", icon: MessageSquareText },
-  { key: "seguranca", label: "Segurança", group: "Segurança", icon: ShieldCheck },
-  { key: "permissoes", label: "Permissões", group: "Segurança", icon: KeyRound },
-  { key: "notas-de-versao", label: "Notas de versão", group: "Sistema", icon: Sparkles },
-  { key: "backup", label: "Backup", group: "Sistema", icon: DatabaseBackup },
+// `keywords`: what someone might type in "Buscar configuração…" without knowing the section's name.
+const TABS: { key: Tab; label: string; group: string; icon: LucideIcon; keywords: string }[] = [
+  { key: "fila", label: "Fila", group: "Atendimento", icon: Clock3, keywords: "tempo espera alerta sem resposta minutos aceite" },
+  { key: "corretor", label: "Corretor", group: "Atendimento", icon: SpellCheck, keywords: "ortografia revisão texto palavras" },
+  { key: "feriados", label: "Feriados", group: "Atendimento", icon: CalendarDays, keywords: "nacional estadual municipal cidade bloqueio acesso" },
+  { key: "telefone", label: "Números de telefone", group: "Atendimento", icon: Phone, keywords: "formato ddd celular" },
+  { key: "branding", label: "Identidade visual", group: "Aparência e dados", icon: Palette, keywords: "logo favicon cor paleta nome empresa tema aplicativo instalar ícone" },
+  { key: "exportacoes", label: "Exportações", group: "Aparência e dados", icon: FileDown, keywords: "pdf excel planilha relatório logo cabeçalho" },
+  { key: "visoes", label: "Visões de colunas", group: "Aparência e dados", icon: Columns3, keywords: "tabela colunas ordem esconder mostrar" },
+  { key: "email", label: "E-mail", group: "Canais", icon: Mail, keywords: "smtp servidor envio senha remetente" },
+  { key: "email-templates", label: "Modelos de e-mail", group: "Canais", icon: MailPlus, keywords: "texto mensagem recuperação senha boas-vindas" },
+  { key: "sms", label: "SMS", group: "Canais", icon: MessageSquareText, keywords: "mensagem texto celular provedor" },
+  { key: "seguranca", label: "Segurança", group: "Segurança", icon: ShieldCheck, keywords: "sessão inatividade logoff senha login tentativas" },
+  { key: "permissoes", label: "Permissões", group: "Segurança", icon: KeyRound, keywords: "acesso perfil gestor atendente liberar bloquear" },
+  { key: "notas-de-versao", label: "Notas de versão", group: "Sistema", icon: Sparkles, keywords: "novidades versão atualização" },
+  { key: "backup", label: "Backup", group: "Sistema", icon: DatabaseBackup, keywords: "cópia restaurar migrar servidor exportar dados" },
 ];
+
+const fold = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // Each sits behind its own finer permission on top of the CONFIGURACOES_GERENCIAR
 // umbrella already required to reach /configuracoes at all (see Sidebar's
@@ -93,7 +97,10 @@ export default function ConfiguracoesPage() {
   // first tab that's actually visible instead of rendering nothing.
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : visibleTabs[0]?.key;
 
-  const groups = Array.from(new Set(visibleTabs.map((t) => t.group)));
+  const [sectionSearch, setSectionSearch] = useState("");
+  const query = fold(sectionSearch.trim());
+  const listedTabs = query ? visibleTabs.filter((t) => fold(`${t.label} ${t.group} ${t.keywords}`).includes(query)) : visibleTabs;
+  const groups = Array.from(new Set(listedTabs.map((t) => t.group)));
 
   return (
     <div className="flex h-full flex-col overflow-hidden md:flex-row">
@@ -101,10 +108,28 @@ export default function ConfiguracoesPage() {
         aria-label="Seções de configurações"
         className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface p-2 md:w-56 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r md:p-3"
       >
+        <label className="hidden h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-muted focus-within:border-primary/50 md:mb-2 md:flex">
+          <Search className="h-4 w-4 shrink-0" />
+          <input
+            value={sectionSearch}
+            onChange={(e) => setSectionSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && listedTabs[0]) setTab(listedTabs[0].key);
+              if (e.key === "Escape" && sectionSearch) {
+                e.preventDefault();
+                setSectionSearch("");
+              }
+            }}
+            placeholder="Buscar configuração…"
+            aria-label="Buscar configuração"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--color-text)] outline-none placeholder:text-muted"
+          />
+        </label>
+        {query && listedTabs.length === 0 && <p className="hidden px-2.5 py-2 text-xs text-muted md:block">Nada encontrado para “{sectionSearch.trim()}”.</p>}
         {groups.map((group) => (
           <div key={group} className="flex shrink-0 gap-1 md:block md:space-y-0.5">
             <p className="hidden px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted first:pt-1 md:block">{group}</p>
-            {visibleTabs
+            {listedTabs
               .filter((t) => t.group === group)
               .map((t) => (
                 <button

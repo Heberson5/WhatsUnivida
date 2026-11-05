@@ -5,6 +5,7 @@ import { SERIES_KIND_OPTIONS, type SeriesKind } from "./SeriesChartCard";
 import { HourRangeMenu, formatHour, type HourRange } from "./HourRangeMenu";
 import type { PresenceByHourDTO } from "@whatsatendende/types";
 import { CHART_CARD_SHADOW, CHART_DEPTH_FILTER, CHART_TOOLTIP_PROPS, NEUTRAL_SERIES_COLOR, darken, gradientId, lighten } from "../../lib/chart-theme";
+import { SkeletonBlock } from "../common/Skeleton";
 
 const PAUSE_COLOR = "#F59E0B";
 
@@ -92,7 +93,7 @@ export function PresenceByHourChart({
       </div>
 
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        <SkeletonBlock />
       ) : chartData.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted">Sem dados de presença no período selecionado.</p>
       ) : (

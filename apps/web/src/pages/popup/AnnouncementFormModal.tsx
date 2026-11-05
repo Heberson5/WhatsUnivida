@@ -16,6 +16,7 @@ import {
 } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { KIND_STYLE, StoryCard } from "../../components/announcements/announcement-ui";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const inputClass = "focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-sm font-medium";
@@ -108,6 +109,7 @@ export function AnnouncementFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscapeKey(onClose);
   const [form, setForm] = useState<AnnouncementInput>(existing ? toAnnouncementInput(existing) : emptyAnnouncement());
   const images = useMemo(() => existing?.images ?? [], [existing]);
   const attachments = existing?.attachments ?? [];

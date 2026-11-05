@@ -1,4 +1,5 @@
 import { CHART_CARD_SHADOW } from "../../lib/chart-theme";
+import { SkeletonBlock } from "../common/Skeleton";
 
 interface WordCount {
   word: string;
@@ -23,7 +24,7 @@ export function WordCloudCard({ words, isLoading }: { words: WordCount[] | undef
     <div className={`rounded-card border border-border bg-surface p-4 ${CHART_CARD_SHADOW}`}>
       <p className="mb-2 text-xs font-medium text-muted">Palavras mais usadas pelos clientes</p>
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        <SkeletonBlock />
       ) : !words?.length ? (
         <p className="py-8 text-center text-sm text-muted">Sem mensagens de clientes no período selecionado.</p>
       ) : (

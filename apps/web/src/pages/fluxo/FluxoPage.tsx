@@ -11,6 +11,8 @@ import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { FlowFormModal } from "./FlowFormModal";
 import { FLOW_TEMPLATES, NODE_META, type FlowTemplate } from "./flowMeta";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonBlock } from "../../components/common/Skeleton";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -131,7 +133,9 @@ export default function FluxoPage() {
   const canExcluir = Boolean(permissions?.[PERMISSION.FLUXO_EXCLUIR]);
   const [creating, setCreating] = useState<{ template?: { key: FlowTemplate; name: string } } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FlowListItemDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
   const [renameTarget, setRenameTarget] = useState<FlowListItemDTO | null>(null);
+  useEscapeKey(() => setRenameTarget(null), Boolean(renameTarget));
   const [renameValue, setRenameValue] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -233,7 +237,7 @@ export default function FluxoPage() {
       )}
 
       <div className="flex-1 overflow-auto">
-        {isLoading && <p className="py-10 text-center text-sm text-muted">Carregando...</p>}
+        {isLoading && <SkeletonBlock />}
 
         {!isLoading && all.length === 0 && (
           <div className="mx-auto max-w-2xl rounded-card border border-dashed border-border bg-surface p-8 text-center">

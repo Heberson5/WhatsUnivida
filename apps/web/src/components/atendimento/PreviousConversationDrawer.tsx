@@ -5,9 +5,11 @@ import { Star, StickyNote, X } from "lucide-react";
 import type { PreviousConversationDetailDTO } from "@whatsatendende/types";
 import { api } from "../../lib/api";
 import { MessageBubble } from "./MessageBubble";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /** An earlier conversation of the same contact, opened read-only from the client panel. */
 export function PreviousConversationDrawer({ conversationId, previousId, onClose }: { conversationId: string; previousId: string; onClose: () => void }) {
+  useEscapeKey(onClose);
   const { data, isLoading } = useQuery({
     queryKey: ["previous-conversation", conversationId, previousId],
     queryFn: async () => (await api.get<PreviousConversationDetailDTO>(`/conversations/${conversationId}/previous/${previousId}`)).data,

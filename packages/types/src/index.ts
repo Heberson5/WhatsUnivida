@@ -2193,16 +2193,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   },
   {
     key: PERMISSION.LANDING_PAGE_VISUALIZAR,
-    group: "Landing Page",
-    label: "Landing Page — visualizar",
-    description: "Acessar a tela de Landing Page e ver as configurações atuais.",
+    group: "Personalização",
+    label: "Personalização — visualizar",
+    description: "Acessar a tela de Personalização (tela de login e menu principal) e ver as configurações atuais.",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: true },
   },
   {
     key: PERMISSION.LANDING_PAGE_EDITAR,
-    group: "Landing Page",
-    label: "Landing Page — editar",
+    group: "Personalização",
+    label: "Personalização — editar",
     description: "Editar a tela de login (logo, alinhamento, subtítulo), reordenar/renomear os itens do menu principal e os títulos das páginas.",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: true },
@@ -2614,7 +2614,7 @@ export const RELEASE_NOTE_AREAS: Record<ReleaseNoteArea, { label: string; requir
   dados: { label: "Dados", requires: [PERMISSION.FONTES_DADOS_VER] },
   conexoes: { label: "Conexões", requires: [PERMISSION.CONEXOES_GERENCIAR] },
   configuracoes: { label: "Configurações", requires: [PERMISSION.CONFIGURACOES_GERENCIAR] },
-  landingPage: { label: "Landing Page", requires: [PERMISSION.LANDING_PAGE_VISUALIZAR] },
+  landingPage: { label: "Personalização", requires: [PERMISSION.LANDING_PAGE_VISUALIZAR] },
   administracao: { label: "Administração", requires: [], adminOnly: true },
 };
 

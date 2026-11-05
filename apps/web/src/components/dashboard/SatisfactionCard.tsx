@@ -2,6 +2,7 @@ import type { SatisfactionOverviewDTO } from "@whatsatendende/types";
 import { CHART_CARD_SHADOW } from "../../lib/chart-theme";
 import { renderWhatsAppFormatting } from "../../lib/whatsappFormatting";
 import { npsDelta, npsZone } from "../../lib/dashboardMetrics";
+import { SkeletonBlock } from "../common/Skeleton";
 
 const formatAverage = (average: number) => average.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const percent = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
@@ -55,7 +56,7 @@ export function SatisfactionCard({ overview, isLoading }: { overview: Satisfacti
     <div className={`flex h-full flex-col rounded-card border border-border bg-surface p-4 ${CHART_CARD_SHADOW}`}>
       <p className="mb-2 text-xs font-medium text-muted">Pesquisa de satisfação (NPS)</p>
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-muted">Carregando...</p>
+        <SkeletonBlock />
       ) : !overview || !totals || totals.sent === 0 ? (
         <p className="py-8 text-center text-sm text-muted">Nenhuma pesquisa enviada no período. Ela pode ser ligada em Respostas › Pesquisa.</p>
       ) : (

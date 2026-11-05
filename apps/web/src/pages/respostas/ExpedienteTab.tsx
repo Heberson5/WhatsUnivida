@@ -8,6 +8,8 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { ExpedienteFormModal, type ExpedienteFormValues } from "./ExpedienteFormModal";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const WEEKDAY_SHORT: Record<WeekdayKey, string> = { MON: "Seg", TUE: "Ter", WED: "Qua", THU: "Qui", FRI: "Sex", SAT: "Sáb", SUN: "Dom" };
 
@@ -33,6 +35,7 @@ export function ExpedienteTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_EXPEDIENTE_EXCLUIR];
   const [modalTarget, setModalTarget] = useState<WorkScheduleDTO | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkScheduleDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: schedules, isLoading } = useQuery({
     queryKey: ["work-schedules"],
@@ -121,11 +124,7 @@ export function ExpedienteTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && schedules?.length === 0 && (
               <tr>

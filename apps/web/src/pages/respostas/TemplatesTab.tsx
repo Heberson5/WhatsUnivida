@@ -8,6 +8,8 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { TemplateFormModal } from "./TemplateFormModal";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const CATEGORY_LABEL: Record<string, string> = { MARKETING: "Marketing", UTILITY: "Utilidade", AUTHENTICATION: "Autenticação" };
 const CATEGORY_COLOR: Record<string, string> = {
@@ -41,6 +43,7 @@ export function TemplatesTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_TEMPLATES_EXCLUIR];
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MessageTemplateDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ["message-templates"],
@@ -108,11 +111,7 @@ export function TemplatesTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && templates?.length === 0 && (
               <tr>

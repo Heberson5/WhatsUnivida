@@ -21,6 +21,8 @@ import { RELEASE_NOTES_QUERY_KEY } from "../../hooks/useReleaseNotes";
 import { ReleaseView } from "../../components/release-notes/ReleaseView";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 const ADMIN_QUERY_KEY = ["release-notes-admin"];
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -485,6 +487,7 @@ export function NotasDeVersaoAdminPanel() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<{ release: ReleaseDTO | null; draft: ReleaseDraft } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReleaseDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: releases, isLoading } = useQuery({
     queryKey: ADMIN_QUERY_KEY,
@@ -574,11 +577,7 @@ export function NotasDeVersaoAdminPanel() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && releases?.length === 0 && (
               <tr>

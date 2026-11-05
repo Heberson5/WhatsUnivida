@@ -23,6 +23,7 @@ import {
   Tag,
   Database,
   Megaphone,
+  Star,
 } from "lucide-react";
 import { PERMISSION, type ConversationListItemDTO, type GroupsSummaryDTO, type Permission, type WhatsAppConnectionStatus } from "@whatsatendende/types";
 import { api } from "../../lib/api";
@@ -31,6 +32,7 @@ import { useBranding } from "../../hooks/useBranding";
 import { useLandingPageSettings } from "../../hooks/useLandingPageSettings";
 import { ICON_LIBRARY } from "../../lib/icon-library";
 import { useReleaseNotes } from "../../hooks/useReleaseNotes";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 export type MenuGroup = "Operação" | "Análise" | "Automação" | "Administração";
 const GROUP_ORDER: MenuGroup[] = ["Operação", "Análise", "Automação", "Administração"];
@@ -64,7 +66,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { to: "/usuarios", label: "Usuários", icon: Users, permission: PERMISSION.USUARIOS_VISUALIZAR, group: "Administração" },
   { to: "/conexoes", label: "Conexões", icon: Plug, permission: PERMISSION.CONEXOES_GERENCIAR, group: "Administração" },
   { to: "/configuracoes", label: "Configurações", icon: Settings, permission: PERMISSION.CONFIGURACOES_GERENCIAR, group: "Administração" },
-  { to: "/landing-page", label: "Landing Page", icon: MonitorSmartphone, permission: PERMISSION.LANDING_PAGE_VISUALIZAR, group: "Administração" },
+  { to: "/landing-page", label: "Personalização", icon: MonitorSmartphone, permission: PERMISSION.LANDING_PAGE_VISUALIZAR, group: "Administração" },
   { to: "/auditoria", label: "Auditoria", icon: ScrollText, permission: PERMISSION.AUDITORIA_ACESSAR, group: "Administração" },
 ];
 
@@ -163,6 +165,35 @@ function navItemClass(isActive: boolean, isCollapsed: boolean) {
 }
 
 const COLLAPSED_KEY = "sidebar-collapsed";
+const FAVORITES_KEY = "sidebar-favorites";
+// Below this many menu items there's nothing to shortcut — an attendant with Atendimento + Contatos sees no stars.
+const FAVORITES_MIN_ITEMS = 6;
+
+/** The screens this person starred, remembered per user in this browser. */
+function useFavoriteMenuItems(userId: string | undefined) {
+  const key = `${FAVORITES_KEY}:${userId ?? "anon"}`;
+  const [favorites, setFavorites] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      setFavorites(raw ? (JSON.parse(raw) as string[]).filter((v) => typeof v === "string") : []);
+    } catch {
+      setFavorites([]);
+    }
+  }, [key]);
+  function toggle(to: string) {
+    setFavorites((current) => {
+      const next = current.includes(to) ? current.filter((f) => f !== to) : [...current, to];
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // storage blocked: the star just won't survive a reload
+      }
+      return next;
+    });
+  }
+  return { favorites, toggle };
+}
 
 function readCollapsed() {
   try {
@@ -173,6 +204,7 @@ function readCollapsed() {
 }
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolean; onMobileClose?: () => void }) {
+  useEscapeKey(() => onMobileClose?.(), mobileOpen);
   // Remembered per browser, so each agent's choice survives reloads.
   const [collapsed, setCollapsed] = useState(readCollapsed);
   useEffect(() => {
@@ -188,14 +220,19 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
   const { data: branding } = useBranding();
   const visibleItems = useVisibleMenuItems();
   const badges = useMenuBadges();
+  const userId = useAuthStore((s) => s.user?.id);
+  const { favorites, toggle: toggleFavorite } = useFavoriteMenuItems(userId);
+  const canFavorite = visibleItems.length >= FAVORITES_MIN_ITEMS;
   const { hasUnseen: hasUnseenReleaseNotes } = useReleaseNotes();
   const releaseNotesLabel = hasUnseenReleaseNotes ? "Notas de versão · novidades" : "Notas de versão";
   // The off-canvas drawer on mobile is always shown expanded.
   const isCollapsed = collapsed && !mobileOpen;
 
-  const groups = GROUP_ORDER.map((group) => ({ group, items: visibleItems.filter((i) => i.group === group) })).filter(
-    (g) => g.items.length > 0
-  );
+  const favoriteItems = canFavorite ? favorites.map((to) => visibleItems.find((i) => i.to === to)).filter((i): i is MenuItem => Boolean(i)) : [];
+  const groups: { group: string; items: MenuItem[] }[] = [
+    { group: "Favoritos", items: favoriteItems },
+    ...GROUP_ORDER.map((group) => ({ group, items: visibleItems.filter((i) => i.group === group) })),
+  ].filter((g) => g.items.length > 0);
 
   function showTooltip(e: React.MouseEvent | React.FocusEvent, text: string) {
     if (!isCollapsed) return;
@@ -264,9 +301,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
                 {items.map((item) => {
                   const badge = badges[item.to];
                   const tooltipText = badge ? `${item.label} · ${badge.label}` : item.label;
+                  const starred = favorites.includes(item.to);
                   return (
+                    <div key={`${group}-${item.to}`} className="group/item relative">
                     <NavLink
-                      key={item.to}
                       to={item.to}
                       onClick={() => {
                         setTooltip(null);
@@ -276,7 +314,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
                       onMouseLeave={() => setTooltip(null)}
                       onFocus={(e) => showTooltip(e, tooltipText)}
                       onBlur={() => setTooltip(null)}
-                      className={({ isActive }) => navItemClass(isActive, isCollapsed)}
+                      className={({ isActive }) => clsx(navItemClass(isActive, isCollapsed), canFavorite && !isCollapsed && "pr-8")}
                       aria-label={isCollapsed || badge ? tooltipText : undefined}
                     >
                       <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
@@ -296,6 +334,19 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
                         </span>
                       )}
                     </NavLink>
+                    {canFavorite && !isCollapsed && (
+                      <button
+                        type="button"
+                        onClick={() => toggleFavorite(item.to)}
+                        aria-pressed={starred}
+                        aria-label={starred ? `Tirar ${item.label} dos favoritos` : `Fixar ${item.label} nos favoritos`}
+                        title={starred ? "Tirar dos favoritos" : "Fixar nos favoritos"}
+                        className="focus-ring absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-side-muted opacity-0 transition-opacity hover:text-side-strong focus-visible:opacity-100 group-hover/item:opacity-100"
+                      >
+                        <Star className={clsx("h-3.5 w-3.5", starred && "fill-current text-secondary")} />
+                      </button>
+                    )}
+                    </div>
                   );
                 })}
               </div>

@@ -46,6 +46,7 @@ import {
 import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { NODE_META } from "./flowMeta";
+import { confirmAction } from "../../components/common/ConfirmDialog";
 
 interface OfficialConnectionOption {
   id: string;
@@ -522,8 +523,8 @@ export default function FlowEditorPage() {
     addNode(item.type, item.defaultData, { x: p.x - NODE_WIDTH / 2, y: p.y - HEADER_HEIGHT / 2 });
   }
 
-  function goBack() {
-    if (dirty && !window.confirm("Há alterações não salvas neste fluxo. Sair mesmo assim?")) return;
+  async function goBack() {
+    if (dirty && !(await confirmAction({ title: "Sair sem salvar?", message: "Há alterações não salvas neste fluxo. Elas serão perdidas.", confirmLabel: "Sair sem salvar", tone: "neutral" }))) return;
     navigate("/fluxo");
   }
 

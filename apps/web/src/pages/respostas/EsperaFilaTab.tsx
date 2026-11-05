@@ -10,6 +10,8 @@ import { ConnectionScopePicker, describeConnectionScope, toConnectionScopeValue,
 import { ReplyMediaField, captionTooLong, hasReplyMedia, saveReplyMediaOrWarn, type ReplyMediaChange } from "./ReplyMediaField";
 import { AutoMessagePreview } from "./AutoMessagePreview";
 import { MediaBadge } from "./RespostasRapidasTab";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonBlock } from "../../components/common/Skeleton";
 
 // Nobody has the conversation yet, so no agent tags.
 const TAGS: { tag: string; label: string }[] = [
@@ -36,6 +38,7 @@ export function EsperaFilaTab() {
   const canExcluir = permissions?.[PERMISSION.RESPOSTAS_ESPERA_EXCLUIR];
   const [modalTarget, setModalTarget] = useState<QueueWaitMessageDTO | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<QueueWaitMessageDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: messages, isLoading } = useQuery({
     queryKey: ["queue-wait-messages"],
@@ -108,7 +111,7 @@ export function EsperaFilaTab() {
       </div>
 
       <div className="shadow-soft min-h-[16rem] flex-1 overflow-auto rounded-card border border-border bg-surface">
-        {isLoading && <p className="px-4 py-8 text-center text-sm text-muted">Carregando...</p>}
+        {isLoading && <SkeletonBlock className="px-4" />}
         {!isLoading && messages?.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted">Nenhuma mensagem de espera cadastrada ainda.</p>}
         <ol>
           {messages?.map((m, i) => (

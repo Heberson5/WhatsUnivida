@@ -22,10 +22,13 @@ export function MyDayStrip({ onShowShortcuts }: { onShowShortcuts: () => void })
         </button>
       </div>
       <div className="grid grid-cols-3 gap-1.5 text-center">
-        <Stat label="Atendidas hoje" value={data ? (closedGoal ? `${data.closedToday}/${closedGoal.target}` : String(data.closedToday)) : "—"} />
-        <Stat label="1ª resposta" value={data ? formatMinutes(data.avgFirstResponseMs) : "—"} />
+        <Stat label="Atendidas hoje" value={data ? (closedGoal ? `${data.closedToday}/${closedGoal.target}` : String(data.closedToday)) : null} />
+        <Stat label="1ª resposta" value={data && data.avgFirstResponseMs !== null ? formatMinutes(data.avgFirstResponseMs) : null} />
         <Stat label="NPS do mês" value={data?.npsThisMonth ?? null} nps />
       </div>
+      {data && data.closedToday === 0 && data.avgFirstResponseMs === null && (
+        <p className="text-center text-[10.5px] text-muted">Nenhum atendimento encerrado ainda hoje.</p>
+      )}
       {data?.goals.map((goal) => (
         <GoalBar key={goal.type} goal={goal} />
       ))}

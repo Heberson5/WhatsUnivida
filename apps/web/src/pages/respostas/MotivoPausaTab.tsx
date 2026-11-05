@@ -7,6 +7,8 @@ import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { ColumnViewMenu } from "../../components/common/ColumnViewMenu";
 import { useColumnView } from "../../hooks/useColumnView";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonRows } from "../../components/common/Skeleton";
 
 /** Cadastro dos motivos que um atendente pode escolher ao pausar o atendimento (ver Topbar). */
 export function MotivoPausaTab() {
@@ -20,6 +22,7 @@ export function MotivoPausaTab() {
   const [editingTarget, setEditingTarget] = useState<PauseReasonDTO | null>(null);
   const [editingName, setEditingName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PauseReasonDTO | null>(null);
+  useEscapeKey(() => setDeleteTarget(null), Boolean(deleteTarget));
 
   const { data: reasons, isLoading } = useQuery({
     queryKey: ["pause-reasons"],
@@ -127,11 +130,7 @@ export function MotivoPausaTab() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={columnView.visibleKeys.length + 2} className="px-4 py-8 text-center text-muted">
-                  Carregando...
-                </td>
-              </tr>
+              <SkeletonRows columns={columnView.visibleKeys.length + 2} />
             )}
             {!isLoading && reasons?.length === 0 && (
               <tr>

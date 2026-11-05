@@ -8,7 +8,7 @@ export { compareWithPrevious, formatMinutes, type StatDelta } from "../../lib/da
 /**
  * `onClick` + `goToLabel` turn the card into a shortcut (e.g. Dashboard's
  * conversation-status cards → Gestão, or its Usuários cards → the Usuários
- * screen) — hover highlight and a "Ver em X →" hint only show up when a
+ * screen) — hover highlight and a "Ver em X →" link only show up when a
  * handler is actually passed, so every other StatCard stays exactly as it
  * was. See PROMPT: "ter a opção de clicar e ser direcionado".
  */
@@ -44,11 +44,6 @@ export function StatCard({
         onClick && "focus-ring cursor-pointer transition-all hover:border-primary hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-primary)_15%,transparent)]"
       )}
     >
-      {onClick && goToLabel && (
-        <span className="absolute bottom-3 right-4 text-[11px] font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
-          {goToLabel}
-        </span>
-      )}
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-muted">{label}</p>
         <Icon className={clsx("h-4 w-4 shrink-0", tone === "alert" ? "text-warning" : "text-primary")} />
@@ -61,6 +56,8 @@ export function StatCard({
         </p>
       )}
       {hint && <p className={clsx("mt-1 text-xs", tone === "alert" ? "font-medium text-warning" : "text-muted")}>{hint}</p>}
+      {/* Always visible (it used to appear only on hover, so nobody knew the card was a shortcut). */}
+      {onClick && goToLabel && <p className="mt-2.5 text-xs font-semibold text-primary group-hover:underline">{goToLabel}</p>}
     </div>
   );
 }
