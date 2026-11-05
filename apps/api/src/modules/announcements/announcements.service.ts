@@ -24,6 +24,7 @@ import { realtimeEvents } from "../../realtime/realtime";
 import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
 import { addDays, hasEnded, hasStarted, nextDay, nowKey, showsNow, todayKey } from "./announcement-days";
+import { createUpload } from "../../lib/upload";
 
 /**
  * Pop Up › Avisos: notices shown after login ("stories" pop-up, or grouped into Comunicados when there are many) and
@@ -79,7 +80,7 @@ export async function updateBoardSettings(patch: Partial<AnnouncementBoardSettin
 
 // ---------------------------------------------------------------- files
 
-export const announcementFileUpload = multer({
+export const announcementFileUpload = createUpload({
   storage: multer.memoryStorage(),
   limits: { fileSize: Math.max(IMAGE_MAX_MB, PDF_MAX_MB) * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {

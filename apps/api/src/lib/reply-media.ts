@@ -6,6 +6,8 @@ import type { Request, Response } from "express";
 import { REPLY_MEDIA_CAPTION_MAX, replyMediaKind, type ReplyMediaDTO, type ReplyMediaLimitsDTO } from "@whatsatendende/types";
 import { env } from "../config/env";
 import { Errors } from "./http-error";
+import { createUpload } from "./upload";
+import { contentDisposition } from "./safe-download";
 
 /**
  * The one image, video or PDF a quick reply or closing message can carry (Respostas). It goes out exactly as it was
@@ -32,7 +34,7 @@ export function toReplyMediaDTO(row: ReplyMediaColumns): ReplyMediaDTO | null {
 }
 
 // Held in memory, then checked per kind before anything is written: the largest kind bounds the upload itself.
-export const replyMediaUpload = multer({
+export const replyMediaUpload = createUpload({
   storage: multer.memoryStorage(),
   limits: { fileSize: Math.max(...Object.values(replyMediaLimits())) * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -98,6 +100,6 @@ export function sendReplyMedia(_req: Request, res: Response, row: ReplyMediaColu
   const filePath = path.join(env.UPLOAD_DIR, row.mediaStorageKey);
   if (!fs.existsSync(filePath)) throw Errors.notFound("Arquivo nao encontrado no armazenamento");
   res.setHeader("Content-Type", dto.mimeType);
-  res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(dto.fileName)}"`);
+  res.setHeader("Content-Disposition", contentDisposition("inline", dto.fileName));
   res.sendFile(path.resolve(filePath));
 }

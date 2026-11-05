@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { format } from "date-fns";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 // "Hoje às 15:00" is offered only while there's still time before it.
 const AFTERNOON_HOUR = 15;
@@ -48,18 +49,14 @@ export function WhenPicker({
   const at = chosen === "custom" ? new Date(custom) : options[chosen].at;
   const valid = !Number.isNaN(at.getTime()) && at.getTime() > Date.now();
 
+  useEscapeKey(onClose);
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
 

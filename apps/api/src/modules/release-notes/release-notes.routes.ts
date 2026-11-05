@@ -12,6 +12,7 @@ import { writeAudit } from "../../lib/audit";
 import { env } from "../../config/env";
 import { Errors } from "../../lib/http-error";
 import * as service from "./release-notes.service";
+import { createUpload } from "../../lib/upload";
 
 export const releaseNotesRouter = Router();
 
@@ -21,7 +22,7 @@ fs.mkdirSync(RELEASE_NOTE_UPLOAD_DIR, { recursive: true });
 const IMAGE_MIME_TO_EXT: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp" };
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const upload = multer({
+const upload = createUpload({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter: (_req, file, cb) => {

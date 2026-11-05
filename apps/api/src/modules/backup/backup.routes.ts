@@ -10,12 +10,13 @@ import { Errors } from "../../lib/http-error";
 import { env } from "../../config/env";
 import { logger } from "../../lib/logger";
 import * as service from "./backup.service";
+import { createUpload } from "../../lib/upload";
 
 /** Configurações › Backup — administrador only: everything (database and files) in one file, and restoring it. */
 export const backupRouter = Router();
 
 // A backup carries every customer's data: written to disk while it arrives (it can be gigabytes), never to memory.
-const upload = multer({ storage: multer.diskStorage({ destination: os.tmpdir() }), limits: { fileSize: 100 * 1024 ** 3 } });
+const upload = createUpload({ storage: multer.diskStorage({ destination: os.tmpdir() }), limits: { fileSize: 100 * 1024 ** 3 } });
 
 backupRouter.get(
   "/info",

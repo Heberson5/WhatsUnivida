@@ -14,6 +14,7 @@ import {
   renderPdfPagesToImages,
   type PdfDocumentLike,
 } from "../../lib/printDocument";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 type DocumentKind = "pdf" | "docx" | "doc" | "text" | "other";
 
@@ -350,11 +351,11 @@ function DocumentViewer({ att, kind, onClose }: { att: MessageAttachmentDTO; kin
     }
   }, [att.fileName, printing, source]);
 
+  // A layer of its own (hooks/useEscapeKey): Esc closes the viewer, not the conversation behind it.
+  useEscapeKey(onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
         // Left alone, the browser would print the whole app that is behind the viewer.
         e.preventDefault();
         if (printAvailable) void print();

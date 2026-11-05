@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { DraftChip } from "./DraftChip";
 import { format, isToday, isYesterday } from "date-fns";
 import { BellOff, Users } from "lucide-react";
 import type { GroupListItemDTO } from "@whatsatendende/types";
@@ -20,6 +21,7 @@ export function GroupCard({ group, selected, onSelect }: { group: GroupListItemD
   const typing = useCustomerTyping(group.id);
   return (
     <div
+      data-card-id={group.id}
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -64,6 +66,7 @@ export function GroupCard({ group, selected, onSelect }: { group: GroupListItemD
             <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: group.whatsappConnectionColor }} />
             <span className="truncate">{group.whatsappConnectionName}</span>
           </span>
+          <DraftChip draftOwner={`group:${group.id}`} />
           {seenBy ? (
             <span className="inline-flex min-w-0 items-center gap-1 text-[10.5px] text-muted" title={seenBy}>
               <span className="flex -space-x-1.5" aria-hidden>

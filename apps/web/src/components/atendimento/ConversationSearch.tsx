@@ -90,7 +90,10 @@ export function ConversationSearchBar({ search, loadingOlder }: { search: Conver
         onChange={(e) => search.setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") search.goTo(e.shiftKey ? -1 : 1);
-          if (e.key === "Escape") search.close();
+          if (e.key === "Escape") {
+            e.preventDefault();
+            search.close();
+          }
         }}
         placeholder="Pesquisar nesta conversa"
         className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"

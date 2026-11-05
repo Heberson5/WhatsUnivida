@@ -59,7 +59,11 @@ export function ContactContractField({
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            setEditing(false);
+          }}
           maxLength={MAX_CONTRACT_LENGTH}
           placeholder="Número do contrato"
           aria-label="Contrato"

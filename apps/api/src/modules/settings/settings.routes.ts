@@ -17,6 +17,7 @@ import { env } from "../../config/env";
 import * as service from "./settings.service";
 import { currentVersion } from "../release-notes/release-notes.service";
 import { getPhoneSettings, updatePhoneSettings } from "../phone-numbers/phone-settings.service";
+import { createUpload } from "../../lib/upload";
 
 export const settingsRouter = Router();
 
@@ -34,7 +35,7 @@ const ALLOWED_BRANDING_MIME_TO_EXT: Record<string, string> = {
   "image/vnd.microsoft.icon": ".ico",
 };
 
-const upload = multer({
+const upload = createUpload({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {

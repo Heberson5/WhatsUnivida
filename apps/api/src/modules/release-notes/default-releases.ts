@@ -11,6 +11,42 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.36.1",
+    date: "5 nov 2026",
+    name: "Esc fecha a conversa e áudio em rascunho",
+    summary: "Esc fecha a conversa aberta, como clicar no card. Um áudio que estava sendo gravado fica pausado como rascunho, igual ao WhatsApp, e os nomes de arquivo com acento voltam a aparecer certos.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Esc fecha a conversa",
+        text: "Com uma conversa, um grupo ou uma transferida aberta, a tecla Esc fecha a conversa e volta para a lista, como clicar de novo no card. Funciona mesmo com o cursor na caixa de mensagem: o texto digitado fica como rascunho. Se houver algo aberto por cima, como transferir, encaminhar, emojis, o visualizador de PDF ou de imagem, o primeiro Esc fecha só isso. A busca dentro da conversa e a lista de respostas rápidas também fecham primeiro.",
+        where: "Atendimento",
+      },
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "Áudio e anexos ficam como rascunho",
+        text: "Ao sair de uma conversa no meio de uma gravação, seja pelo Esc, pelo card ou abrindo outra conversa, o áudio é pausado e fica como rascunho, como no WhatsApp. O microfone é desligado. Ao voltar, o áudio está lá: dá para ouvir, continuar gravando de onde parou, apagar ou enviar. Os arquivos na prévia e a localização ainda não enviados também ficam esperando. O card mostra \"Áudio em rascunho\" ou \"Anexo em rascunho\". O rascunho de áudio e de anexos dura enquanto a página estiver aberta; o de texto continua guardado mesmo ao recarregar.",
+        where: "Atendimento › caixa de mensagem",
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Grupos também guardam rascunho",
+        text: "O texto, o áudio e os anexos não enviados num grupo ficam como rascunho, como nas conversas com clientes, e o card do grupo mostra que há um rascunho.",
+        where: "Atendimento › Grupos",
+      },
+      {
+        type: "correcao",
+        area: "geral",
+        title: "Nomes de arquivo com acento",
+        before: "Um arquivo com acento no nome, como \"Manutenção de Atendimentos Funerários.xlsx\", aparecia como \"ManutenÃ§Ã£o de Atendimentos FunerÃ¡rios.xlsx\" no chat interno e na conversa, e ia assim para o WhatsApp do cliente.",
+        after: "O nome sai certo no chat interno, nas conversas e grupos, no WhatsApp do cliente, nas respostas rápidas, no Pop Up e ao baixar o arquivo. Os arquivos já enviados também foram corrigidos no sistema. O que já tinha chegado ao WhatsApp do cliente continua com o nome antigo, porque uma mensagem entregue não pode ser alterada.",
+      },
+    ],
+  },
+  {
     version: "2.36.0",
     date: "5 nov 2026",
     name: "Telas mais claras e rápidas",

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Minus, Plus, X } from "lucide-react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 export interface LightboxMedia {
   url: string;
@@ -13,9 +14,10 @@ export function MediaLightbox({ media, onClose }: { media: LightboxMedia; onClos
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
+  // A layer of its own (hooks/useEscapeKey): Esc closes the picture, not the conversation behind it.
+  useEscapeKey(onClose);
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
       if (e.key === "+" || e.key === "=") setZoom((z) => Math.min(z + 0.25, 4));
       if (e.key === "-") setZoom((z) => Math.max(z - 0.25, 1));
     }

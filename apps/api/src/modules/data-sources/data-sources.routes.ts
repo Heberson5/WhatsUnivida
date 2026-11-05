@@ -11,11 +11,12 @@ import { Errors } from "../../lib/http-error";
 import { prisma } from "../../lib/prisma";
 import { microsoftAuthorizeUrl, microsoftToken } from "./data-source-fetch";
 import * as service from "./data-sources.service";
+import { createUpload } from "../../lib/upload";
 
 export const dataSourcesRouter = Router();
 
 const MAX_UPLOAD_MB = 300;
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
+const upload = createUpload({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
 
 // Microsoft sign-in in progress: state -> source, valid for 10 minutes (single API process).
 const OAUTH_STATE_TTL_MS = 10 * 60_000;

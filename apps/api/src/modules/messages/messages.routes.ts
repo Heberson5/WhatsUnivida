@@ -28,6 +28,7 @@ import * as groupsService from "../groups/groups.service";
 import * as dataSources from "../data-sources/data-sources.service";
 import * as boletos from "../boletos/boletos.service";
 import { assertCanReplyToConversation, assertAgentCanReadContactHistory, assertAgentCanReadConversation, getConversationOrThrow } from "../conversations/conversations.service";
+import { createUpload } from "../../lib/upload";
 
 export const messagesRouter = Router();
 
@@ -67,7 +68,7 @@ fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
 // Any file, like WhatsApp Web: only the size is limited (UPLOAD_MAX_SIZE_MB). How it reaches the customer — picture,
 // video, audio or document — comes from whatsappMediaKind. See PROMPT: "Permitir enviar todo tipo de extensão que o
 // WhatsApp permite".
-export const upload = multer({
+export const upload = createUpload({
   storage: multer.memoryStorage(),
   limits: { fileSize: env.UPLOAD_MAX_SIZE_MB * 1024 * 1024 },
 });

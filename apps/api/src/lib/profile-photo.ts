@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { Errors } from "./http-error";
+import { createUpload } from "./upload";
 
 // Shared by Meu Perfil (own photo) and Usuários (a manager/admin setting
 // someone else's photo) so both follow exactly the same rules.
@@ -18,7 +19,7 @@ const ALLOWED_PHOTO_MIME_TO_EXT: Record<string, string> = {
   "image/webp": ".webp",
 };
 
-export const profilePhotoUpload = multer({
+export const profilePhotoUpload = createUpload({
   storage: multer.memoryStorage(),
   // A raw, un-resized phone camera photo is routinely 3-8MB — 2MB used to
   // reject exactly that (the most common source for a profile photo) with

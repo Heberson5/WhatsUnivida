@@ -260,7 +260,10 @@ export function ClientPanel({
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setAddingTag(false);
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setAddingTag(false);
+                  }
                   if (e.key === "Enter" && typed) {
                     e.preventDefault();
                     const match = allTags?.find((t) => t.name.toLowerCase() === typed.toLowerCase()) ?? suggestions[0];

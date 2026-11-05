@@ -1,15 +1,14 @@
 import clsx from "clsx";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlarmClock, Facebook, Instagram, Mic, PencilLine, Pin, Smartphone, type LucideIcon } from "lucide-react";
+import { AlarmClock, Facebook, Instagram, Mic, Pin, Smartphone, type LucideIcon } from "lucide-react";
 import type { CardTagDTO, Channel, ConversationListItemDTO, ConversationReminderDTO } from "@whatsatendende/types";
 import { contactDisplayName } from "../../lib/contact-display";
 import { formatPhone } from "../../lib/format-phone";
 import { useNow } from "../../hooks/useNow";
 import { ContactPhoto } from "../common/ContactPhoto";
-import { useAuthStore } from "../../store/auth-store";
-import { draftKey, useDraftStore } from "../../store/draft-store";
 import { useCustomerTyping } from "../../store/typing-store";
+import { DraftChip } from "./DraftChip";
 import { useAlertThresholds } from "../../hooks/useAlertThresholds";
 import { NoReturnBadge } from "./NoReturn";
 import { businessMinutesSince, businessWaitLabel, PAUSED_LABEL, waitPaused } from "../../lib/business-wait";
@@ -106,10 +105,7 @@ export function ConversationCard({
   connectionWarningShown?: boolean;
 }) {
   const now = useNow();
-  const userId = useAuthStore((s) => s.user?.id);
   const customerTyping = useCustomerTyping(conversation.id);
-  // Only the attendant's own conversations can hold a draft (queue/transferred cards have no composer).
-  const hasDraft = useDraftStore((s) => Boolean(!onAccept && !transferredOutView && userId && s.drafts[draftKey(userId, conversation.id)]?.trim()));
   const displayName = contactDisplayName(conversation.contact, conversation.channel);
   const ChannelIcon = CHANNEL_ICON[conversation.channel];
   // When there's a saved name, displayName hides the phone entirely — show
@@ -141,6 +137,7 @@ export function ConversationCard({
 
   return (
     <div
+      data-card-id={conversation.id}
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
       onClick={onSelect}
@@ -258,11 +255,7 @@ export function ConversationCard({
               <Smartphone className="h-3 w-3" /> Iniciada pelo celular
             </span>
           )}
-          {hasDraft && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-surface-alt px-2 py-0.5 text-[10.5px] font-semibold text-muted">
-              <PencilLine className="h-3 w-3" /> Rascunho
-            </span>
-          )}
+          {!onAccept && !transferredOutView && <DraftChip draftOwner={conversation.id} />}
           {noReply && (
             <span
               className={clsx(

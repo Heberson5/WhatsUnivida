@@ -13,6 +13,7 @@ import { writeAudit } from "../../lib/audit";
 import { Errors } from "../../lib/http-error";
 import { env } from "../../config/env";
 import * as service from "./internal-chat.service";
+import { createUpload } from "../../lib/upload";
 
 export const internalChatRouter = Router();
 
@@ -31,7 +32,7 @@ internalChatRouter.get(
 internalChatRouter.use(requireAuth);
 
 const MAX_FILE_MB = 25;
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_MB * 1024 * 1024 } });
+const upload = createUpload({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_MB * 1024 * 1024 } });
 const requireUse = requirePermission(PERMISSION.CHAT_INTERNO_USAR);
 const requireOversight = requirePermission(PERMISSION.CHAT_INTERNO_ACOMPANHAR);
 const beforeSchema = z.object({ before: z.string().datetime().optional() });

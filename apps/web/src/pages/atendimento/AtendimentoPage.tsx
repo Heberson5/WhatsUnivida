@@ -22,6 +22,8 @@ import { GroupCard } from "../../components/atendimento/GroupCard";
 import { GroupChatPanel } from "../../components/atendimento/GroupChatPanel";
 import { GroupInfoPanel } from "../../components/atendimento/GroupInfoPanel";
 import { useActiveGroupStore } from "../../store/active-group-store";
+import { useMediaDraftStore } from "../../store/media-draft-store";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { MyDayStrip } from "../../components/atendimento/MyDayStrip";
 import { ShortcutsHelp } from "../../components/atendimento/ShortcutsHelp";
 import { useAgentExtras } from "../../hooks/useAgentExtras";
@@ -156,7 +158,10 @@ export default function AtendimentoPage() {
 
   // Drafts of conversations that left this list (closed, transferred away) aren't kept around.
   useEffect(() => {
-    if (user?.id && mineQuery.data) useDraftStore.getState().prune(user.id, mineQuery.data.map((c) => c.id));
+    if (user?.id && mineQuery.data) {
+      useDraftStore.getState().prune(user.id, mineQuery.data.map((c) => c.id));
+      useMediaDraftStore.getState().prune(user.id, mineQuery.data.map((c) => c.id));
+    }
   }, [user?.id, mineQuery.data]);
 
   // WhatsApp groups (only on connections where an administrator turned them on) — each person's own unread counts.
@@ -286,6 +291,21 @@ export default function AtendimentoPage() {
     );
   }
 
+  // Esc closes the open conversation — customer, group or Transferidas — exactly like clicking its card again, even
+  // with the cursor in the message box: the text stays as the draft, and a recording or files waiting in the preview are
+  // kept too (the Composer pauses them into a draft, WhatsApp-style). It's the bottom Esc layer (hooks/useEscapeKey):
+  // anything opened over the conversation — a window, the PDF/picture viewer, a menu — closes first, and fields with an
+  // Esc of their own (the search in the conversation, the quick-reply list, editing a tag) take it before this.
+  function closeOpenChat() {
+    const cardId = selectedGroupId ?? selectedId ?? watchingConversation?.id ?? null;
+    setSelectedId(null);
+    setWatchingConversation(null);
+    setSelectedGroupId(null);
+    // Focus back on the card it came from, so the keyboard carries on from the list.
+    if (cardId) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(cardId)}"]`)?.focus());
+  }
+  useEscapeKey(closeOpenChat, chatOpen && !shortcutsOpen);
+
   // List-level keyboard shortcuts (the open chat's own — Alt+N/T/E/L and "/" — live in ChatPanel).
   const shortcutState = { visibleMine, selectedId, firstQueued: visibleQueue[0], paused: user?.presence === "AWAY", accepting: acceptMutation.isPending, shortcutsOpen };
   const shortcutStateRef = useRef(shortcutState);
@@ -298,12 +318,6 @@ export default function AtendimentoPage() {
       if (e.key === "?" && !typing && !state.shortcutsOpen) {
         e.preventDefault();
         setShortcutsOpen(true);
-        return;
-      }
-      // Esc closes the open chat — unless something on top of it (a modal, a menu) is handling it.
-      if (e.key === "Escape" && !typing && !state.shortcutsOpen && !document.querySelector("[role='dialog'], .drawer-backdrop, .fixed.inset-0")) {
-        setSelectedId(null);
-        setWatchingConversation(null);
         return;
       }
       if (!e.altKey || e.ctrlKey || e.metaKey) return;
@@ -439,6 +453,13 @@ export default function AtendimentoPage() {
             <input
               value={listSearch}
               onChange={(e) => setListSearch(e.target.value)}
+              onKeyDown={(e) => {
+                // First Esc clears what was typed; with nothing typed, Esc goes on to close the open conversation.
+                if (e.key === "Escape" && listSearch) {
+                  e.preventDefault();
+                  setListSearch("");
+                }
+              }}
               placeholder="Buscar nome ou número"
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--color-text)] outline-none placeholder:text-muted"
               aria-label="Buscar conversas por nome ou número"

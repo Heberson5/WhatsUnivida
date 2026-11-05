@@ -9,6 +9,7 @@ import { writeAudit } from "../../lib/audit";
 import { Errors } from "../../lib/http-error";
 import { toMessageTemplateDTO } from "./message-templates.mapper";
 import * as service from "./message-templates.service";
+import { createUpload } from "../../lib/upload";
 
 export const messageTemplatesRouter = Router();
 messageTemplatesRouter.use(requireAuth);
@@ -45,7 +46,7 @@ const HEADER_SAMPLE_LIMITS: Record<string, { mimeTypes: string[]; maxBytes: numb
   DOCUMENT: { mimeTypes: ["application/pdf"], maxBytes: 100 * 1024 * 1024 },
 };
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_HEADER_SAMPLE_BYTES } });
+const upload = createUpload({ storage: multer.memoryStorage(), limits: { fileSize: MAX_HEADER_SAMPLE_BYTES } });
 
 const buttonSchema = z.union([
   z.object({ type: z.literal("QUICK_REPLY"), text: z.string().min(1).max(25) }),

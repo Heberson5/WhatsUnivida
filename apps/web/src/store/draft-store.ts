@@ -8,7 +8,7 @@ import { persist } from "zustand/middleware";
 interface DraftState {
   drafts: Record<string, string>;
   setDraft: (key: string, text: string) => void;
-  /** Drops this person's drafts for conversations no longer in their list (closed, transferred away). */
+  /** Drops this person's drafts for conversations no longer in their list (closed, transferred away). Group drafts stay. */
   prune: (userId: string, keepConversationIds: string[]) => void;
 }
 
@@ -29,7 +29,7 @@ export const useDraftStore = create<DraftState>()(
       prune: (userId, keepConversationIds) =>
         set((s) => {
           const keep = new Set(keepConversationIds.map((id) => draftKey(userId, id)));
-          const entries = Object.entries(s.drafts).filter(([key]) => !key.startsWith(`${userId}:`) || keep.has(key));
+          const entries = Object.entries(s.drafts).filter(([key]) => !key.startsWith(`${userId}:`) || key.startsWith(`${userId}:group:`) || keep.has(key));
           return entries.length === Object.keys(s.drafts).length ? s : { drafts: Object.fromEntries(entries) };
         }),
     }),

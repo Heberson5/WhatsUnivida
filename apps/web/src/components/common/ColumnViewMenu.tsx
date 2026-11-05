@@ -5,6 +5,7 @@ import { EllipsisVertical } from "lucide-react";
 import type { ColumnViewColumn } from "@whatsatendende/types";
 import type { ColumnViewState } from "../../hooks/useColumnView";
 import { ColumnListEditor } from "./ColumnListEditor";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const MENU_WIDTH_REM = 18;
 const VIEWPORT_MARGIN_PX = 8;
@@ -19,6 +20,7 @@ const SOURCE_LABEL = {
 /** The ⋮ button at the left of a table header: show/hide and reorder columns, for now or as the user's default. */
 export function ColumnViewMenu({ view }: { view: ColumnViewState }) {
   const [open, setOpen] = useState(false);
+  useEscapeKey(() => setOpen(false), open);
   const [draft, setDraft] = useState<ColumnViewColumn[]>(view.columns);
   const [name, setName] = useState("");
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -47,18 +49,13 @@ export function ColumnViewMenu({ view }: { view: ColumnViewState }) {
       const target = e.target as Node;
       if (!menuRef.current?.contains(target) && !buttonRef.current?.contains(target)) setOpen(false);
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
     function onResize() {
       setOpen(false);
     }
     document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     return () => {
       document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
     };
   }, [open]);

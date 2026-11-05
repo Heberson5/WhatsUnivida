@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { WritingIssueDTO } from "@whatsatendende/types";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /** Shown when sending to a customer finds errors: nothing goes out until the attendant corrects it or sends it anyway. */
 export function WritingAlert({
@@ -16,11 +16,7 @@ export function WritingAlert({
   onBack: () => void;
   onSendAnyway: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onBack();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
+  useEscapeKey(onBack);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="presentation">

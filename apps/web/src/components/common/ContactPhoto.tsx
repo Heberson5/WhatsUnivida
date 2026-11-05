@@ -1,7 +1,8 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { formatPhone } from "../../lib/format-phone";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 /**
  * A customer's profile photo that opens big on click, like WhatsApp Web — without a download button, right-click
@@ -38,13 +39,7 @@ export function ContactPhoto({ photoUrl, name, phone, children }: { photoUrl: st
 }
 
 function PhotoViewer({ photoUrl, name, subtitle, onClose }: { photoUrl: string; name: string; subtitle?: string | null; onClose: () => void }) {
-  useEffect(() => {
-    function onKey(e: globalThis.KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return createPortal(
     <div

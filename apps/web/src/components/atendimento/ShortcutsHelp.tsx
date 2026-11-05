@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const SHORTCUTS = [
   { keys: ["Alt", "↓"], label: "Próxima conversa" },
@@ -15,9 +16,10 @@ const SHORTCUTS = [
 ];
 
 export function ShortcutsHelp({ onClose }: { onClose: () => void }) {
+  useEscapeKey(onClose);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" || e.key === "?") {
+      if (e.key === "?") {
         e.preventDefault();
         onClose();
       }

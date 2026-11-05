@@ -302,6 +302,7 @@ export function GroupChatPanel({
             Sua mensagem vai para <span className="font-semibold text-[var(--color-text)]">todos os {participants}</span> do grupo, com o seu nome de exibição no início.
           </p>
           <Composer
+            draftId={`group:${group.id}`}
             disabled={sendText.isPending || disconnected}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}

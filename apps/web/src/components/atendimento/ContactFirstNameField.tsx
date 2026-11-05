@@ -52,7 +52,11 @@ export function ContactFirstNameField({
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            setEditing(false);
+          }}
           maxLength={MAX_FIRST_NAME_LENGTH}
           placeholder={automatic || "Primeiro nome"}
           aria-label="Primeiro nome"

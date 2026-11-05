@@ -7,6 +7,7 @@ import { requireAuth } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
 import { writeAudit } from "../../lib/audit";
 import * as service from "./report-schedules.service";
+import { contentDisposition } from "../../lib/safe-download";
 
 /** Configurações › Modelos de e-mail › Agendamento da apresentação. */
 export const reportSchedulesRouter = Router();
@@ -94,7 +95,7 @@ reportSchedulesRouter.post(
       .parse(req.body ?? {});
     const deck = await service.preview(input, req.auth!.userId);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-    res.setHeader("Content-Disposition", `attachment; filename="${deck.fileName}"`);
+    res.setHeader("Content-Disposition", contentDisposition("attachment", deck.fileName));
     res.send(deck.buffer);
   })
 );
