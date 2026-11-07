@@ -10,6 +10,7 @@ import { firstUrl, renderWhatsAppFormatting } from "../../lib/whatsappFormatting
 import { withAuthToken } from "../../lib/api";
 import { MediaLightbox, type LightboxMedia } from "./MediaLightbox";
 import { DocumentAttachment } from "./DocumentPreview";
+import { AudioTranscription } from "./AudioTranscription";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { groupReactions } from "../../lib/reactions";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
@@ -352,13 +353,8 @@ export function MessageBubble({
 
       {message.body && <p className="whitespace-pre-wrap break-words">{renderWhatsAppFormatting(message.body)}</p>}
 
-      {/* An audio the Assistente Virtual transcribed on the server: what the customer said, readable without playing it. */}
-      {message.transcription && (
-        <p className="mt-1 whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 px-2 py-1 text-xs italic" data-testid="audio-transcription">
-          <span className="not-italic font-semibold">Transcrição: </span>
-          {message.transcription}
-        </p>
-      )}
+      {/* A customer's audio: its transcription (Assistente Virtual, or "Transcrever" when the team may use it). */}
+      {(message.transcription || (message.type === "AUDIO" && message.direction === "INBOUND")) && <AudioTranscription message={message} />}
 
       <div className={clsx("mt-1 flex items-center gap-1 text-[11px] opacity-75", isOutbound ? "justify-end" : "justify-start")}>
         <span>{format(new Date(message.createdAt), "HH:mm")}</span>

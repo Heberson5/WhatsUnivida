@@ -14,7 +14,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
     version: "2.37.0",
     date: "7 nov 2026",
     name: "Assistente Virtual",
-    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele pergunta de qual CPF é o boleto (também para quem pede o boleto do titular), envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Começa desligado e em Modo teste.",
+    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele pergunta de qual CPF é o boleto (também para quem pede o boleto do titular), envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Os atendentes também podem transcrever áudios, se a opção estiver ligada. Começa desligado e em Modo teste.",
     notes: [
       {
         type: "novo",
@@ -58,7 +58,14 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         type: "novo",
         area: "atendimento",
         title: "Áudio transcrito",
-        text: "O assistente só responde a um áudio depois de transcrevê-lo no próprio servidor. A transcrição aparece embaixo do áudio, na conversa, para quem for atender.",
+        text: "Enquanto o assistente atende, cada áudio do cliente é transcrito no próprio servidor antes da resposta. A transcrição aparece embaixo do áudio, na conversa, para quem for atender.",
+        where: "Atendimento › conversa",
+      },
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "Botão Transcrever para os atendentes",
+        text: "Com a opção ligada em Configurações › Assistente Virtual, cada áudio do cliente ganha o botão Transcrever durante o atendimento. A transcrição leva de 20 segundos a 1 minuto por minuto de áudio, fica guardada na conversa e aparece para todos. Com a opção desligada (o padrão), os áudios só são transcritos enquanto o assistente atende.",
         where: "Atendimento › conversa",
       },
       {

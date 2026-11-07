@@ -132,6 +132,22 @@ export function AssistenteVirtualPanel() {
           <span className="mt-1 block text-xs text-muted">Fora do expediente, vai a mensagem de fora do expediente da conexão (Respostas › Horário de expediente) e o assistente para de responder.</span>
         </label>
 
+        <div className="space-y-1 rounded-card border border-border p-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.agentTranscription}
+              onChange={(e) => setForm({ ...form, agentTranscription: e.target.checked })}
+              className="h-4 w-4 accent-[var(--color-primary)]"
+            />
+            <span className="text-sm font-medium">Botão Transcrever nos áudios para os atendentes</span>
+          </label>
+          <p className="text-xs text-muted">
+            Ligado, cada áudio do cliente ganha o botão Transcrever no atendimento. Desligado, os áudios só são transcritos enquanto o assistente estiver atendendo. A transcrição roda no
+            servidor e leva de 20 segundos a 1 minuto por minuto de áudio.
+          </p>
+        </div>
+
         <div className="border-t border-border pt-4">
           <button onClick={() => save.mutate()} disabled={save.isPending} className="focus-ring rounded-card bg-primary px-4 py-2 text-sm font-semibold text-primary-fg disabled:opacity-60">
             Salvar

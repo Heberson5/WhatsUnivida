@@ -125,3 +125,75 @@ describe("Assistente Virtual: status \"Com a IA\" (IN_AI)", () => {
     expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("HANDLED_EXTERNALLY");
   });
 });
+
+describe("Transcrever áudio (atendentes)", () => {
+  let agentToken: string;
+  let conversationId: string;
+  let audioId: string;
+  let textId: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    vi.unstubAllGlobals();
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { env } = await import("../src/config/env");
+    fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
+    fs.writeFileSync(path.join(env.UPLOAD_DIR, "teste-audio.ogg"), Buffer.from("OggS"));
+    const connection = await createTestConnection("Central");
+    const agent = await createTestUser({ email: "ana-audio@test.dev", role: "AGENT", whatsappConnectionId: connection.id });
+    agentToken = await login("ana-audio@test.dev");
+    const contact = await prisma.contact.create({ data: { phone: "5565999286623", name: "Cliente", whatsappConnectionId: connection.id } });
+    const conversation = await prisma.conversation.create({ data: { contactId: contact.id, whatsappConnectionId: connection.id, status: "IN_PROGRESS", assignedAgentId: agent.id, acceptedAt: new Date() } });
+    conversationId = conversation.id;
+    const audio = await prisma.message.create({ data: { conversationId, direction: "INBOUND", type: "AUDIO", status: "DELIVERED" } });
+    await prisma.messageAttachment.create({ data: { messageId: audio.id, fileName: "a.ogg", mimeType: "audio/ogg", sizeBytes: 4, storageKey: "teste-audio.ogg", kind: "AUDIO" } });
+    audioId = audio.id;
+    textId = (await prisma.message.create({ data: { conversationId, direction: "INBOUND", type: "TEXT", status: "DELIVERED", body: "oi" } })).id;
+  });
+
+  const transcribe = (messageId: string, token = agentToken) =>
+    request(app).post(`/api/conversations/${conversationId}/messages/${messageId}/transcribe`).set("Authorization", `Bearer ${token}`);
+  const features = () => request(app).get("/api/ai-features").set("Authorization", `Bearer ${agentToken}`);
+
+  it("desligado (padrão): sem botão e a rota recusa — áudio só é transcrito com o assistente", async () => {
+    expect((await features()).body).toEqual({ agentTranscription: false });
+    expect((await transcribe(audioId)).status).toBe(403);
+  });
+
+  it("ligado: transcreve, guarda na mensagem e o segundo clique só devolve o texto", async () => {
+    await updateAiAssistantSettingsForTest({ agentTranscription: true });
+    expect((await features()).body).toEqual({ agentTranscription: true });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: "quero a segunda via" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await transcribe(audioId);
+    expect(res.status).toBe(200);
+    expect(res.body.transcription).toBe("quero a segunda via");
+    expect((await prisma.message.findUniqueOrThrow({ where: { id: audioId } })).transcription).toBe("quero a segunda via");
+    expect((await transcribe(audioId)).body.transcription).toBe("quero a segunda via");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await prisma.auditLog.count({ where: { action: "AUDIO_TRANSCRIBED" } })).toBe(1);
+  });
+
+  it("serviço de transcrição fora do ar: erro legível, nada gravado; mensagem que não é áudio é recusada", async () => {
+    await updateAiAssistantSettingsForTest({ agentTranscription: true });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    const res = await transcribe(audioId);
+    expect(res.status).toBe(502);
+    expect(res.body.message).toContain("Não foi possível transcrever");
+    expect((await prisma.message.findUniqueOrThrow({ where: { id: audioId } })).transcription).toBeNull();
+    expect((await transcribe(textId)).status).toBe(400);
+  });
+
+  it("atendente que não está na conversa não transcreve", async () => {
+    await updateAiAssistantSettingsForTest({ agentTranscription: true });
+    await createTestUser({ email: "bia-audio@test.dev", role: "AGENT" });
+    const other = await login("bia-audio@test.dev");
+    expect((await transcribe(audioId, other)).status).toBe(403);
+  });
+});
+
+async function updateAiAssistantSettingsForTest(patch: Partial<typeof DEFAULT_AI_ASSISTANT_SETTINGS>) {
+  const { updateAiAssistantSettings } = await import("../src/modules/ai-assistant/ai-assistant.service");
+  await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, ...patch });
+}

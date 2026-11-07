@@ -3973,6 +3973,16 @@ export interface AiAssistantSettingsDTO {
   greeting: string;
   /** Sent when it hands the conversation to the queue inside working hours. */
   transferMessage: string;
+  /**
+   * "Transcrever" on the customer's audios for the team. Off: audios are transcribed only while the assistant
+   * attends (automatically, before it answers).
+   */
+  agentTranscription: boolean;
+}
+
+/** What any logged-in person needs to know of the Assistente Virtual (the button on audios). */
+export interface AiAssistantFeaturesDTO {
+  agentTranscription: boolean;
 }
 
 export const AI_ASSISTANT_NAME_MAX = 40;
@@ -3987,6 +3997,7 @@ export const DEFAULT_AI_ASSISTANT_SETTINGS: AiAssistantSettingsDTO = {
   testPhones: [],
   greeting: "Olá! Sou o assistente virtual. Posso ajudar com boleto, linha digitável e débitos em aberto. Como posso ajudar?",
   transferMessage: "Vou transferir você para um de nossos atendentes. Em instantes alguém irá atendê-lo.",
+  agentTranscription: false,
 };
 
 /** "*Assistente Virtual:* texto" — how every reply of the assistant reaches the customer. */

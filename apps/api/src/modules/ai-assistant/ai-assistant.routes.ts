@@ -18,6 +18,7 @@ const settingsSchema = z.object({
   testPhones: z.array(z.string().max(30)).max(AI_ASSISTANT_TEST_PHONES_MAX),
   greeting: z.string().max(AI_ASSISTANT_TEXT_MAX),
   transferMessage: z.string().max(AI_ASSISTANT_TEXT_MAX),
+  agentTranscription: z.boolean().default(false),
 });
 
 aiAssistantRouter.get(
@@ -37,7 +38,7 @@ aiAssistantRouter.put(
       entity: "SystemSetting",
       entityId: "aiAssistant",
       ipAddress: req.ip ?? null,
-      metadata: { enabled: saved.enabled, testMode: saved.testMode, connections: saved.connectionIds.length, testPhones: saved.testPhones.length },
+      metadata: { enabled: saved.enabled, testMode: saved.testMode, connections: saved.connectionIds.length, testPhones: saved.testPhones.length, agentTranscription: saved.agentTranscription },
     });
     res.json(saved);
   })
@@ -47,5 +48,16 @@ aiAssistantRouter.get(
   "/status",
   asyncHandler(async (_req, res) => {
     res.json(await service.getAiAssistantStatus());
+  })
+);
+
+/** For everyone logged in: whether the audios get the "Transcrever" button. */
+export const aiFeaturesRouter = Router();
+aiFeaturesRouter.use(requireAuth);
+aiFeaturesRouter.get(
+  "/",
+  asyncHandler(async (_req, res) => {
+    const settings = await service.getAiAssistantSettings();
+    res.json({ agentTranscription: settings.agentTranscription });
   })
 );

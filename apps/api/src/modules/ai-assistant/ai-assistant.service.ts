@@ -5,6 +5,9 @@ import { DEFAULT_AI_ASSISTANT_SETTINGS, type AiAssistantSettingsDTO, type AiAssi
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
 import { phoneKey } from "../../lib/phone-key";
+import { Errors, HttpError } from "../../lib/http-error";
+import { writeAudit } from "../../lib/audit";
+import { transcribeAudio } from "./ai-llm";
 
 /**
  * Assistente Virtual — settings and the health of the local AI. The assistant itself (who it answers, what it says)
@@ -93,5 +96,31 @@ export async function getAiAssistantStatus(): Promise<AiAssistantStatusDTO> {
     return { ...base, reachable: true, modelReady: names.includes(wanted) };
   } catch {
     return { ...base, error: "O serviço de IA (Ollama) não está acessível nesta VPS." };
+  }
+}
+
+const transcribing = new Set<string>();
+
+/**
+ * "Transcrever" on a customer's audio, for the team — only when switched on in Configurações › Assistente Virtual.
+ * The text is kept on the message (shown under the audio for everyone) and a second click just returns it.
+ */
+export async function transcribeMessageForTeam(conversationId: string, messageId: string, userId: string): Promise<string> {
+  if (!(await getAiAssistantSettings()).agentTranscription) throw Errors.forbidden("A transcrição de áudio para atendentes está desligada nas Configurações");
+  const message = await prisma.message.findUnique({ where: { id: messageId }, include: { attachments: true } });
+  if (!message || message.conversationId !== conversationId) throw Errors.notFound("Mensagem não encontrada");
+  if (message.type !== "AUDIO" || !message.attachments[0]) throw Errors.badRequest("Só áudios podem ser transcritos");
+  if (message.transcription) return message.transcription;
+  if (transcribing.has(messageId)) throw Errors.conflict("Este áudio já está sendo transcrito — aguarde um instante");
+  transcribing.add(messageId);
+  try {
+    const attachment = message.attachments[0];
+    const text = await transcribeAudio(attachment.storageKey, attachment.mimeType);
+    if (!text) throw new HttpError(502, "TRANSCRIPTION_UNAVAILABLE", "Não foi possível transcrever agora — o serviço de transcrição está indisponível ou o áudio está sem fala");
+    await prisma.message.update({ where: { id: messageId }, data: { transcription: text } });
+    await writeAudit({ userId, action: "AUDIO_TRANSCRIBED", entity: "Message", entityId: messageId, ipAddress: null, metadata: { conversationId } });
+    return text;
+  } finally {
+    transcribing.delete(messageId);
   }
 }

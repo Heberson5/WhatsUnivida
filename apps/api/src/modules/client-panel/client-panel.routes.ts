@@ -16,6 +16,7 @@ import * as dataSources from "../data-sources/data-sources.service";
 import * as birthdays from "../birthdays/birthdays.service";
 import * as whatsappService from "../whatsapp/whatsapp.service";
 import { realtimeEvents } from "../../realtime/realtime";
+import { transcribeMessageForTeam } from "../ai-assistant/ai-assistant.service";
 
 // Mounted next to conversationsRouter (/api/conversations/:id/...): the
 // client panel beside the chat (tags, earlier conversations) and internal notes.
@@ -122,6 +123,19 @@ clientPanelRouter.put(
       metadata: { firstName: firstName || null },
     });
     res.json(await service.getContactPanel(conversation.id, conversation.contactId, conversation.contact.firstConversationAt));
+  })
+);
+
+// "Transcrever" on a customer's audio (Configurações › Assistente Virtual › transcrição para atendentes): whoever can
+// read the conversation. Takes a while on the VPS processor (20–60 s per minute of audio).
+clientPanelRouter.post(
+  "/:id/messages/:messageId/transcribe",
+  requireAttendanceAccess,
+  asyncHandler(async (req, res) => {
+    const conversation = await conversationForRead(req);
+    const transcription = await transcribeMessageForTeam(conversation.id, req.params.messageId, req.auth!.userId);
+    realtimeEvents.newMessage(conversation.id, conversation.assignedAgentId);
+    res.json({ transcription });
   })
 );
 
