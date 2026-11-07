@@ -20,10 +20,6 @@ const schema = z.object({
   WHATSAPP_PROVIDER: z.enum(["mock", "baileys"]).default("mock"),
   WHATSAPP_AUTH_DIR: z.string().default("./whatsapp-sessions"),
   WEB_APP_URL: z.string().default("http://localhost:5173"),
-  // Self-hosted LanguageTool instance (see docker-compose.yml) backing the
-  // Composer's writing-suggestion chip. Best-effort only — a down/slow
-  // instance degrades to no suggestions, never blocks sending.
-  LANGUAGETOOL_URL: z.string().default("http://localhost:8010"),
   // Where Auditoria looks up the approximate place of an IP (each IP once). Empty turns the lookup off.
   IP_GEOLOCATION_URL: z.string().default("https://ipwho.is"),
   // Minutes the business is behind UTC (what JS getTimezoneOffset() reports; 240 = UTC-4,

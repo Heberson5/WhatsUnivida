@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import clsx from "clsx";
 import { CalendarClock, Mic, Paperclip, Pause, Play, Plus, Send, Trash2, X, MapPin, Bold, Italic, Strikethrough, Code, FileText, Image as ImageIcon, Video } from "lucide-react";
-import type { MessageDTO, ReplyMediaDTO, WritingIssueDTO } from "@whatsatendende/types";
+import type { MessageDTO, ReplyMediaDTO } from "@whatsatendende/types";
 import { toast } from "sonner";
 import { DataTagPreview, useDataTagAssist } from "./DataTagAssist";
 import { api } from "../../lib/api";
@@ -12,7 +12,6 @@ import { useMediaDraftStore, type MediaDraft } from "../../store/media-draft-sto
 import { mergeAudioBlobs } from "../../lib/audio-merge";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { WhenPicker } from "./WhenPicker";
-import { WritingAlert } from "./WritingAlert";
 import { EmojiPicker } from "../common/EmojiPicker";
 
 // How many bars the live/frozen waveform keeps — older samples scroll off
@@ -20,8 +19,6 @@ import { EmojiPicker } from "../common/EmojiPicker";
 const MAX_WAVEFORM_BARS = 42;
 
 const MAX_TEXTAREA_LINES = 10;
-// Longer than this and the message goes without the writing check.
-const WRITING_CHECK_TIMEOUT_MS = 2_000;
 // The customer's "digitando…" is told again this often while it lasts, and ends after this long without typing.
 const PRESENCE_REPEAT_MS = 8_000;
 const PRESENCE_IDLE_MS = 5_000;
@@ -152,11 +149,9 @@ export const Composer = forwardRef<
     onScheduleText?: (text: string, sendAt: Date) => Promise<void>;
     /** What the customer's WhatsApp shows of the attendant: "digitando…" while writing, "gravando áudio…" while recording. */
     onPresence?: (presence: "composing" | "recording" | "paused") => void;
-    /** Conversations with a customer: errors found on sending stop it until corrected or sent anyway (Configurações › Corretor). */
-    checkWriting?: boolean;
   }
 >(function Composer(
-  { onSendText, onSendFile, onSendAudio, onSendLocation, quickReplies = [], replyTo, onCancelReply, disabled, conversationId, draftId, onScheduleText, loadMentionCandidates, onPresence, checkWriting },
+  { onSendText, onSendFile, onSendAudio, onSendLocation, quickReplies = [], replyTo, onCancelReply, disabled, conversationId, draftId, onScheduleText, loadMentionCandidates, onPresence },
   ref
 ) {
   const userId = useAuthStore((s) => s.user?.id);
@@ -192,9 +187,6 @@ export const Composer = forwardRef<
   const [caption, setCaption] = useState("");
   const [selectionBubble, setSelectionBubble] = useState<{ top: number; left: number } | null>(null);
   const [quickReplyActiveIndex, setQuickReplyActiveIndex] = useState(0);
-  const [writingAlert, setWritingAlert] = useState<{ target: "text" | number; text: string; issues: WritingIssueDTO[] } | null>(null);
-  // A quick reply was reviewed when it was registered: sent as it is, it raises no alert.
-  const lastQuickReplyRef = useRef<string | null>(null);
   // Something not sent yet: the "Nova versão" popup waits until it goes.
   const composerId = useId();
   const setComposerBusy = useComposerActivityStore((s) => s.setBusy);
@@ -290,31 +282,6 @@ export const Composer = forwardRef<
     setQuickReplyActiveIndex(0);
   }, [quickReplyFilter]);
 
-  // The check behind the alert: only on what goes to a customer, and never in the way of sending — anything slower or
-  // broken than this means no alert this time.
-  async function findWritingIssues(value: string): Promise<WritingIssueDTO[]> {
-    if (!checkWriting || !value || value === lastQuickReplyRef.current) return [];
-    try {
-      return (await api.post<WritingIssueDTO[]>("/writing-assist/check", { text: value.slice(0, 4000), conversationId }, { timeout: WRITING_CHECK_TIMEOUT_MS })).data;
-    } catch {
-      return [];
-    }
-  }
-
-  // Offsets after the corrected word shift by what it changed; once nothing is left, the attendant presses send again.
-  function applyWritingIssue(index: number) {
-    if (!writingAlert) return;
-    const issue = writingAlert.issues[index];
-    if (issue.replacement === null) return;
-    const next = writingAlert.text.slice(0, issue.offset) + issue.replacement + writingAlert.text.slice(issue.offset + issue.length);
-    const delta = issue.replacement.length - issue.length;
-    const issues = writingAlert.issues.filter((_, i) => i !== index).map((other) => (other.offset > issue.offset ? { ...other, offset: other.offset + delta } : other));
-    if (writingAlert.target === "text") setText(next);
-    else setPendingFiles((prev) => prev.map((f, i) => (i === writingAlert.target ? { ...f, caption: next } : f)));
-    setWritingAlert(issues.length ? { ...writingAlert, text: next, issues } : null);
-    if (!issues.length) requestAnimationFrame(() => textareaRef.current?.focus());
-  }
-
   function insertEmoji(emoji: string) {
     const el = textareaRef.current;
     const start = el?.selectionStart ?? text.length;
@@ -336,7 +303,6 @@ export const Composer = forwardRef<
       void stageQuickReplyMedia({ ...reply, text: replyText }, reply.media);
       return;
     }
-    lastQuickReplyRef.current = replyText.trim();
     setText(replyText);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
@@ -354,7 +320,6 @@ export const Composer = forwardRef<
       const { data } = await api.get<Blob>(`/quick-replies/${reply.id}/media`, { responseType: "blob" });
       const file = new File([data], media.fileName, { type: media.mimeType });
       setActiveFileIndex(pendingFiles.length);
-      lastQuickReplyRef.current = reply.text.trim();
       setPendingFiles((prev) => [...prev, { file, caption: reply.text }]);
     } catch {
       // The attachment couldn't be loaded — at least the text is there to send.
@@ -495,19 +460,12 @@ export const Composer = forwardRef<
     }
   }
 
-  async function handleSend(sendAnyway = false) {
+  async function handleSend() {
     if (!text.trim() || sending) return;
     const ready = dataTags.finalize(text.trim());
     if (ready === null) return;
     setSending(true);
     try {
-      if (!sendAnyway) {
-        const issues = await findWritingIssues(ready);
-        if (issues.length) {
-          setWritingAlert({ target: "text", text: ready, issues });
-          return;
-        }
-      }
       await onSendText(ready, replyTo?.id, currentMentions(ready));
       setText("");
       setPickedMentions([]);
@@ -564,21 +522,10 @@ export const Composer = forwardRef<
     setPendingFiles((prev) => prev.map((entry, i) => (i === activeFileIndex ? { ...entry, caption: text } : entry)));
   }
 
-  async function confirmSendFiles(sendAnyway = false) {
+  async function confirmSendFiles() {
     if (pendingFiles.length === 0) return;
     setSending(true);
     try {
-      if (!sendAnyway) {
-        for (let i = 0; i < pendingFiles.length; i++) {
-          const fileCaption = pendingFiles[i].caption.trim();
-          const issues = await findWritingIssues(fileCaption);
-          if (issues.length) {
-            setActiveFileIndex(i);
-            setWritingAlert({ target: i, text: fileCaption, issues });
-            return;
-          }
-        }
-      }
       setSendingFileProgress({ done: 0, total: pendingFiles.length });
       // Sent one at a time (not Promise.all) so they land in the chat — and
       // on WhatsApp itself — in the same order they were staged, same as
@@ -1280,22 +1227,6 @@ export const Composer = forwardRef<
         </div>
       )}
 
-      {writingAlert && (
-        <WritingAlert
-          text={writingAlert.text}
-          issues={writingAlert.issues}
-          onApply={applyWritingIssue}
-          onBack={() => {
-            setWritingAlert(null);
-            requestAnimationFrame(() => textareaRef.current?.focus());
-          }}
-          onSendAnyway={() => {
-            const target = writingAlert.target;
-            setWritingAlert(null);
-            void (target === "text" ? handleSend(true) : confirmSendFiles(true));
-          }}
-        />
-      )}
       <div className="relative border-t border-border bg-surface">
         {mentionOptions.length > 0 && (
           <div className="shadow-elevated absolute bottom-full left-3 z-20 mb-1 w-72 overflow-hidden rounded-card border border-border bg-surface" onMouseDown={(e) => e.preventDefault()}>

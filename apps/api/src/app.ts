@@ -43,7 +43,6 @@ import { linkPreviewRouter } from "./modules/link-preview/link-preview.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
 import { metaRouter } from "./modules/meta/meta.routes";
-import { writingAssistRouter } from "./modules/writing-assist/writing-assist.routes";
 import { messageTemplatesRouter } from "./modules/message-templates/message-templates.routes";
 import { pauseReasonsRouter } from "./modules/pause-reasons/pause-reasons.routes";
 import { clientPanelRouter, tagsRouter } from "./modules/client-panel/client-panel.routes";
@@ -177,7 +176,6 @@ export function createApp() {
   app.use("/api/holidays", holidaysRouter);
   app.use("/api/groups", groupsRouter);
   app.use("/api/meta", metaRouter);
-  app.use("/api/writing-assist", writingAssistRouter);
   app.use("/api/pause-reasons", pauseReasonsRouter);
   app.use("/api/flows", flowsRouter);
   app.use("/api/release-notes", releaseNotesRouter);

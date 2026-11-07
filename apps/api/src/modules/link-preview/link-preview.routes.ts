@@ -10,7 +10,7 @@ linkPreviewRouter.use(requireAuth);
 
 const querySchema = z.object({ url: z.string().url().max(2000) });
 
-// Every agent reads messages with links, so like writing-assist this needs no
+// Every agent reads messages with links, so like the other attendance helpers this needs no
 // extra permission — only a signed-in user. The service refuses internal addresses.
 linkPreviewRouter.get(
   "/",

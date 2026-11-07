@@ -11,6 +11,28 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.36.2",
+    date: "7 nov 2026",
+    name: "Corretor retirado",
+    summary: "O alerta do corretor ao enviar mensagens foi retirado. As mensagens saem direto, e a memória que o corretor ocupava no servidor fica livre para o que vem a seguir.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Mensagens saem sem o alerta do corretor",
+        text: "Ao enviar uma mensagem ou a legenda de um arquivo para o cliente, o sistema não para mais para mostrar sugestões de ortografia, gramática ou abreviações: a mensagem sai direto. O sublinhado vermelho do próprio navegador continua aparecendo enquanto você digita.",
+        where: "Atendimento › caixa de mensagem",
+      },
+      {
+        type: "melhoria",
+        area: "configuracoes",
+        title: "Configurações › Corretor retirada",
+        text: "A seção Corretor saiu das Configurações, junto com o serviço que fazia a revisão no servidor. Isso libera memória para os próximos recursos.",
+        where: "Configurações",
+      },
+    ],
+  },
+  {
     version: "2.36.1",
     date: "5 nov 2026",
     name: "Esc fecha a conversa e áudio em rascunho",
