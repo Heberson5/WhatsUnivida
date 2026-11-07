@@ -17,6 +17,8 @@ const correction = {
   registeredAddress: "Rua das Flores, 100, Centro",
   informedName: "Maria da Silva",
   informedAddress: "Avenida Brasil, 2000",
+  contactPhone: "5565988887777",
+  registeredPhones: "5565999991111",
   resolvedAt: null,
   resolvedByName: null,
 };
@@ -43,6 +45,7 @@ describe("Pop-up de cadastro desatualizado", () => {
     expect(await screen.findByText("Cadastro desatualizado")).toBeTruthy();
     expect(screen.getByText("Avenida Brasil, 2000")).toBeTruthy();
     expect(screen.getByText("Rua das Flores, 100, Centro")).toBeTruthy();
+    expect(screen.getByText(/não está no cadastro deste CPF/)).toBeTruthy();
   });
 
   it("Cadastro já atualizado registra quem e quando (no servidor) e o aviso some", async () => {

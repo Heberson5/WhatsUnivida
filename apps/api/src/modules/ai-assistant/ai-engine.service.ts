@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { writeAudit } from "../../lib/audit";
 import { blockingTag } from "../../lib/auto-messages";
+import { phoneKey } from "../../lib/phone-key";
 import { fillSendTags } from "../../lib/customer-tags";
 import { realtimeEvents } from "../../realtime/realtime";
 import { addAttachment } from "../messages/messages.service";
@@ -19,6 +20,7 @@ import {
   extractCpf,
   formatBrl,
   isNo,
+  isSameAnswer,
   isYes,
   looksLikeDocumentAttempt,
   maskCpf,
@@ -63,6 +65,12 @@ interface ParcelOption {
 interface SessionData {
   intent?: FinanceIntent;
   cpfKey?: string;
+  /** The CPF offered as "o mesmo de antes" when asking for the CPF. */
+  offerCpf?: string;
+  /** The CPF just consulted had nothing open: the next answer may be another CPF (the titular's) or "não". */
+  afterEmpty?: boolean;
+  /** This phone isn't on the spreadsheet rows of the CPF confirmed — the record should get it. */
+  phoneMissing?: boolean;
   cpfAttempts?: number;
   nameAttempts?: number;
   unclear?: number;
@@ -165,6 +173,7 @@ function noteOf(data: SessionData, outcome: string): string {
     const compared = data.addressDiffers === true ? " (diferente do cadastro — cadastro marcado como desatualizado)" : data.addressDiffers === false ? " (igual ao cadastro)" : "";
     lines.push(`Endereço informado: ${data.informedAddress}${compared}`);
   }
+  if (data.phoneMissing) lines.push("Este telefone não está no cadastro do CPF confirmado (cadastro marcado para atualizar)");
   if (data.done?.length) lines.push(...data.done.map((d) => `• ${d}`));
   if (data.said?.length) lines.push(`Mensagens do cliente: ${data.said.slice(-6).map((s) => `"${s}"`).join(" · ")}`);
   return lines.join("\n");
@@ -225,6 +234,10 @@ interface ClientFound {
   clientKey: string;
   name: string | null;
   address: string | null;
+  /** The phones on this client's rows (55 + DDD + 8 digits) — to tell whether the customer writes from one of them. */
+  phoneKeys: string[];
+  /** As written on the spreadsheet, for the note and the pop-up. */
+  phones: string[];
 }
 
 async function findClientByCpf(conv: Conv, cpfKey: string): Promise<ClientFound | null | "UNAVAILABLE"> {
@@ -237,7 +250,9 @@ async function findClientByCpf(conv: Conv, cpfKey: string): Promise<ClientFound 
   const col = (row: Row, role: keyof ColumnMap) => (map[role] ? (row[map[role]!] ?? "").trim() : "");
   const row = rows[0].data;
   const address = [col(row, "payerAddress"), col(row, "payerCity"), col(row, "payerZip")].filter(Boolean).join(", ");
-  return { clientKey, name: col(row, "clientName") || null, address: address || null };
+  const phones = [...new Set(rows.map((r) => col(r.data, "phone")).filter(Boolean))];
+  const phoneKeys = [...new Set(phones.map((p) => phoneKey(p)).filter((k): k is string => Boolean(k)))];
+  return { clientKey, name: col(row, "clientName") || null, address: address || null, phoneKeys, phones };
 }
 
 async function openContracts(conv: Conv): Promise<ClientContractDTO[] | null> {
@@ -267,26 +282,48 @@ function buildOptions(contracts: ClientContractDTO[]): ParcelOption[] {
 
 // --- Steps ------------------------------------------------------------------------------------------------
 
-async function askCpf(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
-  await say(conv, settings, "Para consultar, me informe o CPF do titular do plano (ou o CNPJ, se for empresa).");
-  await save(session, "AWAIT_CPF", data);
+/** "O mesmo CPF de antes": this conversation's, else the last one this phone confirmed — still on the spreadsheet. */
+async function previousCpf(conv: Conv): Promise<string | null> {
+  const candidates = [
+    conv.dataCpfKey,
+    ...(await prisma.contactCpfVerification.findMany({ where: { contactId: conv.contactId }, orderBy: { verifiedAt: "desc" }, take: 3 })).map((v) => v.cpfKey),
+  ].filter((c): c is string => Boolean(c));
+  for (const cpf of [...new Set(candidates)]) {
+    const found = await findClientByCpf(conv, cpf);
+    if (found && found !== "UNAVAILABLE") return cpf;
+  }
+  return null;
 }
 
-/** Boleto or débitos asked: a phone that already confirmed this CPF skips the questions. */
-async function startFinance(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, intent: FinanceIntent) {
-  const next: SessionData = { ...data, intent };
+/**
+ * Always asks whose CPF the boleto (or the débitos) is for — the person writing may be a beneficiary or a relative,
+ * and the boleto is in the titular's name. A CPF used before by this phone is offered as "mesmo".
+ */
+async function askCpf(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
+  const purpose = data.intent === "DEBITOS" ? "Para consultar os débitos" : "Para enviar o boleto";
+  const previous = await previousCpf(conv);
+  if (previous) {
+    await say(
+      conv,
+      settings,
+      `${purpose}, preciso do CPF do titular do plano (quem é responsável pelo pagamento).\nSe for o mesmo de antes (${maskCpf(previous)}), responda *mesmo*. Se for de outra pessoa, envie o CPF dela.`
+    );
+  } else {
+    await say(conv, settings, `${purpose}, me informe o CPF do titular do plano (quem é responsável pelo pagamento). Se for empresa, o CNPJ.`);
+  }
+  await save(session, "AWAIT_CPF", { ...data, offerCpf: previous ?? undefined });
+}
+
+/**
+ * Boleto or débitos asked: first whose CPF it is (never assumed from the phone — the titular may be someone else);
+ * a CPF already in the message is used right away.
+ */
+async function startFinance(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, intent: FinanceIntent, text = "") {
+  const next: SessionData = { ...data, intent, cpfAttempts: 0, afterEmpty: false, offerCpf: undefined };
   if (!(await usableSource({ whatsappConnectionId: conv.connectionId }))) {
     return handToQueue(conv, session, settings, next, "dados dos clientes indisponíveis no momento");
   }
-  if (conv.dataCpfKey) return deliver(conv, session, settings, { ...next, cpfKey: conv.dataCpfKey });
-  const verified = await prisma.contactCpfVerification.findMany({ where: { contactId: conv.contactId } });
-  if (verified.length === 1) {
-    const found = await findClientByCpf(conv, verified[0].cpfKey);
-    if (found && found !== "UNAVAILABLE") {
-      await confirmClient(conv, verified[0].cpfKey, found.clientKey);
-      return deliver(conv, session, settings, { ...next, cpfKey: verified[0].cpfKey, done: [...(next.done ?? []), "CPF já confirmado antes por este telefone"] });
-    }
-  }
+  if (text && extractCpf(text)) return onCpf(conv, session, settings, next, text);
   return askCpf(conv, session, settings, next);
 }
 
@@ -297,7 +334,11 @@ async function confirmClient(conv: Conv, cpfKey: string, clientKey: string) {
 }
 
 async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, text: string) {
-  const cpf = extractCpf(text);
+  if (data.afterEmpty && isNo(text)) {
+    await say(conv, settings, "Tudo bem! Posso ajudar em algo mais?");
+    return save(session, "AWAIT_MORE", { ...data, afterEmpty: false });
+  }
+  const cpf = extractCpf(text) ?? (data.offerCpf && isSameAnswer(text) ? data.offerCpf : null);
   if (!cpf) {
     const attempts = (data.cpfAttempts ?? 0) + 1;
     if (attempts >= MAX_CPF_ATTEMPTS) return handToQueue(conv, session, settings, { ...data, cpfAttempts: attempts }, "CPF não informado ou inválido");
@@ -313,7 +354,7 @@ async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettin
     await say(conv, settings, "Não consegui confirmar seus dados. Confira o CPF e envie de novo, por favor.");
     return save(session, "AWAIT_CPF", { ...data, cpfAttempts: attempts });
   }
-  const next: SessionData = { ...data, cpfKey: cpf };
+  const next: SessionData = { ...data, cpfKey: cpf, afterEmpty: false, offerCpf: undefined, nameAttempts: 0, informedName: undefined, informedAddress: undefined, addressDiffers: undefined };
   const already = await prisma.contactCpfVerification.findUnique({ where: { contactId_cpfKey: { contactId: conv.contactId, cpfKey: cpf } } });
   if (already) {
     await confirmClient(conv, cpf, found.clientKey);
@@ -347,7 +388,10 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
   if (!found || found === "UNAVAILABLE") return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
   const informedAddress = text.trim().slice(0, 300);
   const addressDiffers = found.address ? !addressesMatch(informedAddress, found.address) : null;
-  if (addressDiffers) {
+  // A beneficiary or relative writing for the titular: their phone isn't on the record yet — the team adds it.
+  const ownKey = phoneKey(conv.phone);
+  const phoneMissing = Boolean(ownKey) && !found.phoneKeys.includes(ownKey!);
+  if (addressDiffers || phoneMissing) {
     await prisma.clientDataCorrection.create({
       data: {
         contactId: conv.contactId,
@@ -356,7 +400,9 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
         clientName: found.name,
         registeredAddress: found.address,
         informedName: data.informedName ?? null,
-        informedAddress,
+        informedAddress: addressDiffers ? informedAddress : null,
+        contactPhone: phoneMissing ? conv.phone : null,
+        registeredPhones: found.phones.join(", ") || null,
       },
     });
   }
@@ -372,9 +418,9 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
     entity: "Conversation",
     entityId: conv.id,
     ipAddress: null,
-    metadata: { cpf: maskCpf(data.cpfKey!), addressDiffers },
+    metadata: { cpf: maskCpf(data.cpfKey!), addressDiffers, phoneMissing },
   });
-  return deliver(conv, session, settings, { ...data, informedAddress, addressDiffers, done: [...(data.done ?? []), "Dados confirmados pelo cliente"] });
+  return deliver(conv, session, settings, { ...data, informedAddress, addressDiffers, phoneMissing, done: [...(data.done ?? []), "Dados confirmados pelo cliente"] });
 }
 
 /** With the client confirmed: the open parcels, then the boleto. */
@@ -383,8 +429,13 @@ async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSett
   if (!contracts) return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
   const options = buildOptions(contracts);
   if (options.length === 0) {
-    await say(conv, settings, "Não encontrei parcelas em aberto no seu cadastro. 😊\nPosso ajudar em algo mais?");
-    return save(session, "AWAIT_MORE", { ...data, done: [...(data.done ?? []), "Informado: nenhuma parcela em aberto"] });
+    const cpf = data.cpfKey ? maskCpf(data.cpfKey) : "informado";
+    await say(
+      conv,
+      settings,
+      `Não encontrei parcelas em aberto para o CPF ${cpf}.\nSe o boleto for de outra pessoa (por exemplo, o titular do plano), envie o CPF dela. Se não, responda *não*.`
+    );
+    return save(session, "AWAIT_CPF", { ...data, afterEmpty: true, cpfAttempts: 0, offerCpf: undefined, done: [...(data.done ?? []), `Informado: nenhuma parcela em aberto para o CPF ${cpf}`] });
   }
   const list = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n");
   const done = [...(data.done ?? []), `Débitos informados: ${options.map((o) => o.label).join("; ")}`];
@@ -469,7 +520,7 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
       return handToQueue(conv, session, settings, next, "cliente pediu um atendente");
     case "BOLETO":
     case "DEBITOS":
-      return startFinance(conv, session, settings, { ...next, unclear: 0 }, intent);
+      return startFinance(conv, session, settings, { ...next, unclear: 0 }, intent, text);
     case "ENCERRAR":
       return finish(conv, session, settings, next, { goodbye: GOODBYE_ON_REQUEST, outcome: next.done?.length ? "resolvido; cliente pediu para encerrar" : "cliente pediu para encerrar" });
     case "AGRADECIMENTO":

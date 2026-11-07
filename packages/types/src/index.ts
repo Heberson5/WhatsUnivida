@@ -4024,6 +4024,10 @@ export interface ClientDataCorrectionDTO {
   registeredAddress: string | null;
   informedName: string | null;
   informedAddress: string | null;
+  /** The phone that talked to the assistant, when it isn't on this CPF's record (beneficiary, relative, new number). */
+  contactPhone: string | null;
+  /** The phones the record has today. */
+  registeredPhones: string | null;
   resolvedAt: string | null;
   resolvedByName: string | null;
 }

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { UserRoundPen } from "lucide-react";
 import type { ClientDataCorrectionDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { formatPhone } from "../../lib/format-phone";
 
 const dismissKey = (conversationId: string, correctionId: string) => `data-correction-seen:${conversationId}:${correctionId}`;
 
@@ -60,7 +61,7 @@ export function DataCorrectionModal({ conversationId }: { conversationId: string
         </div>
         <div className="space-y-3 px-5 py-4 text-sm">
           <p>
-            Ao Assistente Virtual, em {new Date(correction.createdAt).toLocaleString("pt-BR")}, o cliente (CPF {correction.cpf}) informou dados diferentes do cadastro. Atualize o cadastro
+            Ao Assistente Virtual, em {new Date(correction.createdAt).toLocaleString("pt-BR")}, o cliente (CPF {correction.cpf}) informou dados que não estão no cadastro. Atualize o cadastro
             no sistema da empresa.
           </p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-card border border-border p-3">
@@ -68,10 +69,22 @@ export function DataCorrectionModal({ conversationId }: { conversationId: string
             <dd>{correction.clientName ?? "—"}</dd>
             <dt className="text-muted">Nome informado</dt>
             <dd>{correction.informedName ?? "—"}</dd>
-            <dt className="text-muted">Endereço no cadastro</dt>
-            <dd>{correction.registeredAddress ?? "—"}</dd>
-            <dt className="font-semibold">Endereço informado</dt>
-            <dd className="font-semibold">{correction.informedAddress ?? "—"}</dd>
+            {correction.informedAddress && (
+              <>
+                <dt className="text-muted">Endereço no cadastro</dt>
+                <dd>{correction.registeredAddress ?? "—"}</dd>
+                <dt className="font-semibold">Endereço informado</dt>
+                <dd className="font-semibold">{correction.informedAddress}</dd>
+              </>
+            )}
+            {correction.contactPhone && (
+              <>
+                <dt className="text-muted">Telefones no cadastro</dt>
+                <dd>{correction.registeredPhones ?? "—"}</dd>
+                <dt className="font-semibold">Telefone que entrou em contato</dt>
+                <dd className="font-semibold">{formatPhone(correction.contactPhone)} — não está no cadastro deste CPF</dd>
+              </>
+            )}
           </dl>
           <div className="flex flex-wrap justify-end gap-2 pt-1">
             <button onClick={later} className="focus-ring rounded-card border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt">

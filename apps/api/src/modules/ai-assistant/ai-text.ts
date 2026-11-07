@@ -200,6 +200,11 @@ export function isYes(text: string): boolean {
   return /^(sim|s|ss|claro|pode|pode sim|quero|quero sim|isso|ok|okay|por favor|manda|pode mandar|sim por favor|yes)[\s!.,]*$/.test(plain(text));
 }
 
+/** "Mesmo", "o mesmo", "pode ser o mesmo", "esse mesmo", "sim" — the CPF offered is the one. */
+export function isSameAnswer(text: string): boolean {
+  return /^(sim |pode |pode ser |e |eh |isso |)?(o |a |esse |este |o meu |meu )?(mesm[oa]|esse|este|meu|o meu)( (mesm[oa]|cpf|de antes|mesmo cpf|por favor|obrigad[oa]))*$|^sim$|^isso$|^pode$/.test(plain(text));
+}
+
 export function isNo(text: string): boolean {
   const folded = plain(text);
   if (/^n(ao)?\b/.test(folded) && folded.split(" ").every((w) => CLOSING_WORDS.has(w))) return true;

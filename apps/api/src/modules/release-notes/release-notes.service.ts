@@ -78,6 +78,7 @@ const SUPERSEDED_SHIPPED: Record<string, string[]> = {
   "2.37.0": [
     "Chegou a base do Assistente Virtual, uma IA que roda no próprio servidor e vai atender o cliente antes da fila. Ele começa desligado: nada muda no atendimento até o administrador ligá-lo.",
     "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado e passa para a equipe tudo o que não for com ele. Começa desligado e em Modo teste.",
+    "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Começa desligado e em Modo teste.",
   ],
 };
 

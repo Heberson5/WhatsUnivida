@@ -168,6 +168,8 @@ function toCorrectionDTO(row: {
   registeredAddress: string | null;
   informedName: string | null;
   informedAddress: string | null;
+  contactPhone: string | null;
+  registeredPhones: string | null;
   resolvedAt: Date | null;
   resolvedByName: string | null;
 }): ClientDataCorrectionDTO {
@@ -181,6 +183,8 @@ function toCorrectionDTO(row: {
     registeredAddress: row.registeredAddress,
     informedName: row.informedName,
     informedAddress: row.informedAddress,
+    contactPhone: row.contactPhone,
+    registeredPhones: row.registeredPhones,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     resolvedByName: row.resolvedByName,
   };
@@ -202,6 +206,7 @@ export async function resolveCorrection(conversation: { id: string; contactId: s
   const now = new Date();
   const row = await prisma.clientDataCorrection.update({ where: { id: correctionId }, data: { resolvedAt: now, resolvedById: user.id, resolvedByName: user.name } });
   const when = now.toLocaleString("pt-BR", { timeZone: "America/Cuiaba" });
-  await prisma.conversationNote.create({ data: { conversationId: conversation.id, authorId: user.id, body: `Cadastro atualizado por ${user.name} em ${when} (endereço informado ao Assistente Virtual: ${row.informedAddress ?? "—"}).` } });
+  const informed = [row.informedAddress && `endereço: ${row.informedAddress}`, row.contactPhone && `telefone: ${row.contactPhone}`].filter(Boolean).join("; ");
+  await prisma.conversationNote.create({ data: { conversationId: conversation.id, authorId: user.id, body: `Cadastro atualizado por ${user.name} em ${when} (informado ao Assistente Virtual — ${informed || "—"}).` } });
   return toCorrectionDTO(row);
 }

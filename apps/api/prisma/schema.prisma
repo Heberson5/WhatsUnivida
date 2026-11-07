@@ -2343,6 +2343,9 @@ model ClientDataCorrection {
   registeredAddress String?
   informedName      String?
   informedAddress   String?
+  // The phone that wrote isn't on this CPF's rows (a beneficiary or relative, or a new number): add it to the record.
+  contactPhone      String?
+  registeredPhones  String?
   createdAt         DateTime  @default(now())
   resolvedById      String?
   resolvedByName    String?

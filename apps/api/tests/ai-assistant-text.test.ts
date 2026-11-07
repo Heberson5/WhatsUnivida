@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addressesMatch, extractCpf, isNo, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
+import { addressesMatch, extractCpf, isNo, isSameAnswer, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
 
 describe("Assistente Virtual: CPF em qualquer formato", () => {
   it.each([
@@ -103,5 +103,14 @@ describe("Assistente Virtual: fim de conversa e pedido para encerrar", () => {
   it("não seguido de palavras de despedida ainda é não", () => {
     expect(isNo("não, era só isso")).toBe(true);
     expect(isNo("não sei o cpf")).toBe(false);
+  });
+});
+
+describe("Assistente Virtual: o mesmo CPF de antes", () => {
+  it.each(["mesmo", "o mesmo", "pode ser o mesmo", "esse mesmo", "sim", "o meu", "mesmo cpf"])("%s → mesmo", (text) => {
+    expect(isSameAnswer(text)).toBe(true);
+  });
+  it.each(["outro", "não", "é da minha mãe", "529.982.247-25"])("%s → não é o mesmo", (text) => {
+    expect(isSameAnswer(text)).toBe(false);
   });
 });

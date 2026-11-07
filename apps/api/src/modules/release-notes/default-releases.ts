@@ -14,7 +14,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
     version: "2.37.0",
     date: "7 nov 2026",
     name: "Assistente Virtual",
-    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Começa desligado e em Modo teste.",
+    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele pergunta de qual CPF é o boleto (também para quem pede o boleto do titular), envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Começa desligado e em Modo teste.",
     notes: [
       {
         type: "novo",
@@ -28,7 +28,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         type: "novo",
         area: "atendimento",
         title: "Boleto, linha digitável e débitos pelo assistente",
-        text: "O cliente pede do jeito dele (por texto ou áudio) e o assistente pede o CPF, que pode vir em qualquer formato. Depois pede o nome completo e o endereço para confirmar que é o titular, sem mostrar nenhum dado antes. Com o nome conferido, informa as parcelas em aberto (mês e valor atualizado) e envia o PDF do boleto com a linha digitável e o PIX, inclusive de parcela vencida, com multa e juros do dia. O telefone que já confirmou o CPF não precisa confirmar de novo.",
+        text: "O cliente pede do jeito dele (por texto ou áudio) e o assistente sempre pergunta de qual CPF é o boleto, o do titular do plano, porque quem escreve pode ser um beneficiário ou parente. O CPF pode vir em qualquer formato. Em seguida, pede o nome completo e o endereço do titular para confirmar, sem mostrar nenhum dado antes. Com o nome conferido, informa as parcelas em aberto (mês e valor atualizado) e envia o PDF do boleto com a linha digitável e o PIX, inclusive de parcela vencida, com multa e juros do dia. Se o CPF informado não tiver boleto, pede o CPF do titular. Um CPF que o telefone já confirmou é oferecido como o mesmo de antes e não precisa confirmar nome e endereço de novo.",
         where: "WhatsApp do cliente",
         roles: ["ADMIN", "MANAGER"],
       },
@@ -65,7 +65,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         type: "novo",
         area: "atendimento",
         title: "Aviso de cadastro desatualizado",
-        text: "Quando o endereço informado ao assistente é diferente do cadastro, aparece um aviso a cada conversa aceita desse cliente, com o endereço do cadastro e o informado. O aviso só para quando alguém clica em Cadastro já atualizado, e fica registrado quem atualizou, o dia e a hora.",
+        text: "Quando o endereço informado ao assistente é diferente do cadastro, ou o telefone que entrou em contato não está no cadastro do CPF (um beneficiário pedindo o boleto do titular, por exemplo), aparece um aviso a cada conversa aceita desse cliente com o que precisa ser atualizado. O aviso só para quando alguém clica em Cadastro já atualizado, e fica registrado quem atualizou, o dia e a hora.",
         where: "Atendimento › conversa aceita",
       },
       {

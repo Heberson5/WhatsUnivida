@@ -36,7 +36,12 @@ const ROWS = [
   "5565999991111,1,Maria Aparecida da Silva,529.982.247-25,\"Rua das Flores, 100, Centro\",Tangará da Serra,78300-000,C-10,D-2,10/02/2026,251,90.00,Boleto,10/02/2026,90.00,12345670000000102,001,1234567,17,1234-5,99999-9,Empresa Teste",
   "5565999991111,1,Maria Aparecida da Silva,529.982.247-25,\"Rua das Flores, 100, Centro\",Tangará da Serra,78300-000,C-10,D-3,10/12/2030,0,90.00,Boleto,10/12/2030,90.00,12345670000000103,001,1234567,17,1234-5,99999-9,Empresa Teste",
 ];
+// A beneficiary with their own CPF but no boleto: the boleto is in the titular's (Maria's) name.
+ROWS.push(
+  "5565911110000,2,João Beneficiário Santos,111.444.777-35,\"Rua B, 50, Centro\",Tangará da Serra,78300-000,C-90,,,,,,,,,,,,,,Empresa Teste"
+);
 const CUSTOMER = "5565988887777";
+const BENEFICIARY_CPF = "11144477735";
 const CPF = "52998224725";
 
 describe("Assistente Virtual: conversa com o cliente", () => {
@@ -146,7 +151,9 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     expect(note?.body).toContain("Nome informado: maria da silva (confere com o cadastro)");
     expect(note?.body).toContain("Endereço informado: R. das Flores nº 100 - centro (igual ao cadastro)");
     expect(note?.body).toContain("***.982.247-**");
-    expect(await prisma.clientDataCorrection.count()).toBe(0);
+    // Same address, but this phone isn't on Maria's record: the team is asked to add it.
+    const correction = await prisma.clientDataCorrection.findFirstOrThrow({ where: { contactId: contact.id } });
+    expect(correction).toMatchObject({ contactPhone: CUSTOMER, informedAddress: null, registeredPhones: "5565999991111" });
     expect(await prisma.contactCpfVerification.count({ where: { contactId: contact.id, cpfKey: CPF } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { action: "BOLETO_SENT" } })).toBe(2);
   });
@@ -180,11 +187,13 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     await customerSays(contact.id, "era só isso, obrigado");
     expect((await prisma.conversation.findUniqueOrThrow({ where: { id: closed.id } })).status).toBe("CLOSED");
 
-    // Next time: the boleto without asking CPF, name or address again.
+    // Next time: still asks whose CPF (offering the same one), then no name or address again.
     await resetSent();
     await customerSays(contact.id, "boa tarde, preciso do boleto");
-    expect((await texts(contact.id)).join(" ")).not.toContain("CPF do titular");
-    expect((await lastText(contact.id))).toContain("parcelas em aberto");
+    expect(await lastText(contact.id)).toContain("Se for o mesmo de antes (***.982.247-**), responda *mesmo*");
+    await customerSays(contact.id, "pode ser o mesmo");
+    expect((await texts(contact.id)).join(" ")).not.toContain("nome completo");
+    expect(await lastText(contact.id)).toContain("parcelas em aberto");
   });
 
   it("pedir atendente (texto) dentro do expediente: avisa e vai para a fila; depois não responde mais", async () => {
@@ -464,6 +473,50 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       const activate = await request(app).post(`/api/users/${assistant.id}/activate`).set("Authorization", `Bearer ${token}`);
       expect(activate.status).toBe(400);
       expect((await request(app).post("/api/auth/login").send({ email: assistant.email, password: "x" })).status).not.toBe(200);
+    });
+  });
+
+  describe("beneficiário pedindo o boleto do titular", () => {
+    it("áudio pedindo boleto: pergunta de qual CPF; CPF sem boleto → pede o do titular → envia o boleto certo", async () => {
+      const contact = await newCustomer();
+      llm.transcription = "oi bom dia eu queria o boleto";
+      await customerSays(contact.id, "", "AUDIO");
+      expect(await lastText(contact.id)).toContain("Para enviar o boleto, me informe o CPF do titular do plano");
+
+      // Gives their own CPF (beneficiary): confirmed, but nothing to pay there.
+      await customerSays(contact.id, "111.444.777-35");
+      await customerSays(contact.id, "João Santos");
+      await customerSays(contact.id, "Rua B 50 centro");
+      expect(await lastText(contact.id)).toContain("Não encontrei parcelas em aberto para o CPF ***.444.777-**");
+      expect(await lastText(contact.id)).toContain("envie o CPF dela");
+
+      // Then the titular's CPF: confirmed with the titular's name and address, and the boletos are hers.
+      await customerSays(contact.id, "então manda do cpf da minha mãe 529.982.247-25");
+      expect(await lastText(contact.id)).toContain("nome completo");
+      await customerSays(contact.id, "Maria Aparecida da Silva");
+      await customerSays(contact.id, "rua das flores 100 centro");
+      expect(await lastText(contact.id)).toContain("janeiro/2026");
+      const conversation = await prisma.conversation.findFirstOrThrow({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" } });
+      expect(conversation.dataCpfKey).toBe(CPF);
+      // Both CPFs now have this phone to add to the record.
+      expect(await prisma.clientDataCorrection.count({ where: { contactId: contact.id, contactPhone: { not: null } } })).toBe(2);
+    });
+
+    it("CPF já na primeira mensagem: vai direto para a confirmação do nome", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero o boleto do cpf 529.982.247-25");
+      expect(await lastText(contact.id)).toContain("nome completo");
+    });
+
+    it("sem boleto no CPF e o cliente responde não: pergunta se pode ajudar em algo mais", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "tenho débito?");
+      await customerSays(contact.id, BENEFICIARY_CPF);
+      await customerSays(contact.id, "João Beneficiário Santos");
+      await customerSays(contact.id, "Rua B, 50");
+      expect(await lastText(contact.id)).toContain("Não encontrei parcelas em aberto");
+      await customerSays(contact.id, "não");
+      expect(await lastText(contact.id)).toContain("algo mais");
     });
   });
 });
