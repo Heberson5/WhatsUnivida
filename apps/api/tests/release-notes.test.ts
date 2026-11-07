@@ -145,13 +145,15 @@ describe("2.37.0 publicada em duas partes", () => {
     const { syncDefaultReleaseNotes } = await import("../src/modules/release-notes/release-notes.service");
     const { DEFAULT_RELEASES } = await import("../src/modules/release-notes/default-releases");
     await prisma.releaseNoteVersion.deleteMany({ where: { version: "2.37.0" } });
-    await prisma.releaseNoteVersion.create({ data: { version: "2.37.0", date: "7 nov 2026", name: "Assistente Virtual: preparação", summary: "x", notes: [] } });
+    await prisma.releaseNoteVersion.create({
+      data: { version: "2.37.0", date: "7 nov 2026", name: "Assistente Virtual: preparação", summary: "Chegou a base do Assistente Virtual, uma IA que roda no próprio servidor e vai atender o cliente antes da fila. Ele começa desligado: nada muda no atendimento até o administrador ligá-lo.", notes: [] },
+    });
     const reader = await prisma.user.create({ data: { email: `leu-${Date.now()}@test.dev`, fullName: "Leu", displayName: "Leu", role: "ADMIN", passwordHash: "x", releaseNotesSeenVersion: "2.37.0" } });
     await syncDefaultReleaseNotes(DEFAULT_RELEASES);
     expect((await prisma.releaseNoteVersion.findUniqueOrThrow({ where: { version: "2.37.0" } })).name).toBe("Assistente Virtual");
     expect((await prisma.user.findUniqueOrThrow({ where: { id: reader.id } })).releaseNotesSeenVersion).toBe("2.36.2");
 
-    await prisma.releaseNoteVersion.update({ where: { version: "2.37.0" }, data: { name: "Minha nota" } });
+    await prisma.releaseNoteVersion.update({ where: { version: "2.37.0" }, data: { name: "Minha nota", summary: "editada pelo administrador" } });
     await syncDefaultReleaseNotes(DEFAULT_RELEASES);
     expect((await prisma.releaseNoteVersion.findUniqueOrThrow({ where: { version: "2.37.0" } })).name).toBe("Minha nota");
   });

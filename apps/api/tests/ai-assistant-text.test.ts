@@ -89,3 +89,19 @@ describe("Assistente Virtual: pedidos óbvios (sem precisar da IA)", () => {
     expect(monthOf("10/03/2026")).toBe("março/2026");
   });
 });
+
+describe("Assistente Virtual: fim de conversa e pedido para encerrar", () => {
+  it.each(["Não, era só isso, obrigado! Boa tarde", "valeu, resolveu", "ok obrigada", "tchau"])("%s → AGRADECIMENTO", (text) => {
+    expect(ruleIntent(text)).toBe("AGRADECIMENTO");
+  });
+  it.each(["pode encerrar", "pode encerrar o atendimento", "encerrar", "quero sair da conversa", "sair", "pode finalizar a conversa por favor"])("%s → ENCERRAR", (text) => {
+    expect(ruleIntent(text)).toBe("ENCERRAR");
+  });
+  it.each(["quero encerrar meu contrato", "quero sair do plano", "como faço para encerrar o plano?"])("%s não encerra a conversa", (text) => {
+    expect(ruleIntent(text)).not.toBe("ENCERRAR");
+  });
+  it("não seguido de palavras de despedida ainda é não", () => {
+    expect(isNo("não, era só isso")).toBe(true);
+    expect(isNo("não sei o cpf")).toBe(false);
+  });
+});

@@ -21,7 +21,10 @@ import { createInboundMessage } from "../src/modules/messages/messages.service";
 import { runAssistantNow, sweepAssistantSessions } from "../src/modules/ai-assistant/ai-engine.service";
 import { handleInboundForFlow } from "../src/modules/flows/flow-engine.service";
 import { updateAiAssistantSettings } from "../src/modules/ai-assistant/ai-assistant.service";
-import { DEFAULT_AI_ASSISTANT_SETTINGS } from "@whatsatendende/types";
+import { CONVERSATION_UNDO_WINDOW_MS, DEFAULT_AI_ASSISTANT_SETTINGS } from "@whatsatendende/types";
+import { createSurvey } from "../src/modules/satisfaction/satisfaction.service";
+import { getPerAgentReport } from "../src/modules/reports/reports.service";
+import { getAssistantUser } from "../src/modules/ai-assistant/ai-assistant.service";
 
 const app = createApp();
 
@@ -349,5 +352,118 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     } finally {
       await prisma.flow.delete({ where: { id: flow.id } });
     }
+  });
+
+  describe("encerramento pelo assistente, como um atendente", () => {
+    /** Runs what the close schedules (closing message + survey) right away, like the Encerrar button after its undo window. */
+    async function closeAndFollowUp(contactId: string, body: string) {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      try {
+        const conversation = await customerSays(contactId, body);
+        await vi.advanceTimersByTimeAsync(CONVERSATION_UNDO_WINDOW_MS + 100);
+        return conversation;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+    async function surveyOf(conversationId: string) {
+      for (let i = 0; i < 30; i++) {
+        const survey = await prisma.satisfactionSurvey.findUnique({ where: { conversationId } });
+        if (survey) return survey;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    }
+
+    beforeAll(async () => {
+      await prisma.satisfactionSurveyConfig.deleteMany();
+      await createSurvey({
+        name: "Pesquisa",
+        active: true,
+        connectionScope: { allConnections: true, connectionIds: [] },
+        question: "De 0 a 10?",
+        thanks: "Obrigado!",
+        answerWindowHours: 24,
+        closingWaitMinutes: 30,
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.satisfactionSurveyConfig.deleteMany();
+    });
+
+    it("pedido atendido: encerra como o atendente Assistente Virtual e manda a pesquisa", async () => {
+      const assistant = await getAssistantUser();
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quanto devo");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Silva");
+      await customerSays(contact.id, "Rua das Flores 100");
+      await customerSays(contact.id, "não");
+      const conversation = await closeAndFollowUp(contact.id, "não, era só isso");
+      const closed = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+      expect(closed).toMatchObject({ status: "CLOSED", assignedAgentId: assistant.id, closedByUserId: assistant.id, closeReason: "AI_ASSISTANT" });
+      expect(closed.acceptedAt).not.toBeNull();
+      expect(closed.firstResponseAt).not.toBeNull();
+      const survey = await surveyOf(conversation.id);
+      expect(survey?.agentId).toBe(assistant.id);
+      // Messages of the assistant count as its own (Relatórios › Mensagens enviadas).
+      expect(await prisma.message.count({ where: { conversationId: conversation.id, senderAgentId: assistant.id } })).toBeGreaterThan(3);
+    });
+
+    it("etiqueta que bloqueia a pesquisa: encerra sem pesquisa", async () => {
+      const contact = await newCustomer();
+      const tag = await prisma.tag.create({ data: { name: `Sem pesquisa ${Date.now()}`, blockedAutoMessages: ["SURVEY"] } });
+      await prisma.contactTag.create({ data: { contactId: contact.id, tagId: tag.id } });
+      const conversation = await closeAndFollowUp(contact.id, "pode encerrar o atendimento");
+      expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("CLOSED");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(await prisma.satisfactionSurvey.count({ where: { conversationId: conversation.id } })).toBe(0);
+    });
+
+    it("cliente pede para sair no meio do CPF: encerra na hora, com a pesquisa", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "boleto");
+      const conversation = await closeAndFollowUp(contact.id, "quero sair da conversa");
+      expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("CLOSED");
+      expect(await surveyOf(conversation.id)).not.toBeNull();
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
+      expect(note.body).toContain("cliente pediu para encerrar");
+    });
+
+    it("\"encerrar meu contrato\" não encerra a conversa: é assunto para a equipe", async () => {
+      const contact = await newCustomer();
+      llm.intent = { intent: "OUTRO", summary: "quer cancelar o contrato" };
+      const conversation = await customerSays(contact.id, "quero encerrar meu contrato");
+      expect(conversation.status).toBe("NEW");
+      expect(conversation.assignedAgentId).toBeNull();
+      expect(conversation.acceptedAt).toBeNull();
+    });
+
+    it("aparece nos relatórios por atendente como qualquer atendente (conversas, mensagens e pesquisas)", async () => {
+      const assistant = await getAssistantUser();
+      // The customer answered one of the assistant's surveys with 10.
+      const survey = await prisma.satisfactionSurvey.findFirstOrThrow({ where: { agentId: assistant.id } });
+      await prisma.satisfactionSurvey.update({ where: { id: survey.id }, data: { score: 10, answeredAt: new Date() } });
+      const rows = await getPerAgentReport({ from: new Date(Date.now() - 3_600_000), to: new Date(Date.now() + 3_600_000) });
+      const row = rows.find((r) => r.Atendente === assistant.displayName);
+      expect(row).toBeDefined();
+      expect(row!.Conversas).toBeGreaterThanOrEqual(3);
+      expect(row!["Mensagens enviadas"]).toBeGreaterThan(0);
+      expect(row!["Avaliações recebidas"]).toBeGreaterThanOrEqual(1);
+      expect(row!["NPS (0 a 100)"]).toBe(100);
+    });
+
+    it("o usuário do assistente não entra, não aparece em Usuários e não pode ser alterado lá", async () => {
+      const assistant = await getAssistantUser();
+      expect(assistant).toMatchObject({ status: "INACTIVE", role: "AGENT", isAssistant: true });
+      await createTestUser({ email: "admin-usr@test.dev", role: "ADMIN" });
+      const token = (await request(app).post("/api/auth/login").send({ email: "admin-usr@test.dev", password: TEST_PASSWORD })).body.accessToken as string;
+      const list = await request(app).get("/api/users").set("Authorization", `Bearer ${token}`);
+      expect(list.body.some((u: { id: string }) => u.id === assistant.id)).toBe(false);
+      const activate = await request(app).post(`/api/users/${assistant.id}/activate`).set("Authorization", `Bearer ${token}`);
+      expect(activate.status).toBe(400);
+      expect((await request(app).post("/api/auth/login").send({ email: assistant.email, password: "x" })).status).not.toBe(200);
+    });
   });
 });

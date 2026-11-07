@@ -60,7 +60,8 @@ async function resolveConnectionAssignment(role: Role, whatsappConnectionId: str
 }
 
 export async function listUsers() {
-  return prisma.user.findMany({ orderBy: { fullName: "asc" }, include: withConnection });
+  // The Assistente Virtual's row is managed in Configurações › Assistente Virtual, never here.
+  return prisma.user.findMany({ where: { isAssistant: false }, orderBy: { fullName: "asc" }, include: withConnection });
 }
 
 export async function getUser(id: string) {

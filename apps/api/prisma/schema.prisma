@@ -150,6 +150,10 @@ model User {
   // Newest Notas de versão release this user has opened (or dismissed in the
   // "O que há de novo" popup) — drives the "Novo" badge in the sidebar.
   releaseNotesSeenVersion String?
+  // The Assistente Virtual's own row: an AGENT that is always INACTIVE (never logs in, never gets transfers or the
+  // queue), so the conversations it attends and closes — and their surveys — count in Relatórios and the Dashboard
+  // like any attendant's. Hidden from Usuários and never editable there.
+  isAssistant             Boolean   @default(false)
   // Meu perfil › Sons: this user's own alert sounds (volume 0-100).
   soundNewMessage         Boolean @default(true)
   soundNewQueue           Boolean @default(true)

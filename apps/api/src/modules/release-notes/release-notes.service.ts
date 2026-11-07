@@ -71,16 +71,22 @@ export async function deleteRelease(id: string): Promise<ReleaseDTO> {
 /**
  * A version shipped in two steps under the same number: the first copy (still exactly as shipped — same name, never
  * edited by an administrator) is replaced by the complete one, and whoever had already read it sees it again.
- * 2.37.0 first went out as "Assistente Virtual: preparação" and then as the whole Assistente Virtual.
+ * 2.37.0 went out first as the preparation, then without the closing/reports part, and now complete.
  */
-const SUPERSEDED_SHIPPED: Record<string, string> = { "2.37.0": "Assistente Virtual: preparação" };
+// Earlier shipped copies, by their summary (an administrator's edit changes it, and then it is never touched).
+const SUPERSEDED_SHIPPED: Record<string, string[]> = {
+  "2.37.0": [
+    "Chegou a base do Assistente Virtual, uma IA que roda no próprio servidor e vai atender o cliente antes da fila. Ele começa desligado: nada muda no atendimento até o administrador ligá-lo.",
+    "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado e passa para a equipe tudo o que não for com ele. Começa desligado e em Modo teste.",
+  ],
+};
 
 async function replaceSupersededShipped(defaults: ReleaseContent[]): Promise<void> {
-  for (const [version, oldName] of Object.entries(SUPERSEDED_SHIPPED)) {
+  for (const [version, oldSummaries] of Object.entries(SUPERSEDED_SHIPPED)) {
     const shipped = defaults.find((r) => r.version === version);
-    if (!shipped || shipped.name === oldName) continue;
+    if (!shipped || oldSummaries.includes(shipped.summary)) continue;
     const row = await prisma.releaseNoteVersion.findUnique({ where: { version } });
-    if (!row || row.name !== oldName) continue;
+    if (!row || !oldSummaries.includes(row.summary)) continue;
     await prisma.releaseNoteVersion.update({ where: { version }, data: toData(shipped) });
     // Back to the version before, so the complete note shows up once more (and nothing older does).
     const previous = defaults.map((r) => r.version).filter((v) => compareVersions(v, version) < 0).sort(compareVersions).at(-1) ?? null;

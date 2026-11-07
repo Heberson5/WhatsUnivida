@@ -156,22 +156,43 @@ function plain(text: string): string {
   return fold(text).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export type Intent = "BOLETO" | "DEBITOS" | "ATENDENTE" | "SAUDACAO" | "AGRADECIMENTO" | "OUTRO";
+export type Intent = "BOLETO" | "DEBITOS" | "ATENDENTE" | "ENCERRAR" | "SAUDACAO" | "AGRADECIMENTO" | "OUTRO";
 
 const RULES: [Intent, RegExp][] = [
   // Asked for a person: always first, it wins over anything else in the same message.
   ["ATENDENTE", /\b(atendente|atendentes|humano|operador|operadora|funcionari[oa]|gerente|falar com (um|uma|o|a|alguem|algum|uma pessoa|uma atendente)|pode me ligar|me liga|liga pra mim)\b/],
+  // Wants to end the conversation — never "encerrar meu contrato/plano" (that is a cancellation, for the team).
+  [
+    "ENCERRAR",
+    /^((pode|podemos|quero|vamos|pode sim|por favor|ja pode) )?(encerrar|encerra|finalizar|finaliza|fechar|terminar)( (o|a|nosso|nossa|esse|essa))?( (atendimento|conversa|chat|protocolo))?( (por favor|obrigad[oa]|ok))?$|\b(encerra|encerrar|finalizar|fechar|terminar) (o|a|esse|essa|nosso|nossa) (atendimento|conversa|chat)\b|^(quero |vou |preciso )?sair( (da|do|dessa|desse) (conversa|chat|atendimento))?( (por favor|obrigad[oa]))?$|\bsair (da|do|dessa|desse) (conversa|chat|atendimento)\b/,
+  ],
   ["BOLETO", /\b(boleto|boletos|2a via|2 via|segunda via|linha digitavel|codigo de barras?|codigo do boleto|pix|copia e cola|pagar|pagamento|fatura|carne|mensalidade)\b/],
   ["DEBITOS", /\b(debito|debitos|devendo|divida|dividas|em aberto|atrasad[oa]s?|pendencia|pendencias|quanto (eu )?devo|quanto esta|valor atualizado|parcela|parcelas)\b/],
   ["AGRADECIMENTO", /^(ok|okay|blz|beleza|obrigad[oa]|muito obrigad[oa]|valeu|vlw|grat[oa]|so isso|era so isso|nao obrigad[oa]|tchau|ate mais)[\s!.,]*(obrigad[oa]|valeu)?[\s!.,]*$/],
   ["SAUDACAO", /^(oi+|ola|opa|e ai|eai|bom dia|boa tarde|boa noite|tudo bem|tudo bom|hello|alo)[\s!.,?]*(tudo bem|tudo bom|bom dia|boa tarde|boa noite)?[\s!.,?]*$/],
 ];
 
+// Words of a goodbye/"that's all" ("Não, era só isso, obrigado! Boa tarde"): a message made only of these ends the talk.
+const CLOSING_WORDS = new Set([
+  "nao", "n", "obrigado", "obrigada", "obg", "brigado", "brigada", "valeu", "vlw", "era", "e", "so", "isso", "tudo", "ok", "okay", "blz",
+  "beleza", "tchau", "ate", "mais", "logo", "nada", "por", "enquanto", "agradeco", "muito", "mto", "grato", "grata", "certo", "perfeito",
+  "otimo", "show", "bom", "boa", "dia", "tarde", "noite", "ta", "bem", "entao", "entendi", "resolvido", "resolveu", "deu", "certo", "ajudou",
+]);
+const CLOSING_MARKERS = /\b(obrigad[oa]|obg|brigad[oa]|valeu|vlw|tchau|so isso|era isso|nada mais|grat[oa]|agradeco|resolvido|resolveu|ajudou)\b/;
+
+function isClosingTalk(folded: string): boolean {
+  const words = folded.split(" ").filter(Boolean);
+  return words.length > 0 && words.length <= 12 && words.every((w) => CLOSING_WORDS.has(w)) && CLOSING_MARKERS.test(folded);
+}
+
 /** The request in a message when it is obvious; null when only the AI can tell. */
 export function ruleIntent(text: string): Intent | null {
   const folded = plain(text);
   if (!folded) return null;
-  for (const [intent, pattern] of RULES) if (pattern.test(folded)) return intent;
+  for (const [intent, pattern] of RULES) {
+    if (intent === "AGRADECIMENTO" && isClosingTalk(folded)) return intent;
+    if (pattern.test(folded)) return intent;
+  }
   return null;
 }
 
@@ -180,6 +201,8 @@ export function isYes(text: string): boolean {
 }
 
 export function isNo(text: string): boolean {
+  const folded = plain(text);
+  if (/^n(ao)?\b/.test(folded) && folded.split(" ").every((w) => CLOSING_WORDS.has(w))) return true;
   return /^(nao|n|nao obrigad[oa]|nada|nao precisa|so isso|era so isso|nao quero|nenhum|nenhuma)[\s!.,]*$/.test(plain(text));
 }
 

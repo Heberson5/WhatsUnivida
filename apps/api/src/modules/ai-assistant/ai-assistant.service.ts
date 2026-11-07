@@ -1,4 +1,6 @@
-import type { Prisma } from "@prisma/client";
+import { randomBytes } from "node:crypto";
+import bcrypt from "bcryptjs";
+import type { Prisma, User } from "@prisma/client";
 import { DEFAULT_AI_ASSISTANT_SETTINGS, type AiAssistantSettingsDTO, type AiAssistantStatusDTO } from "@whatsatendende/types";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
@@ -32,7 +34,37 @@ export async function updateAiAssistantSettings(next: AiAssistantSettingsDTO): P
   };
   const value = saved as unknown as Prisma.InputJsonValue;
   await prisma.systemSetting.upsert({ where: { key: SETTINGS_KEY }, update: { value }, create: { key: SETTINGS_KEY, value } });
+  await getAssistantUser(saved.name);
   return saved;
+}
+
+const ASSISTANT_EMAIL = "assistente-virtual@sistema.local";
+
+/**
+ * The Assistente Virtual as an attendant: the conversations it attends are assigned to this row and the ones it
+ * closes are closed by it, so Relatórios, the Dashboard and the satisfaction survey count it like any attendant.
+ * Always INACTIVE with a random password: it never logs in, never shows as online, never receives transfers.
+ * Its name follows Configurações › Assistente Virtual.
+ */
+export async function getAssistantUser(name?: string): Promise<User> {
+  const displayName = (name ?? (await getAiAssistantSettings()).name).trim() || DEFAULT_AI_ASSISTANT_SETTINGS.name;
+  const existing = await prisma.user.findFirst({ where: { isAssistant: true } });
+  if (existing) {
+    if (existing.displayName === displayName && existing.status === "INACTIVE") return existing;
+    return prisma.user.update({ where: { id: existing.id }, data: { displayName, fullName: displayName, status: "INACTIVE", presence: "OFFLINE" } });
+  }
+  return prisma.user.create({
+    data: {
+      email: ASSISTANT_EMAIL,
+      fullName: displayName,
+      displayName,
+      role: "AGENT",
+      status: "INACTIVE",
+      presence: "OFFLINE",
+      isAssistant: true,
+      passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10),
+    },
+  });
 }
 
 /**

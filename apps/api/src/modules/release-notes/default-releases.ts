@@ -14,7 +14,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
     version: "2.37.0",
     date: "7 nov 2026",
     name: "Assistente Virtual",
-    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado e passa para a equipe tudo o que não for com ele. Começa desligado e em Modo teste.",
+    summary: "Chegou o Assistente Virtual: uma IA que roda no próprio servidor, sem custo por mensagem, e atende o cliente antes da fila. Ele envia boleto e linha digitável, informa os débitos em aberto com o valor atualizado, encerra o atendimento com a pesquisa de satisfação e aparece nos relatórios como um atendente. O que não for com ele vai para a equipe. Começa desligado e em Modo teste.",
     notes: [
       {
         type: "novo",
@@ -38,6 +38,21 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         title: "Quando o cliente pede um atendente",
         text: "Dentro do expediente, o assistente avisa que vai transferir e a conversa entra na fila. Fora do expediente, envia a mensagem de fora do expediente da conexão, deixa a conversa na fila e não responde mais. Em outros assuntos, ele passa para a fila do mesmo jeito. Em todos os casos, a conversa chega com uma nota interna com o que o cliente pediu e informou.",
         where: "Atendimento › Fila",
+      },
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "O assistente encerra o atendimento",
+        text: "Quando resolve o pedido e o cliente agradece ou diz que era só isso, o assistente encerra a conversa como um atendente: envia a despedida e a pesquisa de satisfação, seguindo as mesmas regras do Encerrar, inclusive as etiquetas que não recebem pesquisa. Se o cliente pedir para encerrar ou sair da conversa, ela é encerrada na hora. Pedidos como encerrar o contrato ou o plano não fecham a conversa: vão para a equipe.",
+        where: "WhatsApp do cliente",
+      },
+      {
+        type: "novo",
+        area: "dashboard",
+        title: "Assistente Virtual nos relatórios",
+        text: "O Assistente Virtual aparece como atendente nos Relatórios e nos gráficos do Dashboard: conversas atendidas e encerradas, mensagens enviadas, tempos e as notas da pesquisa de satisfação. Quando ele passa a conversa para a fila, os tempos de fila e de atendimento contam para quem aceitar, como sempre. Ele não aparece em Usuários, não entra no sistema e não recebe transferências.",
+        where: "Relatórios e Dashboard",
+        roles: ["ADMIN", "MANAGER"],
       },
       {
         type: "novo",

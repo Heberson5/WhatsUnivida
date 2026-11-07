@@ -11,7 +11,8 @@ import * as whatsappService from "../whatsapp/whatsapp.service";
 import { getClosedMessageForConnection } from "../work-schedules/work-schedules.service";
 import { clientRows, cpfKeyOf, getClientData, usableSource, type ColumnMap, type Row } from "../data-sources/data-sources.service";
 import { prepareBoletos, previewBoletos } from "../boletos/boletos.service";
-import { assistantAnswers, getAiAssistantSettings } from "./ai-assistant.service";
+import { assistantAnswers, getAiAssistantSettings, getAssistantUser } from "./ai-assistant.service";
+import { scheduleCloseFollowUp } from "../satisfaction/satisfaction.service";
 import { classifyIntent, transcribeAudio } from "./ai-llm";
 import {
   addressesMatch,
@@ -90,12 +91,24 @@ interface Conv {
 
 // --- Sending ------------------------------------------------------------------------------------------------
 
+/** Recorded as sent by the assistant's own attendant row, so it counts like an attendant's message (first response…). */
 async function recordAiMessage(conversationId: string, type: "TEXT" | "DOCUMENT", body: string | null) {
+  const assistant = await getAssistantUser();
   const message = await prisma.message.create({
-    data: { conversationId, direction: "OUTBOUND", type, status: "PENDING", body, automatedBy: AI_ASSISTANT_AUTOMATED_BY },
+    data: { conversationId, direction: "OUTBOUND", type, status: "PENDING", body, automatedBy: AI_ASSISTANT_AUTOMATED_BY, senderAgentId: assistant.id },
   });
-  await prisma.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: new Date(), lastMessageDirection: "OUTBOUND" } });
+  const now = new Date();
+  await prisma.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: now, lastMessageDirection: "OUTBOUND", awaitingReplySince: null } });
+  await prisma.conversation.updateMany({ where: { id: conversationId, firstResponseAt: null, assignedAgentId: assistant.id }, data: { firstResponseAt: now } });
   return message;
+}
+
+/** The assistant takes the conversation as its attendant (Relatórios, Dashboard, pesquisa count it like anyone's). */
+async function takeAsAttendant(conv: Conv): Promise<void> {
+  const assistant = await getAssistantUser();
+  const now = new Date();
+  await prisma.conversation.updateMany({ where: { id: conv.id, status: "IN_AI" }, data: { assignedAgentId: assistant.id, acceptedAt: now, firstResponseAt: null } });
+  await prisma.conversationAssignment.create({ data: { conversationId: conv.id, fromAgentId: null, toAgentId: assistant.id, reason: "AI_ASSISTANT" } });
 }
 
 async function say(conv: Conv, settings: AiAssistantSettingsDTO, text: string): Promise<void> {
@@ -172,19 +185,37 @@ async function handToQueue(conv: Conv, session: AiSession, settings: AiAssistant
     if (text.trim()) await say(conv, settings, text.trim()).catch((err) => logger.warn({ err }, "assistant could not send the transfer notice"));
   }
   await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: noteOf(data, outcome) } });
-  await prisma.conversation.update({ where: { id: conv.id }, data: { status: "NEW", enteredQueueAt: new Date() } });
+  // A person attends from here: the queue's own times (Entrada na fila, Aceite, 1ª resposta) start now, not the assistant's.
+  await prisma.conversation.update({ where: { id: conv.id }, data: { status: "NEW", enteredQueueAt: new Date(), assignedAgentId: null, acceptedAt: null, firstResponseAt: null } });
   await prisma.conversationEvent.create({ data: { conversationId: conv.id, type: "AI_TO_QUEUE", payload: { reason: outcome } } });
   await end(session, "QUEUE");
   realtimeEvents.newQueueConversation(conv.connectionId, conv.id, conv.contactName ?? conv.phone);
 }
 
-/** Done with the customer: thanks, note, closed — nobody needed to take it. */
-async function finish(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO | null, data: SessionData, tellCustomer = true): Promise<void> {
-  if (tellCustomer && settings) await say(conv, settings, "Obrigado pelo contato! Sempre que precisar, é só chamar por aqui. 👋");
-  await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: noteOf(data, "resolvido pelo assistente") } });
-  await prisma.conversation.update({ where: { id: conv.id }, data: { status: "CLOSED", closedAt: new Date(), closeReason: "AI_ASSISTANT" } });
-  await prisma.conversationEvent.create({ data: { conversationId: conv.id, type: "CLOSED", payload: { byAssistant: true } } });
-  await end(session, "RESOLVED");
+const GOODBYE = "Obrigado pelo contato! Sempre que precisar, é só chamar por aqui. 👋";
+const GOODBYE_ON_REQUEST = "Tudo bem, vou encerrar nossa conversa. Sempre que precisar, é só chamar por aqui. 👋";
+
+/**
+ * Closes the conversation as its attendant, like the Encerrar button: closed by the assistant (Relatórios count it),
+ * and — unless `silent` — the goodbye goes as the closing message and the satisfaction survey follows by the same rules
+ * as any attendant's close (Respostas › Pesquisa, the connection, and tags that block the survey). With the survey on,
+ * the goodbye waits for the score, as it does for the team.
+ */
+async function finish(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO | null, data: SessionData, options: { silent?: boolean; goodbye?: string; outcome?: string } = {}): Promise<void> {
+  const assistant = await getAssistantUser();
+  const outcome = options.outcome ?? "resolvido pelo assistente";
+  await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: noteOf(data, outcome) } });
+  const now = new Date();
+  const closed = await prisma.conversation.updateMany({
+    where: { id: conv.id, status: "IN_AI" },
+    data: { status: "CLOSED", closedAt: now, closedByUserId: assistant.id, assignedAgentId: assistant.id, closeReason: "AI_ASSISTANT", pendingTransferDeadline: null },
+  });
+  await end(session, options.silent ? "IDLE_CLOSED" : "RESOLVED");
+  if (closed.count === 0) return;
+  await prisma.conversationEvent.create({ data: { conversationId: conv.id, type: "CLOSED", payload: { agentId: assistant.id, byAssistant: true, previousStatus: "IN_AI", outcome } } });
+  if (!options.silent && settings) {
+    scheduleCloseFollowUp(conv.id, { text: aiAssistantReply(settings.name, options.goodbye ?? GOODBYE), senderId: assistant.id, senderDisplayName: null });
+  }
   realtimeEvents.newMessage(conv.id, null);
 }
 
@@ -439,8 +470,11 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
     case "BOLETO":
     case "DEBITOS":
       return startFinance(conv, session, settings, { ...next, unclear: 0 }, intent);
+    case "ENCERRAR":
+      return finish(conv, session, settings, next, { goodbye: GOODBYE_ON_REQUEST, outcome: next.done?.length ? "resolvido; cliente pediu para encerrar" : "cliente pediu para encerrar" });
     case "AGRADECIMENTO":
       if (state === "AWAIT_MORE") return finish(conv, session, settings, next);
+      if (next.done?.length) return finish(conv, session, settings, next);
       await say(conv, settings, "Por nada! Posso ajudar com boleto, linha digitável ou débitos em aberto. É só dizer.");
       return save(session, state, next);
     case "SAUDACAO":
@@ -512,6 +546,8 @@ async function run(conversationId: string): Promise<unknown> {
 
   const state = (session.state as State) ?? "NEW";
   if (state === "NEW") {
+    await takeAsAttendant(conv);
+    if (text && ruleIntent(text) === "ENCERRAR") return finish(conv, session, settings, data, { goodbye: GOODBYE_ON_REQUEST, outcome: "cliente pediu para encerrar" });
     if (settings.greeting.trim()) await say(conv, settings, settings.greeting.trim());
     session = await save(session, "AWAIT_INTENT", data);
     if (!text) {
@@ -531,6 +567,11 @@ async function run(conversationId: string): Promise<unknown> {
     }
     if (pending.media) return handToQueue(conv, session, settings, data, "cliente enviou um arquivo");
     return;
+  }
+
+  // "Pode encerrar" / "quero sair da conversa": closed right away, with the survey like any close.
+  if (ruleIntent(text) === "ENCERRAR") {
+    return finish(conv, session, settings, data, { goodbye: GOODBYE_ON_REQUEST, outcome: data.done?.length ? "resolvido; cliente pediu para encerrar" : "cliente pediu para encerrar" });
   }
 
   // "Quero falar com um atendente" in the middle of anything: straight to the queue.
@@ -628,7 +669,7 @@ export async function sweepAssistantSessions(now = new Date()): Promise<void> {
       if (!conv) continue;
       const data = dataOf(session);
       if (data.done?.some((d) => d.startsWith("Boleto enviado") || d.startsWith("Débitos informados") || d.startsWith("Informado:"))) {
-        await finish(conv, session, null, data, false);
+        await finish(conv, session, null, data, { silent: true, outcome: `resolvido; cliente sem responder por ${IDLE_MINUTES} minutos` });
       } else {
         await handToQueue(conv, session, null, data, `cliente parou de responder por ${IDLE_MINUTES} minutos`, false);
       }

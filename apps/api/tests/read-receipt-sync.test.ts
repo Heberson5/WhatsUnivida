@@ -17,6 +17,15 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** The mock provider goes QR -> CONNECTED in ~1.9 s, longer on a busy machine: wait for it instead of a fixed time. */
+async function waitConnected(connectionId: string) {
+  for (let i = 0; i < 100; i++) {
+    const connection = await prisma.whatsAppConnection.findUnique({ where: { id: connectionId }, select: { status: true } });
+    if (connection?.status === "CONNECTED") return;
+    await wait(100);
+  }
+}
+
 describe("opening a conversation in the app syncs a WhatsApp read receipt to the linked phone", () => {
   afterAll(async () => {
     await prisma.$disconnect();
@@ -31,7 +40,7 @@ describe("opening a conversation in the app syncs a WhatsApp read receipt to the
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "SuporteRead" });
     await request(app).post(`/api/whatsapp/connections/${created.body.id}/connect`).set("Authorization", `Bearer ${adminToken}`);
-    await new Promise((resolve) => setTimeout(resolve, 2200)); // mock provider: QR -> CONNECTED takes ~1.9s
+    await waitConnected(created.body.id);
 
     await createTestUser({
       email: "agente-read@test.dev",
@@ -62,12 +71,12 @@ describe("opening a conversation in the app syncs a WhatsApp read receipt to the
 
     // syncReadReceiptToDevice is fire-and-forget, not awaited by the route: wait for it (a busy machine takes longer).
     const provider = __getProviderForTests(created.body.id) as MockWhatsAppProvider;
-    for (let i = 0; i < 60 && provider.readReceiptsSent.length === 0; i++) await wait(50);
+    for (let i = 0; i < 160 && provider.readReceiptsSent.length === 0; i++) await wait(50);
     expect(provider.readReceiptsSent.at(-1)).toEqual({
       chatId: `${contact.phone}@s.whatsapp.net`,
       providerMessageIds: ["wa-msg-inbound-1"],
     });
-  }, 10000);
+  }, 30000);
 
   it("does not call markRead again once there is nothing new to mark read", async () => {
     await resetDatabase();
@@ -78,7 +87,7 @@ describe("opening a conversation in the app syncs a WhatsApp read receipt to the
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "SuporteRead2" });
     await request(app).post(`/api/whatsapp/connections/${created.body.id}/connect`).set("Authorization", `Bearer ${adminToken}`);
-    await new Promise((resolve) => setTimeout(resolve, 2200));
+    await waitConnected(created.body.id);
 
     await createTestUser({
       email: "agente-read2@test.dev",
@@ -96,5 +105,5 @@ describe("opening a conversation in the app syncs a WhatsApp read receipt to the
 
     const provider = __getProviderForTests(created.body.id) as MockWhatsAppProvider;
     expect(provider.readReceiptsSent).toHaveLength(0); // nothing was ever unread — no wasted call
-  }, 10000);
+  }, 30000);
 });

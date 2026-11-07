@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
 import { writeAudit } from "../../lib/audit";
 import { Errors } from "../../lib/http-error";
+import { prisma } from "../../lib/prisma";
 import { realtimeEvents } from "../../realtime/realtime";
 import { toUserDTO } from "./users.mapper";
 import * as usersService from "./users.service";
@@ -13,6 +14,15 @@ import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { updateOwnPhoto as setUserPhoto } from "../profile/profile.service";
 
 export const usersRouter = Router();
+
+// The Assistente Virtual's own user (see ai-assistant.service getAssistantUser) is never edited, activated, deleted
+// or given a password here.
+usersRouter.param("id", (_req, _res, next, id: string) => {
+  prisma.user
+    .findUnique({ where: { id }, select: { isAssistant: true } })
+    .then((user) => next(user?.isAssistant ? Errors.badRequest("O Assistente Virtual é configurado em Configurações › Assistente Virtual") : undefined))
+    .catch(next);
+});
 
 usersRouter.use(requireAuth);
 
