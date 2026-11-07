@@ -11,6 +11,38 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.0",
+    date: "7 nov 2026",
+    name: "Assistente Virtual: preparação",
+    summary: "Chegou a base do Assistente Virtual, uma IA que roda no próprio servidor e vai atender o cliente antes da fila. Ele começa desligado: nada muda no atendimento até o administrador ligá-lo.",
+    notes: [
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Configurações › Assistente Virtual",
+        text: "O administrador liga ou desliga o assistente, escolhe o nome que abre todas as respostas (por exemplo, Assistente Virtual), as conexões em que ele atende, a saudação e a mensagem de transferência. O Modo teste, ligado de início, faz o assistente atender só os telefones da lista. O quadro Situação da IA no servidor mostra se a IA está pronta.",
+        where: "Configurações › Assistente Virtual",
+        roles: ["ADMIN"],
+      },
+      {
+        type: "novo",
+        area: "gestao",
+        title: "Filtro Com a IA",
+        text: "A Gestão ganhou o filtro Com a IA, para as conversas que o assistente estiver atendendo. Dali dá para transferir a conversa para um atendente ou mandá-la para a fila, como as do Fluxo. Se alguém responder pelo celular, a conversa sai do assistente na hora.",
+        where: "Gestão",
+        roles: ["ADMIN", "MANAGER"],
+      },
+      {
+        type: "novo",
+        area: "contatos",
+        title: "Etiqueta que não deixa o assistente atender",
+        text: "Em Etiquetas, Não enviar estas mensagens automáticas ganhou o item Assistente Virtual: clientes com a etiqueta não conversam com o assistente e seguem o caminho de sempre.",
+        where: "Etiquetas",
+        roles: ["ADMIN", "MANAGER"],
+      },
+    ],
+  },
+  {
     version: "2.36.2",
     date: "7 nov 2026",
     name: "Corretor retirado",
