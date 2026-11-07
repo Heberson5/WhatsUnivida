@@ -200,6 +200,16 @@ export function isYes(text: string): boolean {
   return /^(sim|s|ss|claro|pode|pode sim|quero|quero sim|isso|ok|okay|por favor|manda|pode mandar|sim por favor|yes)[\s!.,]*$/.test(plain(text));
 }
 
+/**
+ * "Errei o CPF", "não é esse", "digitei errado", "o endereço tá errado": the customer wants to fix what they sent.
+ * Which step: the address when they say so, else the CPF.
+ */
+export function correctionTarget(text: string): "CPF" | "ENDERECO" | null {
+  const folded = plain(text);
+  if (!/\b(errei|errado|errada|digitei errado|me enganei|enganei|nao e esse|nao e essa|nao eh esse|corrigir|corrige|troquei|cpf errado|outro cpf|esse nao)\b/.test(folded)) return null;
+  return /\bendereco\b/.test(folded) ? "ENDERECO" : "CPF";
+}
+
 /** "Mesmo", "o mesmo", "pode ser o mesmo", "esse mesmo", "sim" — the CPF offered is the one. */
 export function isSameAnswer(text: string): boolean {
   return /^(sim |pode |pode ser |e |eh |isso |)?(o |a |esse |este |o meu |meu )?(mesm[oa]|esse|este|meu|o meu)( (mesm[oa]|cpf|de antes|mesmo cpf|por favor|obrigad[oa]))*$|^sim$|^isso$|^pode$/.test(plain(text));

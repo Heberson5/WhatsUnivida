@@ -15,8 +15,11 @@ import { prepareBoletos, previewBoletos } from "../boletos/boletos.service";
 import { assistantAnswers, getAiAssistantSettings, getAssistantUser } from "./ai-assistant.service";
 import { scheduleCloseFollowUp } from "../satisfaction/satisfaction.service";
 import { classifyIntent, transcribeAudio } from "./ai-llm";
+import { firstNameFor, greetingOfTheDay, phrase, typingDelayMs } from "./ai-phrases";
+import { env } from "../../config/env";
 import {
   addressesMatch,
+  correctionTarget,
   extractCpf,
   formatBrl,
   isNo,
@@ -50,6 +53,25 @@ const MAX_CPF_ATTEMPTS = 3;
 const MAX_NAME_ATTEMPTS = 2;
 const MAX_UNCLEAR = 2;
 const MAX_PARCELS_LISTED = 12;
+// CPFs that didn't match (not found, or the name didn't match) from one phone in 24 hours, across conversations.
+const MAX_FAILED_CPF_PER_DAY = 5;
+
+/** "Boa tarde, Maria! Sou o assistente virtual…": the greeting of the settings, with the time of day and the name. */
+function openingOf(conv: Conv, greeting: string): string {
+  const rest = greeting.trim().replace(/^(ol[aá]|oi|bom dia|boa tarde|boa noite)\s*[!,.]?\s*/i, "");
+  const name = nameOf(conv);
+  return `${greetingOfTheDay(new Date(), env.BUSINESS_TZ_OFFSET_MINUTES)}${name ? `, ${name}` : ""}! ${rest}`.trim();
+}
+
+async function recordFailedCpfCheck(conv: Conv, reason: "NOT_FOUND" | "NAME_MISMATCH"): Promise<void> {
+  await prisma.conversationEvent.create({ data: { conversationId: conv.id, type: "AI_CPF_FAILED", payload: { reason } } });
+}
+
+async function failedCpfChecksToday(conv: Conv): Promise<number> {
+  return prisma.conversationEvent.count({
+    where: { type: "AI_CPF_FAILED", createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) }, conversation: { contactId: conv.contactId } },
+  });
+}
 
 type State = "NEW" | "AWAIT_INTENT" | "AWAIT_CPF" | "AWAIT_NAME" | "AWAIT_ADDRESS" | "AWAIT_PARCEL" | "AWAIT_MORE" | "DONE";
 type FinanceIntent = "BOLETO" | "DEBITOS";
@@ -65,6 +87,8 @@ interface ParcelOption {
 interface SessionData {
   intent?: FinanceIntent;
   cpfKey?: string;
+  /** A CPF the customer sent before saying what they wanted — used as soon as they ask for the boleto/débitos. */
+  pendingCpf?: string;
   /** The CPF offered as "o mesmo de antes" when asking for the CPF. */
   offerCpf?: string;
   /** The CPF just consulted had nothing open: the next answer may be another CPF (the titular's) or "não". */
@@ -119,7 +143,20 @@ async function takeAsAttendant(conv: Conv): Promise<void> {
   await prisma.conversationAssignment.create({ data: { conversationId: conv.id, fromAgentId: null, toAgentId: assistant.id, reason: "AI_ASSISTANT" } });
 }
 
+/** Like a person: "digitando…" on the customer's WhatsApp for a moment before the reply (never in the tests). */
+async function humanPause(conv: Conv, text: string): Promise<void> {
+  if (env.NODE_ENV === "test") return;
+  await whatsappService.sendAgentPresence(conv.id, "composing").catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, typingDelayMs(text)));
+}
+
+/** The customer's first name for the replies, when it looks like a real name. */
+function nameOf(conv: Conv): string | null {
+  return firstNameFor({ firstName: conv.firstName, name: conv.contactName });
+}
+
 async function say(conv: Conv, settings: AiAssistantSettingsDTO, text: string): Promise<void> {
+  await humanPause(conv, text);
   const body = aiAssistantReply(settings.name, text);
   const message = await recordAiMessage(conv.id, "TEXT", body);
   await whatsappService.sendAutomatedText(conv.connectionId, message.id, conv.phone, body);
@@ -300,16 +337,12 @@ async function previousCpf(conv: Conv): Promise<string | null> {
  * and the boleto is in the titular's name. A CPF used before by this phone is offered as "mesmo".
  */
 async function askCpf(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
-  const purpose = data.intent === "DEBITOS" ? "Para consultar os débitos" : "Para enviar o boleto";
+  const proposito = data.intent === "DEBITOS" ? "Para consultar os débitos" : "Para enviar o boleto";
   const previous = await previousCpf(conv);
   if (previous) {
-    await say(
-      conv,
-      settings,
-      `${purpose}, preciso do CPF do titular do plano (quem é responsável pelo pagamento).\nSe for o mesmo de antes (${maskCpf(previous)}), responda *mesmo*. Se for de outra pessoa, envie o CPF dela.`
-    );
+    await say(conv, settings, phrase("askCpfWithPrevious", { proposito, cpf: maskCpf(previous), nome: nameOf(conv) }));
   } else {
-    await say(conv, settings, `${purpose}, me informe o CPF do titular do plano (quem é responsável pelo pagamento). Se for empresa, o CNPJ.`);
+    await say(conv, settings, phrase("askCpf", { proposito, nome: nameOf(conv) }));
   }
   await save(session, "AWAIT_CPF", { ...data, offerCpf: previous ?? undefined });
 }
@@ -323,7 +356,8 @@ async function startFinance(conv: Conv, session: AiSession, settings: AiAssistan
   if (!(await usableSource({ whatsappConnectionId: conv.connectionId }))) {
     return handToQueue(conv, session, settings, next, "dados dos clientes indisponíveis no momento");
   }
-  if (text && extractCpf(text)) return onCpf(conv, session, settings, next, text);
+  if (text && extractCpf(text)) return onCpf(conv, session, settings, { ...next, pendingCpf: undefined }, text);
+  if (data.pendingCpf) return onCpf(conv, session, settings, { ...next, pendingCpf: undefined }, data.pendingCpf);
   return askCpf(conv, session, settings, next);
 }
 
@@ -335,23 +369,29 @@ async function confirmClient(conv: Conv, cpfKey: string, clientKey: string) {
 
 async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, text: string) {
   if (data.afterEmpty && isNo(text)) {
-    await say(conv, settings, "Tudo bem! Posso ajudar em algo mais?");
+    await say(conv, settings, phrase("okAnythingElse"));
     return save(session, "AWAIT_MORE", { ...data, afterEmpty: false });
   }
   const cpf = extractCpf(text) ?? (data.offerCpf && isSameAnswer(text) ? data.offerCpf : null);
   if (!cpf) {
     const attempts = (data.cpfAttempts ?? 0) + 1;
     if (attempts >= MAX_CPF_ATTEMPTS) return handToQueue(conv, session, settings, { ...data, cpfAttempts: attempts }, "CPF não informado ou inválido");
-    const hint = looksLikeDocumentAttempt(text) ? "Esse número não é um CPF válido. Confira e envie os 11 números do CPF (ou os 14 do CNPJ)." : "Não identifiquei o CPF na mensagem. Envie os 11 números do CPF do titular (ou os 14 do CNPJ).";
+    const hint = looksLikeDocumentAttempt(text) ? phrase("cpfInvalid") : phrase("cpfMissing");
     await say(conv, settings, hint);
     return save(session, "AWAIT_CPF", { ...data, cpfAttempts: attempts });
+  }
+  // Someone trying CPF after CPF from the same phone (across conversations): stop and pass to the team.
+  if ((await failedCpfChecksToday(conv)) >= MAX_FAILED_CPF_PER_DAY) {
+    await say(conv, settings, phrase("cpfLimit"));
+    return handToQueue(conv, session, settings, data, `limite de ${MAX_FAILED_CPF_PER_DAY} tentativas de CPF em 24 horas neste telefone`, false);
   }
   const found = await findClientByCpf(conv, cpfKeyOf(cpf)!);
   if (found === "UNAVAILABLE") return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
   if (!found) {
+    await recordFailedCpfCheck(conv, "NOT_FOUND");
     const attempts = (data.cpfAttempts ?? 0) + 1;
     if (attempts >= MAX_CPF_ATTEMPTS) return handToQueue(conv, session, settings, { ...data, cpfAttempts: attempts, cpfKey: cpf }, "CPF não encontrado no cadastro");
-    await say(conv, settings, "Não consegui confirmar seus dados. Confira o CPF e envie de novo, por favor.");
+    await say(conv, settings, phrase("cpfNotFound"));
     return save(session, "AWAIT_CPF", { ...data, cpfAttempts: attempts });
   }
   const next: SessionData = { ...data, cpfKey: cpf, afterEmpty: false, offerCpf: undefined, nameAttempts: 0, informedName: undefined, informedAddress: undefined, addressDiffers: undefined };
@@ -361,7 +401,7 @@ async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettin
     return deliver(conv, session, settings, { ...next, done: [...(next.done ?? []), "CPF já confirmado antes por este telefone"] });
   }
   if (!found.name) return handToQueue(conv, session, settings, next, "cadastro sem nome do cliente para confirmar");
-  await say(conv, settings, "Obrigado! Para sua segurança, informe o nome completo do titular, como está no cadastro.");
+  await say(conv, settings, phrase("askName"));
   return save(session, "AWAIT_NAME", next);
 }
 
@@ -370,16 +410,17 @@ async function onName(conv: Conv, session: AiSession, settings: AiAssistantSetti
   if (!found || found === "UNAVAILABLE" || !found.name) return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
   const informedName = text.trim().slice(0, 200);
   if (!namesMatch(informedName, found.name)) {
+    await recordFailedCpfCheck(conv, "NAME_MISMATCH");
     const attempts = (data.nameAttempts ?? 0) + 1;
     const next: SessionData = { ...data, informedName, nameMatched: false, nameAttempts: attempts };
     if (attempts >= MAX_NAME_ATTEMPTS) {
-      await say(conv, settings, "Não consegui confirmar seus dados por aqui.");
+      await say(conv, settings, phrase("nameMismatchFinal"));
       return handToQueue(conv, session, settings, next, "nome informado não confere com o CPF");
     }
-    await say(conv, settings, "Não consegui confirmar seus dados. Pode conferir o nome completo do titular?");
+    await say(conv, settings, phrase("nameMismatch"));
     return save(session, "AWAIT_NAME", next);
   }
-  await say(conv, settings, "Certo! Agora informe o endereço do cadastro (rua, número e bairro).");
+  await say(conv, settings, phrase("askAddress"));
   return save(session, "AWAIT_ADDRESS", { ...data, informedName, nameMatched: true });
 }
 
@@ -430,11 +471,7 @@ async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSett
   const options = buildOptions(contracts);
   if (options.length === 0) {
     const cpf = data.cpfKey ? maskCpf(data.cpfKey) : "informado";
-    await say(
-      conv,
-      settings,
-      `Não encontrei parcelas em aberto para o CPF ${cpf}.\nSe o boleto for de outra pessoa (por exemplo, o titular do plano), envie o CPF dela. Se não, responda *não*.`
-    );
+    await say(conv, settings, phrase("noParcels", { cpf }));
     return save(session, "AWAIT_CPF", { ...data, afterEmpty: true, cpfAttempts: 0, offerCpf: undefined, done: [...(data.done ?? []), `Informado: nenhuma parcela em aberto para o CPF ${cpf}`] });
   }
   const list = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n");
@@ -442,10 +479,11 @@ async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSett
   if (data.intent === "BOLETO" && options.length === 1) {
     return sendBoletos(conv, session, settings, { ...data, done }, options[0]);
   }
+  const many = options.length > 1;
   if (data.intent === "BOLETO") {
-    await say(conv, settings, `Estas são as parcelas em aberto:\n${list}\n\nResponda com o *número* da parcela que deseja o boleto${options.length > 1 ? ", ou *todas*" : ""}.`);
+    await say(conv, settings, phrase("parcelsForBoleto", { lista: list, ou_todas: many ? ", ou *todas*" : "" }));
   } else {
-    await say(conv, settings, `Estas são as parcelas em aberto:\n${list}\n\nQuer receber o boleto? Responda com o *número* da parcela${options.length > 1 ? ", *todas*" : ""} ou *não*.`);
+    await say(conv, settings, phrase("parcelsForDebts", { lista: list, ou_todas_virgula: many ? ", *todas*" : "" }));
   }
   return save(session, "AWAIT_PARCEL", { ...data, options, done });
 }
@@ -453,7 +491,7 @@ async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSett
 async function onParcel(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, text: string) {
   const options = data.options ?? [];
   if (isNo(text)) {
-    await say(conv, settings, "Tudo bem! Posso ajudar em algo mais?");
+    await say(conv, settings, phrase("okAnythingElse"));
     return save(session, "AWAIT_MORE", data);
   }
   let choice = parseChoice(text, options.length);
@@ -461,7 +499,7 @@ async function onParcel(conv: Conv, session: AiSession, settings: AiAssistantSet
   if (choice === null) {
     const unclear = (data.unclear ?? 0) + 1;
     if (unclear >= MAX_UNCLEAR) return handToQueue(conv, session, settings, { ...data, unclear }, "não entendeu qual parcela o cliente queria");
-    await say(conv, settings, `Não entendi qual parcela. Responda só com o número (de 1 a ${options.length})${options.length > 1 ? " ou *todas*" : ""}.`);
+    await say(conv, settings, phrase("parcelUnclear", { total: options.length, ou_todas: options.length > 1 ? " ou *todas*" : "" }));
     return save(session, "AWAIT_PARCEL", { ...data, unclear });
   }
   if (choice === 0) {
@@ -494,12 +532,12 @@ async function sendBoletos(conv: Conv, session: AiSession, settings: AiAssistant
     for (const item of prepared.items) {
       await writeAudit({ userId: null, action: "BOLETO_SENT", entity: "Conversation", entityId: conv.id, ipAddress: null, metadata: { ...item, byAssistant: true, contactPhone: conv.phone } });
     }
-    await say(conv, settings, "Pronto! O boleto está no PDF acima e a linha digitável logo abaixo dele, para copiar.\nPosso ajudar em algo mais?");
+    await say(conv, settings, phrase("boletoSent"));
     return save(session, "AWAIT_MORE", { ...data, done: [...(data.done ?? []), `Boleto enviado: ${sent}`] });
   } catch (err) {
     const reason = (err as Error).message ?? "erro ao gerar o boleto";
     logger.warn({ err, conversationId: conv.id }, "assistant could not send the boleto");
-    await say(conv, settings, "Não consegui gerar o boleto agora.").catch(() => undefined);
+    await say(conv, settings, phrase("boletoFailed")).catch(() => undefined);
     return handToQueue(conv, session, settings, { ...data, done: [...(data.done ?? []), `Boleto não gerado: ${reason}`] }, "boleto não pôde ser gerado automaticamente");
   }
 }
@@ -526,18 +564,24 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
     case "AGRADECIMENTO":
       if (state === "AWAIT_MORE") return finish(conv, session, settings, next);
       if (next.done?.length) return finish(conv, session, settings, next);
-      await say(conv, settings, "Por nada! Posso ajudar com boleto, linha digitável ou débitos em aberto. É só dizer.");
+      await say(conv, settings, phrase("youreWelcome"));
       return save(session, state, next);
     case "SAUDACAO":
-      await say(conv, settings, state === "AWAIT_MORE" ? "Posso ajudar em algo mais? Boleto, linha digitável ou débitos em aberto." : "Como posso ajudar? Posso enviar boleto, linha digitável ou informar débitos em aberto.");
+      await say(conv, settings, state === "AWAIT_MORE" ? phrase("anythingElse") : phrase("howCanIHelp"));
       return save(session, state, next);
     case "OUTRO":
       return handToQueue(conv, session, settings, next, "assunto para a equipe");
     default: {
       if (state === "AWAIT_MORE" && isNo(text)) return finish(conv, session, settings, next);
+      // Only a CPF, before saying what it is for: kept, and the customer is asked what they need.
+      const cpf = extractCpf(text);
+      if (cpf) {
+        await say(conv, settings, phrase("cpfReceivedWhichService", { cpf: maskCpf(cpf) }));
+        return save(session, state, { ...next, pendingCpf: cpf });
+      }
       const unclear = (next.unclear ?? 0) + 1;
       if (unclear >= MAX_UNCLEAR) return handToQueue(conv, session, settings, { ...next, unclear }, "assistente não entendeu o pedido");
-      await say(conv, settings, "Desculpe, não entendi. Você precisa de boleto, linha digitável ou saber os débitos em aberto? Se for outro assunto, me conte em poucas palavras que passo para a equipe.");
+      await say(conv, settings, phrase("notUnderstood"));
       return save(session, state, { ...next, unclear });
     }
   }
@@ -546,7 +590,7 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
 // --- One run ------------------------------------------------------------------------------------------------
 
 /** The customer's messages not answered yet, as text — audio transcribed first (the assistant only answers after it). */
-async function pendingText(conv: Conv, session: AiSession): Promise<{ text: string; last: Date | null; failedAudio: boolean; media: boolean }> {
+async function pendingText(conv: Conv, session: AiSession): Promise<{ text: string; last: Date | null; failedAudio: boolean; media: boolean; providerIds: string[] }> {
   const messages = await prisma.message.findMany({
     where: { conversationId: conv.id, direction: "INBOUND", ...(session.lastHandledAt ? { createdAt: { gt: session.lastHandledAt } } : {}) },
     orderBy: { createdAt: "asc" },
@@ -573,7 +617,8 @@ async function pendingText(conv: Conv, session: AiSession): Promise<{ text: stri
     if (message.body?.trim()) parts.push(message.body.trim());
     else if (message.type !== "TEXT") media = true;
   }
-  return { text: parts.join("\n"), last: messages.at(-1)?.createdAt ?? null, failedAudio, media };
+  const providerIds = messages.map((m) => m.providerMessageId).filter((id): id is string => Boolean(id));
+  return { text: parts.join("\n"), last: messages.at(-1)?.createdAt ?? null, failedAudio, media, providerIds };
 }
 
 async function run(conversationId: string): Promise<unknown> {
@@ -591,6 +636,8 @@ async function run(conversationId: string): Promise<unknown> {
   if (tag) return handToQueue(conv, session, null, data, `etiqueta ${tag.name} não permite o assistente`, false);
 
   const pending = await pendingText(conv, session);
+  // Read (blue ticks) as soon as the assistant takes the messages, like someone who opened the chat.
+  if (pending.providerIds.length) void whatsappService.markMessagesRead(conv.connectionId, conv.phone, pending.providerIds).catch(() => undefined);
   if (pending.last) session = await prisma.aiSession.update({ where: { id: session.id }, data: { lastHandledAt: pending.last, lastActivityAt: new Date() } });
   const text = pending.text;
   if (text) data = { ...data, said: [...(data.said ?? []), text.slice(0, 300)] };
@@ -599,7 +646,7 @@ async function run(conversationId: string): Promise<unknown> {
   if (state === "NEW") {
     await takeAsAttendant(conv);
     if (text && ruleIntent(text) === "ENCERRAR") return finish(conv, session, settings, data, { goodbye: GOODBYE_ON_REQUEST, outcome: "cliente pediu para encerrar" });
-    if (settings.greeting.trim()) await say(conv, settings, settings.greeting.trim());
+    if (settings.greeting.trim()) await say(conv, settings, openingOf(conv, settings.greeting));
     session = await save(session, "AWAIT_INTENT", data);
     if (!text) {
       if (pending.failedAudio) return handToQueue(conv, session, settings, data, "áudio não pôde ser transcrito");
@@ -613,7 +660,7 @@ async function run(conversationId: string): Promise<unknown> {
 
   if (!text) {
     if (pending.failedAudio) {
-      await say(conv, settings, "Não consegui ouvir o seu áudio.").catch(() => undefined);
+      await say(conv, settings, phrase("audioFailed")).catch(() => undefined);
       return handToQueue(conv, session, settings, data, "áudio não pôde ser transcrito");
     }
     if (pending.media) return handToQueue(conv, session, settings, data, "cliente enviou um arquivo");
@@ -628,6 +675,19 @@ async function run(conversationId: string): Promise<unknown> {
   // "Quero falar com um atendente" in the middle of anything: straight to the queue.
   if (state !== "AWAIT_NAME" && state !== "AWAIT_ADDRESS" && ruleIntent(text) === "ATENDENTE") {
     return handToQueue(conv, session, settings, data, "cliente pediu um atendente");
+  }
+
+  // "Errei o CPF", "não é esse", "o endereço tá errado": back to that step instead of going on with the wrong data.
+  const correction = state === "AWAIT_NAME" || state === "AWAIT_ADDRESS" || state === "AWAIT_PARCEL" || state === "AWAIT_MORE" ? correctionTarget(text) : null;
+  if (correction) {
+    const reset: SessionData = { ...data, nameAttempts: 0, informedName: undefined, nameMatched: undefined, options: undefined, unclear: 0 };
+    if (extractCpf(text)) return onCpf(conv, session, settings, { ...reset, cpfAttempts: 0 }, text);
+    if (correction === "ENDERECO" && data.cpfKey && data.nameMatched) {
+      await say(conv, settings, phrase("correctionAddress"));
+      return save(session, "AWAIT_ADDRESS", { ...data, informedAddress: undefined });
+    }
+    await say(conv, settings, phrase("correctionCpf"));
+    return save(session, "AWAIT_CPF", { ...reset, cpfKey: undefined, cpfAttempts: 0, afterEmpty: false });
   }
 
   switch (state) {

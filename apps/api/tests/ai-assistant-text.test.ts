@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addressesMatch, extractCpf, isNo, isSameAnswer, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
+import { addressesMatch, correctionTarget, extractCpf, isNo, isSameAnswer, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
 
 describe("Assistente Virtual: CPF em qualquer formato", () => {
   it.each([
@@ -112,5 +112,29 @@ describe("Assistente Virtual: o mesmo CPF de antes", () => {
   });
   it.each(["outro", "não", "é da minha mãe", "529.982.247-25"])("%s → não é o mesmo", (text) => {
     expect(isSameAnswer(text)).toBe(false);
+  });
+});
+
+describe("Assistente Virtual: correção e frases", () => {
+  it("entende quando o cliente quer corrigir", () => {
+    expect(correctionTarget("errei o cpf")).toBe("CPF");
+    expect(correctionTarget("não é esse")).toBe("CPF");
+    expect(correctionTarget("o endereço está errado")).toBe("ENDERECO");
+    expect(correctionTarget("Maria Aparecida da Silva")).toBeNull();
+  });
+
+  it("nome só quando parece nome; saudação pelo horário local", async () => {
+    const { firstNameFor, greetingOfTheDay, phrase, __usePhraseVersionForTests } = await import("../src/modules/ai-assistant/ai-phrases");
+    expect(firstNameFor({ firstName: null, name: "joão pedro" })).toBe("João");
+    expect(firstNameFor({ firstName: null, name: "🌻 Flor" })).toBeNull();
+    expect(firstNameFor({ firstName: null, name: "Cliente 5565" })).toBeNull();
+    expect(firstNameFor({ firstName: "Ana", name: "Ana Maria" })).toBe("Ana");
+    // 240 = UTC-4: 13:00 UTC is 09:00 there.
+    expect(greetingOfTheDay(new Date("2026-11-07T13:00:00Z"), 240)).toBe("Bom dia");
+    expect(greetingOfTheDay(new Date("2026-11-07T18:00:00Z"), 240)).toBe("Boa tarde");
+    expect(greetingOfTheDay(new Date("2026-11-08T01:00:00Z"), 240)).toBe("Boa noite");
+    __usePhraseVersionForTests(2);
+    expect(phrase("askCpf", { proposito: "Para enviar o boleto", nome: "Ana" })).toBe("Certo, Ana! Para enviar o boleto, me envia o CPF de quem é o titular do plano (ou o CNPJ, se for empresa)?");
+    __usePhraseVersionForTests(null);
   });
 });

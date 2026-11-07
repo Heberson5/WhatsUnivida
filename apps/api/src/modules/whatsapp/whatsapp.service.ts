@@ -146,6 +146,17 @@ export async function sendAgentPresence(conversationId: string, presence: Outgoi
   if (provider && chatId) await provider.sendPresence(chatId, presence);
 }
 
+/** Blue ticks for the customer's messages the Assistente Virtual just took (best-effort, never fails the caller). */
+export async function markMessagesRead(connectionId: string, phone: string, providerMessageIds: string[]): Promise<void> {
+  const provider = providers.get(connectionId);
+  if (!provider || providerMessageIds.length === 0) return;
+  try {
+    await provider.markRead(await chatIdFor(connectionId, phone), providerMessageIds);
+  } catch (err) {
+    logger.warn({ err, connectionId }, "failed to mark the assistant's messages as read");
+  }
+}
+
 /** Test-only escape hatch to reach the live provider instance (e.g. to inspect MockWhatsAppProvider.sentTexts) — never used by application code. */
 export function __getProviderForTests(connectionId: string): WhatsAppProvider | undefined {
   return providers.get(connectionId);

@@ -25,6 +25,10 @@ import { CONVERSATION_UNDO_WINDOW_MS, DEFAULT_AI_ASSISTANT_SETTINGS } from "@wha
 import { createSurvey } from "../src/modules/satisfaction/satisfaction.service";
 import { getPerAgentReport } from "../src/modules/reports/reports.service";
 import { getAssistantUser } from "../src/modules/ai-assistant/ai-assistant.service";
+import { __usePhraseVersionForTests } from "../src/modules/ai-assistant/ai-phrases";
+
+// The first ("classic") version of each reply, so the tests can check the words.
+__usePhraseVersionForTests(0);
 
 const app = createApp();
 
@@ -120,7 +124,8 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     const contact = await newCustomer(CUSTOMER);
     let conversation = await customerSays(contact.id, "oi, quero a segunda via do boleto");
     expect(conversation.status).toBe("IN_AI");
-    expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\* Olá!/);
+    // Greets with the time of day; "Cliente" is not a real name, so no name.
+    expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\* (Bom dia|Boa tarde|Boa noite)! Sou o assistente virtual/);
     expect((await lastText(contact.id))).toContain("CPF");
 
     await customerSays(contact.id, "meu cpf é 529 982 247-25");
@@ -213,7 +218,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     // At any hour the assistant answers first (no out-of-hours notice on the first message).
     await customerSays(contact.id, "oi");
     expect((await texts(contact.id))).toHaveLength(1);
-    expect((await texts(contact.id))[0]).toContain("Olá");
+    expect((await texts(contact.id))[0]).toContain("Sou o assistente virtual");
     const conversation = await customerSays(contact.id, "me passa para uma atendente por favor");
     expect(conversation.status).toBe("NEW");
     expect((await lastText(contact.id))).toBe("*Assistente Virtual:* Estamos fora do expediente, Cliente. Voltamos amanhã às 8h.");
@@ -350,7 +355,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(conversation.status).toBe("IN_FLOW");
       await handleInboundForFlow(conversation.id, flowId, "oi");
       expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("IN_AI");
-      expect(await lastText(contact.id)).toContain("Olá");
+      expect(await lastText(contact.id)).toContain("Sou o assistente virtual");
 
       // Assistant switched off: the same step sends the customer to the queue.
       await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, enabled: false });
@@ -517,6 +522,58 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(await lastText(contact.id)).toContain("Não encontrei parcelas em aberto");
       await customerSays(contact.id, "não");
       expect(await lastText(contact.id)).toContain("algo mais");
+    });
+  });
+
+  describe("Fase A: mais humano e mais seguro", () => {
+    it("usa o primeiro nome do cliente e a saudação do horário", async () => {
+      const contact = await newCustomer();
+      await prisma.contact.update({ where: { id: contact.id }, data: { name: "maria eduarda 🌻" } });
+      await customerSays(contact.id, "oi");
+      expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\* (Bom dia|Boa tarde|Boa noite), Maria! Sou o assistente virtual/);
+    });
+
+    it("CPF mandado antes de dizer o que quer: pergunta o serviço e usa o CPF sem pedir de novo", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "oi");
+      await customerSays(contact.id, "529.982.247-25");
+      expect(await lastText(contact.id)).toContain("Recebi o CPF ***.982.247-**");
+      await customerSays(contact.id, "boleto");
+      expect(await lastText(contact.id)).toContain("nome completo");
+    });
+
+    it("\"errei o CPF\" no meio da confirmação: volta a pedir o CPF; com o CPF certo na mesma mensagem, segue com ele", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "boleto");
+      await customerSays(contact.id, BENEFICIARY_CPF);
+      expect(await lastText(contact.id)).toContain("nome completo");
+      await customerSays(contact.id, "ops errei o cpf");
+      expect(await lastText(contact.id)).toContain("CPF certo");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Silva");
+      expect(await lastText(contact.id)).toContain("endereço");
+      await customerSays(contact.id, "errei, o certo é 111.444.777-35");
+      expect(await lastText(contact.id)).toContain("nome completo");
+    });
+
+    it("limite de CPF por telefone: depois de 5 CPFs que não conferem em 24 h, para e passa para a equipe (mesmo em outra conversa)", async () => {
+      const contact = await newCustomer();
+      const conversation = await customerSays(contact.id, "boleto");
+      for (let i = 0; i < 5; i++) {
+        await prisma.conversationEvent.create({ data: { conversationId: conversation.id, type: "AI_CPF_FAILED", payload: { reason: "NOT_FOUND" } } });
+      }
+      const after = await customerSays(contact.id, CPF);
+      expect(after.status).toBe("NEW");
+      expect(await lastText(contact.id)).toContain("Por segurança");
+      expect((await texts(contact.id)).join(" ")).not.toContain("nome completo");
+    });
+
+    it("nome que não confere conta como tentativa de CPF", async () => {
+      const contact = await newCustomer();
+      const conversation = await customerSays(contact.id, "boleto");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Fulano de Tal");
+      expect(await prisma.conversationEvent.count({ where: { conversationId: conversation.id, type: "AI_CPF_FAILED" } })).toBe(1);
     });
   });
 });
