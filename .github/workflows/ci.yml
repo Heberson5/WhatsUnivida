@@ -37,6 +37,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Os testes de áudio (nota de voz) geram e convertem amostras com o ffmpeg, como a API faz em produção.
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
       - name: Build shared packages
         run: |
           npm run build -w packages/types

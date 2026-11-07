@@ -184,7 +184,14 @@ describe("Encerramento por falta de retorno", () => {
       "Joana, como não tivemos retorno, estamos encerrando este atendimento por enquanto. Quando quiser continuar, é só mandar uma mensagem aqui que retomamos de onde paramos. Até logo! 👋"
     );
     expect(survey.closingText).not.toContain("Ana");
-    const question = await prisma.message.findFirstOrThrow({ where: { conversationId: conversation.id, automatedBy: "SURVEY" } });
+    // The question is sent right after the survey row is written: wait for it too, instead of racing it.
+    const findQuestion = () => prisma.message.findFirst({ where: { conversationId: conversation.id, automatedBy: "SURVEY" } });
+    let question = await findQuestion();
+    for (let i = 0; i < 50 && !question; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      question = await findQuestion();
+    }
+    if (!question) throw new Error("A pergunta da pesquisa não foi enviada");
     expect(question.body).toBe("De 0 a 10?");
   });
 
