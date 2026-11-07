@@ -54,6 +54,7 @@ const MAX_NAME_ATTEMPTS = 2;
 const MAX_UNCLEAR = 2;
 const MAX_PARCELS_LISTED = 12;
 // CPFs that didn't match (not found, or the name didn't match) from one phone in 24 hours, across conversations.
+const MAX_AUDIO_FAILS = 2;
 const MAX_FAILED_CPF_PER_DAY = 5;
 
 /** "Boa tarde, Maria! Sou o assistente virtual…": the greeting of the settings, with the time of day and the name. */
@@ -103,6 +104,8 @@ interface SessionData {
   informedAddress?: string;
   addressDiffers?: boolean | null;
   options?: ParcelOption[];
+  /** Audios in a row that could not be transcribed: the first one asks the customer to write, the second goes to the team. */
+  audioFails?: number;
   /** What the customer wrote (or said), for the note. */
   said?: string[];
   summary?: string;
@@ -621,6 +624,21 @@ async function pendingText(conv: Conv, session: AiSession): Promise<{ text: stri
   return { text: parts.join("\n"), last: messages.at(-1)?.createdAt ?? null, failedAudio, media, providerIds };
 }
 
+/**
+ * An audio the server could not transcribe: like a person who couldn't hear it, the assistant asks the customer to write
+ * (at any hour — the out-of-hours notice is only for when a person is really needed). A second one in a row goes to the
+ * team, with the audios there for whoever attends.
+ */
+async function audioNotUnderstood(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
+  const fails = (data.audioFails ?? 0) + 1;
+  if (fails >= MAX_AUDIO_FAILS) {
+    await say(conv, settings, phrase("audioFailed")).catch(() => undefined);
+    return handToQueue(conv, session, settings, { ...data, audioFails: fails }, "áudios não puderam ser transcritos");
+  }
+  await say(conv, settings, phrase("audioAskToWrite", { nome: nameOf(conv) }));
+  return save(session, session.state as State, { ...data, audioFails: fails });
+}
+
 async function run(conversationId: string): Promise<unknown> {
   const conv = await loadConv(conversationId);
   if (!conv) return;
@@ -640,7 +658,7 @@ async function run(conversationId: string): Promise<unknown> {
   if (pending.providerIds.length) void whatsappService.markMessagesRead(conv.connectionId, conv.phone, pending.providerIds).catch(() => undefined);
   if (pending.last) session = await prisma.aiSession.update({ where: { id: session.id }, data: { lastHandledAt: pending.last, lastActivityAt: new Date() } });
   const text = pending.text;
-  if (text) data = { ...data, said: [...(data.said ?? []), text.slice(0, 300)] };
+  if (text) data = { ...data, said: [...(data.said ?? []), text.slice(0, 300)], audioFails: 0 };
 
   const state = (session.state as State) ?? "NEW";
   if (state === "NEW") {
@@ -649,7 +667,7 @@ async function run(conversationId: string): Promise<unknown> {
     if (settings.greeting.trim()) await say(conv, settings, openingOf(conv, settings.greeting));
     session = await save(session, "AWAIT_INTENT", data);
     if (!text) {
-      if (pending.failedAudio) return handToQueue(conv, session, settings, data, "áudio não pôde ser transcrito");
+      if (pending.failedAudio) return audioNotUnderstood(conv, session, settings, data);
       if (pending.media) return handToQueue(conv, session, settings, data, "cliente enviou um arquivo");
       return;
     }
@@ -659,10 +677,7 @@ async function run(conversationId: string): Promise<unknown> {
   }
 
   if (!text) {
-    if (pending.failedAudio) {
-      await say(conv, settings, phrase("audioFailed")).catch(() => undefined);
-      return handToQueue(conv, session, settings, data, "áudio não pôde ser transcrito");
-    }
+    if (pending.failedAudio) return audioNotUnderstood(conv, session, settings, data);
     if (pending.media) return handToQueue(conv, session, settings, data, "cliente enviou um arquivo");
     return;
   }

@@ -11,6 +11,30 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.2",
+    date: "7 nov 2026",
+    name: "Assistente Virtual: ajustes",
+    summary: "As respostas do Assistente Virtual agora têm o nome dele em cima e o texto embaixo, separados por uma linha em branco, igual às mensagens dos atendentes. E quando ele não consegue ouvir um áudio, pede para o cliente escrever e continua o atendimento, a qualquer hora, em vez de passar a conversa para a fila.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Nome do assistente separado do texto",
+        text: "No WhatsApp do cliente, cada resposta do assistente começa com o nome em negrito e, depois de uma linha em branco, o texto, como as mensagens dos atendentes. No sistema, a conversa mostra o nome só no alto do balão, sem repetir no texto.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-nome-linha-em-branco.webp", caption: "Como o cliente vê a resposta", size: "small" }],
+      },
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Áudio que o assistente não conseguiu ouvir",
+        text: "Se o áudio do cliente não puder ser transcrito, o assistente pede para ele escrever o que precisa e segue o atendimento, mesmo fora do expediente. Antes, a conversa ia direto para a fila com a mensagem de fora do expediente. Só depois de dois áudios seguidos sem conseguir ouvir é que ele passa para a equipe. O serviço de transcrição também ganha uma segunda tentativa, alguns segundos depois, para quando ele ainda está carregando após uma atualização.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-audio-nao-entendido.webp", caption: "O assistente pede para escrever e continua o atendimento", size: "small" }],
+      },
+    ],
+  },
+  {
     version: "2.37.1",
     date: "7 nov 2026",
     name: "Conexão continua ligada nas atualizações",

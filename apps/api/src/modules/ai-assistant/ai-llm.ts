@@ -12,6 +12,7 @@ import type { Intent } from "./ai-text";
 
 const CLASSIFY_TIMEOUT_MS = 45_000;
 // A 1-minute audio takes 20–60 s on the VPS processor; longer ones are handed to a person anyway.
+const RETRY_DELAY_MS = 5_000;
 const TRANSCRIBE_TIMEOUT_MS = 240_000;
 
 const INTENTS: Intent[] = ["BOLETO", "DEBITOS", "ATENDENTE", "ENCERRAR", "SAUDACAO", "AGRADECIMENTO", "OUTRO"];
@@ -66,25 +67,31 @@ export async function classifyIntent(text: string): Promise<{ intent: Intent; su
 
 /** What the customer said in an audio stored in the uploads. Null when the service is off or fails. */
 export async function transcribeAudio(storageKey: string, mimeType: string): Promise<string | null> {
-  try {
-    const filePath = path.join(env.UPLOAD_DIR, storageKey);
-    if (!fs.existsSync(filePath)) return null;
-    const audio = fs.readFileSync(filePath);
-    const response = await fetch(`${env.AI_WHISPER_URL}/transcribe?language=pt`, {
-      method: "POST",
-      headers: { "content-type": mimeType || "application/octet-stream" },
-      body: audio,
-      signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      logger.warn({ status: response.status }, "transcription service answered with an error");
-      return null;
-    }
-    const data = (await response.json()) as { text?: string };
-    const text = (data.text ?? "").trim();
-    return text || null;
-  } catch (err) {
-    logger.warn({ err }, "transcription unavailable");
+  const filePath = path.join(env.UPLOAD_DIR, storageKey);
+  if (!fs.existsSync(filePath)) {
+    logger.warn({ storageKey }, "audio file not found for transcription");
     return null;
   }
+  const audio = fs.readFileSync(filePath);
+  // One more try a few seconds later: right after an update the transcription service may still be loading its model.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(`${env.AI_WHISPER_URL}/transcribe?language=pt`, {
+        method: "POST",
+        headers: { "content-type": mimeType || "application/octet-stream" },
+        body: audio,
+        signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { text?: string };
+        return (data.text ?? "").trim() || null;
+      }
+      logger.warn({ status: response.status, body: (await response.text().catch(() => "")).slice(0, 300), attempt }, "transcription service answered with an error");
+    } catch (err) {
+      logger.warn({ err, attempt }, "transcription unavailable");
+      if ((err as Error).name === "TimeoutError") return null; // A long audio that took too long: no point waiting again.
+    }
+    if (attempt === 1 && env.NODE_ENV !== "test") await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+  }
+  return null;
 }

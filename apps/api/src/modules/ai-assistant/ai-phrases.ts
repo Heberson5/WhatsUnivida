@@ -26,6 +26,7 @@ export type PhraseKey =
   | "howCanIHelp"
   | "notUnderstood"
   | "audioFailed"
+  | "audioAskToWrite"
   | "cpfReceivedWhichService"
   | "correctionCpf"
   | "correctionAddress"
@@ -102,6 +103,10 @@ const PHRASES: Record<PhraseKey, string[]> = {
     "Desculpe, não entendi direito. É sobre boleto, linha digitável ou débitos em aberto? Se for outra coisa, me explica em poucas palavras que eu passo para a equipe.",
   ],
   audioFailed: ["Não consegui ouvir o seu áudio.", "Não consegui entender o seu áudio."],
+  audioAskToWrite: [
+    "Desculpe, não consegui ouvir o seu áudio. Pode me escrever, em poucas palavras, o que você precisa?",
+    "Desculpe{virgula_nome}, o seu áudio não ficou claro para mim. Pode escrever o que você precisa? Por exemplo: *boleto* ou *débitos*.",
+  ],
   cpfReceivedWhichService: [
     "Recebi o CPF {cpf}. Você precisa do *boleto* ou quer saber os *débitos em aberto*?",
     "Anotei o CPF {cpf}. É para enviar o *boleto* ou para ver os *débitos em aberto*?",

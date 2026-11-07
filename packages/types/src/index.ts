@@ -4003,7 +4003,8 @@ export const DEFAULT_AI_ASSISTANT_SETTINGS: AiAssistantSettingsDTO = {
 /** "*Assistente Virtual:* texto" — how every reply of the assistant reaches the customer. */
 export function aiAssistantReply(name: string, text: string): string {
   const label = name.trim() || DEFAULT_AI_ASSISTANT_SETTINGS.name;
-  return `*${label}:* ${text}`;
+  // Same as an attendant's message: the name in bold, a blank line, then the text.
+  return `*${label}:*\n\n${text}`;
 }
 
 /** What the server reaches of the local AI right now (Configurações › Assistente Virtual › Situação). */

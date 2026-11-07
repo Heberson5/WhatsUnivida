@@ -87,7 +87,7 @@ export function AssistenteVirtualPanel() {
         <label className="block">
           <span className="mb-1 block text-sm font-medium">Nome que aparece nas respostas</span>
           <input value={form.name} maxLength={AI_ASSISTANT_NAME_MAX} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
-          <span className="mt-1 block text-xs text-muted">O cliente vê: {aiAssistantReply(form.name, "Olá! Como posso ajudar?")}</span>
+          <span className="mt-1 block whitespace-pre-line text-xs text-muted">{"O cliente vê:\n"}{aiAssistantReply(form.name, "Olá! Como posso ajudar?")}</span>
         </label>
 
         <fieldset>

@@ -71,8 +71,8 @@ describe("Assistente Virtual: configurações (Etapa 1 — base, desligada por p
   });
 
   it("toda resposta começa com o nome em negrito", () => {
-    expect(aiAssistantReply("Assistente Virtual", "Olá!")).toBe("*Assistente Virtual:* Olá!");
-    expect(aiAssistantReply(" ", "Olá!")).toBe("*Assistente Virtual:* Olá!");
+    expect(aiAssistantReply("Assistente Virtual", "Olá!")).toBe("*Assistente Virtual:*\n\nOlá!");
+    expect(aiAssistantReply(" ", "Olá!")).toBe("*Assistente Virtual:*\n\nOlá!");
   });
 
   it("situação: IA fora do ar é informada, não estoura erro", async () => {

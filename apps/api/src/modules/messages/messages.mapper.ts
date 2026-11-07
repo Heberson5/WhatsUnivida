@@ -42,7 +42,8 @@ export function toMessageDTO(message: MessageWithRelations): MessageDTO {
     direction: message.direction,
     type: message.type,
     status: message.status,
-    body: message.body,
+    // The Assistente Virtual's name goes on the WhatsApp text; here the bubble already shows it on top.
+    body: message.automatedBy === "AI" && message.body ? message.body.replace(/^\*[^*\n]+:\*\s*/, "") : message.body,
     senderAgentDisplayName: message.senderAgent?.displayName ?? AUTOMATED_SENDER_LABEL[message.automatedBy ?? ""] ?? null,
     createdAt: message.createdAt.toISOString(),
     transcription: message.transcription ?? null,

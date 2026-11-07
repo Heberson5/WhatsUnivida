@@ -125,7 +125,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     let conversation = await customerSays(contact.id, "oi, quero a segunda via do boleto");
     expect(conversation.status).toBe("IN_AI");
     // Greets with the time of day; "Cliente" is not a real name, so no name.
-    expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\* (Bom dia|Boa tarde|Boa noite)! Sou o assistente virtual/);
+    expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\*\n\n(Bom dia|Boa tarde|Boa noite)! Sou o assistente virtual/);
     expect((await lastText(contact.id))).toContain("CPF");
 
     await customerSays(contact.id, "meu cpf é 529 982 247-25");
@@ -205,7 +205,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     const contact = await newCustomer();
     const conversation = await customerSays(contact.id, "quero falar com um atendente");
     expect(conversation.status).toBe("NEW");
-    expect((await lastText(contact.id))).toBe("*Assistente Virtual:* Vou transferir você para um de nossos atendentes. Em instantes alguém irá atendê-lo.");
+    expect((await lastText(contact.id))).toBe("*Assistente Virtual:*\n\nVou transferir você para um de nossos atendentes. Em instantes alguém irá atendê-lo.");
     await resetSent();
     await customerSays(contact.id, "alô?");
     expect(await texts(contact.id)).toHaveLength(0);
@@ -221,7 +221,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     expect((await texts(contact.id))[0]).toContain("Sou o assistente virtual");
     const conversation = await customerSays(contact.id, "me passa para uma atendente por favor");
     expect(conversation.status).toBe("NEW");
-    expect((await lastText(contact.id))).toBe("*Assistente Virtual:* Estamos fora do expediente, Cliente. Voltamos amanhã às 8h.");
+    expect((await lastText(contact.id))).toBe("*Assistente Virtual:*\n\nEstamos fora do expediente, Cliente. Voltamos amanhã às 8h.");
     await resetSent();
     await customerSays(contact.id, "??");
     expect(await texts(contact.id)).toHaveLength(0);
@@ -236,13 +236,31 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     expect(audio.transcription).toBe("quero falar com uma atendente");
   });
 
-  it("áudio que não deu para transcrever: avisa e passa para a fila com nota", async () => {
+  it("áudio que não deu para transcrever: pede para escrever e segue atendendo; no segundo seguido, passa para a fila", async () => {
     const contact = await newCustomer();
-    await customerSays(contact.id, "oi");
     llm.transcription = null;
-    const conversation = await customerSays(contact.id, "", "AUDIO");
+    let conversation = await customerSays(contact.id, "", "AUDIO");
+    expect(conversation.status).toBe("IN_AI");
+    expect((await lastText(contact.id))).toContain("não consegui ouvir o seu áudio. Pode me escrever");
+    conversation = await customerSays(contact.id, "quero o boleto");
+    expect(conversation.status).toBe("IN_AI");
+    expect((await lastText(contact.id))).toContain("CPF do titular");
+    // A failure after a text starts counting again; two in a row go to the team.
+    conversation = await customerSays(contact.id, "", "AUDIO");
+    expect(conversation.status).toBe("IN_AI");
+    conversation = await customerSays(contact.id, "", "AUDIO");
     expect(conversation.status).toBe("NEW");
     expect((await texts(contact.id)).join(" ")).toContain("Não consegui ouvir o seu áudio");
+  });
+
+  it("fora do expediente, um áudio que não deu para transcrever não manda a mensagem de fora do expediente", async () => {
+    const schedule = await prisma.workSchedule.create({ data: { name: "Fechado", state: "MT", city: "Tangará da Serra", days: {}, closedMessage: "Estamos fora do expediente." } });
+    await prisma.whatsAppConnection.update({ where: { id: connectionId }, data: { workScheduleId: schedule.id } });
+    const contact = await newCustomer();
+    llm.transcription = null;
+    const conversation = await customerSays(contact.id, "", "AUDIO");
+    expect(conversation.status).toBe("IN_AI");
+    expect((await texts(contact.id)).join(" ")).not.toContain("fora do expediente");
   });
 
   it("outro assunto entendido pela IA local: passa para a fila com o resumo na nota", async () => {
@@ -530,7 +548,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       const contact = await newCustomer();
       await prisma.contact.update({ where: { id: contact.id }, data: { name: "maria eduarda 🌻" } });
       await customerSays(contact.id, "oi");
-      expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\* (Bom dia|Boa tarde|Boa noite), Maria! Sou o assistente virtual/);
+      expect((await texts(contact.id))[0]).toMatch(/^\*Assistente Virtual:\*\n\n(Bom dia|Boa tarde|Boa noite), Maria! Sou o assistente virtual/);
     });
 
     it("CPF mandado antes de dizer o que quer: pergunta o serviço e usa o CPF sem pedir de novo", async () => {
