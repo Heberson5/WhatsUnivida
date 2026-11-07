@@ -23,6 +23,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         text: "O administrador liga ou desliga o assistente, escolhe o nome que abre todas as respostas (por exemplo, Assistente Virtual), as conexões em que ele atende, a saudação e a mensagem de transferência. O Modo teste, ligado de início, faz o assistente atender só os telefones da lista. Os quadros de situação mostram se a IA e a transcrição de áudio estão prontas no servidor.",
         where: "Configurações › Assistente Virtual",
         roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/assistente-configuracoes.webp", caption: "Configurações › Assistente Virtual, com a IA e a transcrição prontas no servidor" }],
       },
       {
         type: "novo",
@@ -31,6 +32,10 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         text: "O cliente pede do jeito dele (por texto ou áudio) e o assistente sempre pergunta de qual CPF é o boleto, o do titular do plano, porque quem escreve pode ser um beneficiário ou parente. O CPF pode vir em qualquer formato. Em seguida, pede o nome completo e o endereço do titular para confirmar, sem mostrar nenhum dado antes. Com o nome conferido, informa as parcelas em aberto (mês e valor atualizado) e envia o PDF do boleto com a linha digitável e o PIX, inclusive de parcela vencida, com multa e juros do dia. Se o CPF informado não tiver boleto, pede o CPF do titular. Um CPF que o telefone já confirmou é oferecido como o mesmo de antes e não precisa confirmar nome e endereço de novo.",
         where: "WhatsApp do cliente",
         roles: ["ADMIN", "MANAGER"],
+        images: [
+          { src: "/notas-de-versao/assistente-conversa-cpf.webp", caption: "O áudio transcrito, o pedido do CPF do titular e a confirmação de nome e endereço", size: "small" },
+          { src: "/notas-de-versao/assistente-boleto.webp", caption: "As parcelas em aberto, o PDF do boleto e a linha digitável", size: "small" },
+        ],
       },
       {
         type: "novo",
@@ -82,6 +87,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         title: "Botão Transcrever para os atendentes",
         text: "Com a opção ligada em Configurações › Assistente Virtual, cada áudio do cliente ganha o botão Transcrever durante o atendimento. A transcrição leva de 20 segundos a 1 minuto por minuto de áudio, fica guardada na conversa e aparece para todos. Com a opção desligada (o padrão), os áudios só são transcritos enquanto o assistente atende.",
         where: "Atendimento › conversa",
+        images: [{ src: "/notas-de-versao/assistente-transcrever.webp", caption: "Um áudio já transcrito e outro com o botão Transcrever", size: "small" }],
       },
       {
         type: "novo",
@@ -89,6 +95,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         title: "Aviso de cadastro desatualizado",
         text: "Quando o endereço informado ao assistente é diferente do cadastro, ou o telefone que entrou em contato não está no cadastro do CPF (um beneficiário pedindo o boleto do titular, por exemplo), aparece um aviso a cada conversa aceita desse cliente com o que precisa ser atualizado. O aviso só para quando alguém clica em Cadastro já atualizado, e fica registrado quem atualizou, o dia e a hora.",
         where: "Atendimento › conversa aceita",
+        images: [{ src: "/notas-de-versao/assistente-cadastro-desatualizado.webp", caption: "O aviso ao aceitar a conversa", size: "small" }],
       },
       {
         type: "novo",
@@ -105,6 +112,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         text: "A Gestão ganhou o filtro Com a IA, para as conversas que o assistente está atendendo. Dali dá para transferir a conversa para um atendente ou mandá-la para a fila. Se alguém responder pelo celular, a conversa sai do assistente na hora.",
         where: "Gestão",
         roles: ["ADMIN", "MANAGER"],
+        images: [{ src: "/notas-de-versao/gestao-com-a-ia.webp", caption: "O filtro Com a IA na Gestão" }],
       },
       {
         type: "novo",
