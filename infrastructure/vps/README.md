@@ -71,6 +71,28 @@ Um arquivo de 300 MB (cerca de 720 mil linhas) leva perto de 3 minutos para ser
 lido e usa até 2,2 GB de memória enquanto isso: a VPS precisa ter memória livre
 para isso, além do que o sistema já usa.
 
+## Deploy automático (GitHub Actions)
+
+Cada push na branch `main` roda os testes e, se passarem, atualiza a VPS
+sozinho (`.github/workflows/deploy.yml` → `infrastructure/vps/auto-deploy.sh`):
+
+1. espera outro deploy terminar (os dois sistemas nunca constroem ao mesmo tempo);
+2. salva o banco, o `.env` e o commit em `~/backups-auto/<pasta>/AAAAMMDD-HHMMSS`
+   (ficam os 7 últimos) — sem esse backup, nada é alterado;
+3. atualiza o código, para os containers, reconstrói e sobe;
+4. espera `/api/health` responder; se o build falhar ou o sistema não responder
+   em 5 minutos, volta sozinho para as imagens e o commit anteriores.
+
+O andamento e o resultado ficam em **Actions › Deploy VPS** no GitHub, que também
+tem **Run workflow** para rodar de novo à mão. Precisa de três segredos em
+**Settings › Secrets and variables › Actions**: `VPS_HOST` (IP), `VPS_USER`
+(`ubuntu`) e `VPS_SSH_KEY` (o conteúdo inteiro do arquivo `.key` usado no
+`gerenciador-vps.bat`). A porta 22 da VPS precisa aceitar conexões de fora (a
+regra padrão da Oracle aceita).
+
+O banco não volta sozinho: se uma atualização com migração der errado, o backup
+está na pasta do passo 2 (`banco.sql.gz`).
+
 ## Backup e restauração completos
 
 Antes de qualquer atualização arriscada (ex.: trocar a versão do Baileys),

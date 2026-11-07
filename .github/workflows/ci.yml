@@ -1,10 +1,11 @@
 name: CI
 
+# Push na main não roda aqui: o Deploy VPS (deploy.yml) já roda estes testes antes de atualizar a VPS.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  # Deploy VPS (deploy.yml) roda estes mesmos testes antes de atualizar a VPS.
+  workflow_call:
 
 jobs:
   build-and-test:

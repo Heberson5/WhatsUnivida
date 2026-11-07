@@ -1,0 +1,74 @@
+name: Deploy VPS
+
+# A cada push na branch que a VPS segue: roda os testes (ci.yml) e, só se
+# passarem, atualiza a VPS com infrastructure/vps/auto-deploy.sh (backup do
+# banco, rebuild, verificação de saúde e volta automática se falhar).
+# Também dá para disparar à mão em Actions › Deploy VPS › Run workflow.
+#
+# Segredos necessários (Settings › Secrets and variables › Actions):
+#   VPS_HOST    IP da VPS
+#   VPS_USER    usuário SSH (ubuntu)
+#   VPS_SSH_KEY conteúdo inteiro da chave privada (.key) usada no gerenciador-vps.bat
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  VPS_PROJECT: whatsunivida
+  VPS_BRANCH: main
+  VPS_WEB_PORT: "8086"
+
+# Um deploy por vez; um push novo espera o anterior terminar (nunca corta um deploy no meio).
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir segredos
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          missing=""
+          [ -n "$VPS_HOST" ] || missing="$missing VPS_HOST"
+          [ -n "$VPS_USER" ] || missing="$missing VPS_USER"
+          [ -n "$VPS_SSH_KEY" ] || missing="$missing VPS_SSH_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Faltam os segredos:$missing (Settings › Secrets and variables › Actions). Nada foi alterado na VPS."
+            exit 1
+          fi
+
+      - name: Chave SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+
+      - name: Atualizar a VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/vps_key -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=30 \
+            "$VPS_USER@$VPS_HOST" "bash -s -- $VPS_PROJECT $VPS_BRANCH $VPS_WEB_PORT $GITHUB_SHA" \
+            < infrastructure/vps/auto-deploy.sh
+
+      - name: Apagar a chave
+        if: always()
+        run: rm -f ~/.ssh/vps_key
