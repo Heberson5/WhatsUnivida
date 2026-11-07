@@ -18,6 +18,7 @@ import { TransferModal } from "./TransferModal";
 import { ForwardModal } from "./ForwardModal";
 import { PinnedContactNote } from "./PinnedContactNote";
 import { SuspensionWarningModal } from "./SuspensionWarningModal";
+import { DataCorrectionModal } from "./DataCorrectionModal";
 import { BirthdayModal } from "./BirthdayModal";
 import { SendTemplateModal } from "./SendTemplateModal";
 import { TransferNoteCard } from "./TransferNoteCard";
@@ -1003,6 +1004,7 @@ export function ChatPanel({
 
       {/* The attendant's warning — someone only watching (Gestão) must not use up their once-per-conversation popup. */}
       {conversation.assignedAgentId === userId && <SuspensionWarningModal conversationId={conversation.id} />}
+      {conversation.assignedAgentId === userId && <DataCorrectionModal conversationId={conversation.id} />}
       {conversation.assignedAgentId === userId && (
         <BirthdayModal
           conversationId={conversation.id}

@@ -68,7 +68,29 @@ export async function deleteRelease(id: string): Promise<ReleaseDTO> {
  * an administrator deleted is not brought back, an edited one is not overwritten, and a version shipped later is
  * added on the next start. Called when the server starts.
  */
+/**
+ * A version shipped in two steps under the same number: the first copy (still exactly as shipped — same name, never
+ * edited by an administrator) is replaced by the complete one, and whoever had already read it sees it again.
+ * 2.37.0 first went out as "Assistente Virtual: preparação" and then as the whole Assistente Virtual.
+ */
+const SUPERSEDED_SHIPPED: Record<string, string> = { "2.37.0": "Assistente Virtual: preparação" };
+
+async function replaceSupersededShipped(defaults: ReleaseContent[]): Promise<void> {
+  for (const [version, oldName] of Object.entries(SUPERSEDED_SHIPPED)) {
+    const shipped = defaults.find((r) => r.version === version);
+    if (!shipped || shipped.name === oldName) continue;
+    const row = await prisma.releaseNoteVersion.findUnique({ where: { version } });
+    if (!row || row.name !== oldName) continue;
+    await prisma.releaseNoteVersion.update({ where: { version }, data: toData(shipped) });
+    // Back to the version before, so the complete note shows up once more (and nothing older does).
+    const previous = defaults.map((r) => r.version).filter((v) => compareVersions(v, version) < 0).sort(compareVersions).at(-1) ?? null;
+    await prisma.user.updateMany({ where: { releaseNotesSeenVersion: version }, data: { releaseNotesSeenVersion: previous } });
+    logger.info({ version }, "release note shipped in two steps replaced by its complete version");
+  }
+}
+
 export async function syncDefaultReleaseNotes(defaults: ReleaseContent[] = DEFAULT_RELEASES): Promise<number> {
+  await replaceSupersededShipped(defaults);
   const record = await prisma.systemSetting.findUnique({ where: { key: DEFAULTS_KEY } });
   const copied = new Set((record?.value as { versions?: string[] } | undefined)?.versions ?? []);
   const missing = defaults.filter((r) => !copied.has(r.version));

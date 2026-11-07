@@ -28,6 +28,7 @@ import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
 import { addAttachment } from "../messages/messages.service";
 import * as whatsappService from "../whatsapp/whatsapp.service";
+import * as aiEngine from "../ai-assistant/ai-engine.service";
 import { getConnectionSchedule, isWorkScheduleOpen } from "../work-schedules/work-schedules.service";
 
 /**
@@ -246,6 +247,21 @@ async function handToQueue(conversation: FlowConversation, sessionId: string | n
   realtimeEvents.newQueueConversation(conversation.whatsappConnectionId, conversation.id, conversation.contactName);
 }
 
+/**
+ * The "Assistente Virtual" step: the flow ends and the assistant takes the conversation (IN_AI) — or the queue, when
+ * the assistant is off, in Modo teste for other phones, or a tag of the customer stops it.
+ */
+async function handToAssistant(conversation: FlowConversation, sessionId: string, vars: FlowVars): Promise<void> {
+  if (!(await aiEngine.assistantTakes(conversation.whatsappConnectionId, conversation.contactId, conversation.contactPhone))) {
+    return handToQueue(conversation, sessionId, "AI_UNAVAILABLE", vars);
+  }
+  await prisma.conversation.update({ where: { id: conversation.id }, data: { status: "IN_AI" } });
+  await prisma.conversationEvent.create({ data: { conversationId: conversation.id, type: "FLOW_TO_AI", payload: {} } });
+  await completeSession(sessionId);
+  await notePath(conversation, vars);
+  await aiEngine.startFromFlow(conversation.id);
+}
+
 /** Into Abandonados — whoever is online among the flow's people accepts it (see listAbandoned). */
 async function handToAbandoned(conversation: FlowConversation, sessionId: string, payload: AbandonedPayload, vars: FlowVars): Promise<void> {
   await prisma.conversation.update({ where: { id: conversation.id }, data: { status: "FLOW_ABANDONED", enteredQueueAt: new Date() } });
@@ -358,6 +374,9 @@ async function advance(conversation: FlowConversation, sessionId: string, flowId
         return;
       case "END":
         await closeByFlow(conversation, sessionId);
+        return;
+      case "AI_ASSISTANT":
+        await handToAssistant(conversation, sessionId, vars);
         return;
     }
   }

@@ -854,6 +854,9 @@ model Conversation {
   queueWaitQueueAt     DateTime?
   queueWaitLastAt      DateTime?
   dataClientKey        String?
+  // Assistente Virtual: the CPF/CNPJ the customer confirmed (name checked) — Dados do cliente and the boleto then use
+  // that client's rows, even when this phone isn't the one on the spreadsheet.
+  dataCpfKey           String?
   dataSuspensionAckAt  DateTime?
   // The birthday pop-up was already shown (sent or "Agora não") in this conversation.
   birthdayAckAt        DateTime?
@@ -983,6 +986,8 @@ model Message {
   // Sent by the system itself, not a person: "FLOW" (Fluxo) or "SURVEY"
   // (pesquisa de satisfação). Shown with that label instead of an agent's name.
   automatedBy       String?
+  // Audio transcribed on the server (Assistente Virtual) — what the customer said, shown under the audio.
+  transcription     String?
   replyToMessage    Message?         @relation("MessageReplies", fields: [replyToMessageId], references: [id])
   replyToMessageId  String?
   replies           Message[]        @relation("MessageReplies")
@@ -1273,6 +1278,8 @@ enum FlowNodeType {
   // sourceHandle "open" or "closed".
   BUSINESS_HOURS
   END
+  // Hands the conversation to the Assistente Virtual (modules/ai-assistant). Terminal, like TRANSFER_TO_AGENT.
+  AI_ASSISTANT
 }
 
 model Flow {
@@ -1792,8 +1799,12 @@ model DataSourceRow {
   // Position in the file, so contracts and clients keep the spreadsheet's order.
   line         Int
   data         Json
+  // CPF/CNPJ digits of the row (column with the "CPF/CNPJ" role) — the Assistente Virtual finds the client by it,
+  // whatever phone the customer writes from.
+  cpfKey       String?
 
   @@index([dataSourceId, phoneKey])
+  @@index([dataSourceId, cpfKey])
 }
 
 // Chat interno: between the people of the team (not customers).
@@ -2281,4 +2292,58 @@ model ReportScheduleRun {
   createdAt    DateTime                @default(now())
 
   @@index([scheduleId, createdAt])
+}
+
+// Assistente Virtual: where the conversation with the customer is (modules/ai-assistant/ai-engine.service.ts).
+// One per conversation while it is IN_AI; kept afterwards for the history.
+model AiSession {
+  id              String    @id @default(uuid())
+  seq             Int       @unique @default(autoincrement())
+  conversationId  String    @unique
+  contactId       String
+  // GREETED | AWAIT_INTENT | AWAIT_CPF | AWAIT_NAME | AWAIT_ADDRESS | AWAIT_PARCEL | AWAIT_MORE | DONE
+  state           String    @default("NEW")
+  // What it collected and did: { intent, cpfKey, attempts, informedName, informedAddress, actions[] ... }.
+  data            Json      @default("{}")
+  // Last inbound message already answered — the next run takes everything after it.
+  lastHandledAt   DateTime?
+  lastActivityAt  DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  endedAt         DateTime?
+  endReason       String?
+
+  @@index([endedAt, lastActivityAt])
+  @@index([contactId])
+}
+
+// A phone that already confirmed a CPF/CNPJ with the Assistente Virtual (name and address): the next contacts skip it.
+model ContactCpfVerification {
+  id         String   @id @default(uuid())
+  seq        Int      @unique @default(autoincrement())
+  contactId  String
+  cpfKey     String
+  verifiedAt DateTime @default(now())
+
+  @@unique([contactId, cpfKey])
+}
+
+// "Cadastro desatualizado": what the customer told the Assistente Virtual differs from the data source. Shown as a
+// pop-up whenever someone accepts a conversation of this customer, until someone marks it as updated.
+model ClientDataCorrection {
+  id                String    @id @default(uuid())
+  seq               Int       @unique @default(autoincrement())
+  contactId         String
+  conversationId    String
+  cpfKey            String
+  clientName        String?
+  registeredAddress String?
+  informedName      String?
+  informedAddress   String?
+  createdAt         DateTime  @default(now())
+  resolvedById      String?
+  resolvedByName    String?
+  resolvedAt        DateTime?
+
+  @@index([contactId, resolvedAt])
+  @@index([cpfKey, resolvedAt])
 }

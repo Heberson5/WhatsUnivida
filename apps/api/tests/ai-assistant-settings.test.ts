@@ -84,12 +84,22 @@ describe("Assistente Virtual: configurações (Etapa 1 — base, desligada por p
   });
 
   it("situação: serviço no ar, modelo pronto só quando já baixado", async () => {
-    const tags = (names: string[]) => new Response(JSON.stringify({ models: names.map((name) => ({ name, model: name })) }), { status: 200 });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(tags([])).mockResolvedValueOnce(tags(["qwen2.5:3b"])));
+    let models: string[] = [];
+    let whisperReady = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("/health")
+          ? new Response(JSON.stringify({ ready: whisperReady }), { status: 200 })
+          : new Response(JSON.stringify({ models: models.map((name) => ({ name, model: name })) }), { status: 200 })
+      )
+    );
     const before = await request(app).get("/api/settings/ai-assistant/status").set("Authorization", `Bearer ${admin}`);
-    expect(before.body).toMatchObject({ reachable: true, modelReady: false });
+    expect(before.body).toMatchObject({ reachable: true, modelReady: false, transcriptionReady: false });
+    models = ["qwen2.5:3b"];
+    whisperReady = true;
     const after = await request(app).get("/api/settings/ai-assistant/status").set("Authorization", `Bearer ${admin}`);
-    expect(after.body).toMatchObject({ reachable: true, modelReady: true, error: null });
+    expect(after.body).toMatchObject({ reachable: true, modelReady: true, transcriptionReady: true, error: null });
   });
 });
 

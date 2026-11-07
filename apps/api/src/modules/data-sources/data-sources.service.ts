@@ -259,9 +259,10 @@ async function storeTable(source: DataSource, table: FetchedTable) {
     await prisma.dataSource.update({ where: { id: source.id }, data: { columns: table.columns } });
     throw new Error("Não achei a coluna do telefone. Clique em Editar, escolha qual coluna é o telefone e envie o arquivo de novo.");
   }
+  const cpfColumn = columnMap.cpf && table.columns.includes(columnMap.cpf) ? columnMap.cpf : null;
   const rows = table.rows.flatMap((data, line) => {
     const key = phoneKey(data[phoneColumn]);
-    return key ? [{ dataSourceId: source.id, phoneKey: key, line, data }] : [];
+    return key ? [{ dataSourceId: source.id, phoneKey: key, line, data, cpfKey: cpfColumn ? cpfKeyOf(data[cpfColumn]) : null }] : [];
   });
   if (rows.length === 0) throw new Error("Nenhuma linha tem um telefone válido (55 + DDD + número)");
   await prisma.$transaction(
@@ -286,6 +287,12 @@ async function storeTable(source: DataSource, table: FetchedTable) {
   if (source.overrideContactName && columnMap.clientName) await overrideContactNames(rows, columnMap);
   if (columnMap.contract) await fillContactContracts(rows, columnMap);
   if (columnMap.beneficiaries) await fillContactBirthdays(rows, columnMap);
+}
+
+/** CPF/CNPJ as stored for the search: only the digits; anything that isn't 11 or 14 of them is no key. */
+export function cpfKeyOf(value: string | undefined | null): string | null {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length === 11 || digits.length === 14 ? digits : null;
 }
 
 /** Contract numbers of a client as Contatos › Contrato keeps them. */
@@ -641,6 +648,8 @@ export interface ConversationForData {
   id: string;
   whatsappConnectionId: string | null;
   dataClientKey: string | null;
+  /** Confirmed with the Assistente Virtual: the client is the one with this CPF/CNPJ, whatever phone wrote. */
+  dataCpfKey?: string | null;
   dataSuspensionAckAt: Date | null;
   contact: { phone: string | null };
 }
@@ -649,7 +658,8 @@ export interface ConversationForData {
 export async function clientRows(source: DataSource, conversation: ConversationForData) {
   const map = source.columnMap as ColumnMap;
   const key = phoneKey(conversation.contact.phone);
-  const rows = key ? await prisma.dataSourceRow.findMany({ where: { dataSourceId: source.id, phoneKey: key }, orderBy: { line: "asc" } }) : [];
+  const where = conversation.dataCpfKey ? { dataSourceId: source.id, cpfKey: conversation.dataCpfKey } : key ? { dataSourceId: source.id, phoneKey: key } : null;
+  const rows = where ? await prisma.dataSourceRow.findMany({ where, orderBy: { line: "asc" } }) : [];
   const byClient = new Map<string, { id: string; data: Row }[]>();
   for (const row of rows) {
     const data = row.data as Row;

@@ -161,9 +161,21 @@ export function AssistenteVirtualPanel() {
             {checking ? "Verificando…" : "Verificar de novo"}
           </button>
         </div>
-        <p className="px-1 text-xs text-muted">
-          Áudios do cliente são transcritos no servidor ({status?.transcriptionModel ?? "large-v3-turbo"}) antes de o assistente responder. Nada é enviado para serviços externos.
-        </p>
+        <div className="rounded-card border border-border p-4">
+          <p className="text-sm font-semibold">Transcrição de áudio</p>
+          {!status ? (
+            <p className="mt-2 text-sm text-muted">Verificando…</p>
+          ) : status.transcriptionReady ? (
+            <p className="mt-2 flex items-start gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Pronta — {status.transcriptionModel}.
+            </p>
+          ) : (
+            <p className="mt-2 flex items-start gap-2 text-sm text-warning">
+              <CircleDashed className="mt-0.5 h-4 w-4 shrink-0" /> Ainda não está pronta (na primeira vez o modelo {status.transcriptionModel} é baixado). Enquanto isso, um áudio do cliente vai para a fila.
+            </p>
+          )}
+        </div>
+        <p className="px-1 text-xs text-muted">O assistente só responde a um áudio depois de transcrevê-lo. Tudo roda no servidor: nada é enviado para serviços externos.</p>
       </aside>
     </div>
   );

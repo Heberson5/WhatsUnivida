@@ -1,4 +1,4 @@
-import { Clock, Flag, List, MessageSquareText, UserCheck2, type LucideIcon } from "lucide-react";
+import { Bot, Clock, Flag, List, MessageSquareText, UserCheck2, type LucideIcon } from "lucide-react";
 import type { FlowNodeType } from "@whatsatendende/types";
 
 /** Label, icon and color of each node type — shared by the list thumbnails and the editor. */
@@ -9,6 +9,7 @@ export const NODE_META: Record<FlowNodeType, { label: string; icon: LucideIcon; 
   TRANSFER_TO_AGENT: { label: "Transferir para atendente", icon: UserCheck2, color: "#059669" },
   BUSINESS_HOURS: { label: "Horário de atendimento", icon: Clock, color: "#D97706" },
   END: { label: "Fim", icon: Flag, color: "#DC2626" },
+  AI_ASSISTANT: { label: "Assistente Virtual", icon: Bot, color: "#0EA5E9" },
 };
 
 export type FlowTemplate = "welcome" | "after-hours";

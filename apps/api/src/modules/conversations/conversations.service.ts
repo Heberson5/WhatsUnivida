@@ -4,6 +4,7 @@ import { CONVERSATION_UNDO_WINDOW_MS, brazilianPhoneVariants } from "@whatsatend
 import { prisma } from "../../lib/prisma";
 import { endFlowSession, flowIdsWithPerson, noteAbandonedReason } from "../flows/flow-engine.service";
 import { blockingTag, recordBlocked, CONTACT_CARD_TAGS } from "../../lib/auto-messages";
+import { assistantTakes } from "../ai-assistant/ai-engine.service";
 import { designatedAgentFor } from "../../lib/queue-routing";
 import { getClosedMessageForConnection } from "../work-schedules/work-schedules.service";
 import { scheduleCloseFollowUp, type HeldClosingMessage } from "../satisfaction/satisfaction.service";
@@ -734,12 +735,16 @@ export async function findOrOpenConversationForInboundMessage(
   // A tag that stops the Fluxo (Etiquetas): the customer goes straight to the queue — recorded below, once the conversation exists.
   const flowBlock = connectionFlow ? await blockingTag(contactId, "FLOW") : null;
   const activeFlow = flowBlock ? null : connectionFlow;
+  // Assistente Virtual (Configurações › Assistente Virtual): with no Fluxo on the connection, it talks to the customer
+  // first — at any hour; it tells the out-of-hours notice itself when it passes the conversation to the queue.
+  const contactPhone = !mentionedAgent && !activeFlow && channel === "WHATSAPP" ? (await prisma.contact.findUnique({ where: { id: contactId }, select: { phone: true } }))?.phone ?? null : null;
+  const aiTakes = contactPhone ? await assistantTakes(connectionId, contactId, contactPhone) : false;
   // A flow that tells the hours itself (Início › avisar fora do horário) replaces the schedule's notice.
   const flowTellsHours = Boolean((activeFlow?.flow.nodes[0]?.data as { outOfHoursPrompt?: boolean } | null)?.outOfHoursPrompt);
 
   // Outside the hours of the schedule this connection follows (Respostas › Horário de expediente), the customer gets the
   // schedule's notice instead of the Fluxo — once, with the conversation that opens now. Nobody is notified who asked for a named online agent.
-  const closedMessage = mentionedAgent || flowTellsHours ? null : await getClosedMessageForConnection(channel, connectionId, now);
+  const closedMessage = mentionedAgent || flowTellsHours || aiTakes ? null : await getClosedMessageForConnection(channel, connectionId, now);
   const flowId = closedMessage ? null : (activeFlow?.flowId ?? null);
 
   const conversation = await prisma.conversation.create({
@@ -754,7 +759,7 @@ export async function findOrOpenConversationForInboundMessage(
           acceptedAt: now,
           lastMessageAt: now,
         }
-      : { contactId, channel, ...connectionField, status: flowId ? "IN_FLOW" : "NEW", enteredQueueAt: now, lastMessageAt: now },
+      : { contactId, channel, ...connectionField, status: flowId ? "IN_FLOW" : aiTakes ? "IN_AI" : "NEW", enteredQueueAt: now, lastMessageAt: now },
   });
 
   if (mentionedAgent) {

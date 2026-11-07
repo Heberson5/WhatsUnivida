@@ -48,7 +48,10 @@ export function assistantAnswers(settings: AiAssistantSettingsDTO, connectionId:
 
 /** Asks Ollama which models it has — never throws; a down service is reported, not raised. */
 export async function getAiAssistantStatus(): Promise<AiAssistantStatusDTO> {
-  const base: AiAssistantStatusDTO = { reachable: false, model: env.AI_MODEL, modelReady: false, transcriptionModel: env.AI_TRANSCRIPTION_MODEL, error: null };
+  const transcriptionReady = await fetch(`${env.AI_WHISPER_URL}/health`, { signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) })
+    .then(async (r) => (r.ok ? Boolean(((await r.json()) as { ready?: boolean }).ready) : false))
+    .catch(() => false);
+  const base: AiAssistantStatusDTO = { reachable: false, model: env.AI_MODEL, modelReady: false, transcriptionModel: env.AI_TRANSCRIPTION_MODEL, transcriptionReady, error: null };
   try {
     const response = await fetch(`${env.AI_OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
     if (!response.ok) return { ...base, error: `O serviço de IA respondeu ${response.status}` };

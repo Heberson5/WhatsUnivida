@@ -25,6 +25,7 @@ const schema = z.object({
   AI_OLLAMA_URL: z.string().default("http://ollama:11434"),
   AI_MODEL: z.string().default("qwen2.5:3b"),
   AI_TRANSCRIPTION_MODEL: z.string().default("large-v3-turbo"),
+  AI_WHISPER_URL: z.string().default("http://whisper:9000"),
   // Where Auditoria looks up the approximate place of an IP (each IP once). Empty turns the lookup off.
   IP_GEOLOCATION_URL: z.string().default("https://ipwho.is"),
   // Minutes the business is behind UTC (what JS getTimezoneOffset() reports; 240 = UTC-4,

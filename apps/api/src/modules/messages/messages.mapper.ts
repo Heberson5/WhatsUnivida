@@ -13,6 +13,7 @@ const AUTOMATED_SENDER_LABEL: Record<string, string> = {
   TRANSFER: "Mensagem de transferência",
   CLOSING: "Mensagem de encerramento",
   NO_RETURN: "Falta de retorno",
+  AI: "Assistente Virtual",
 };
 
 type MessageWithRelations = Message & {
@@ -44,6 +45,7 @@ export function toMessageDTO(message: MessageWithRelations): MessageDTO {
     body: message.body,
     senderAgentDisplayName: message.senderAgent?.displayName ?? AUTOMATED_SENDER_LABEL[message.automatedBy ?? ""] ?? null,
     createdAt: message.createdAt.toISOString(),
+    transcription: message.transcription ?? null,
     deliveredAt: message.deliveredAt ? message.deliveredAt.toISOString() : null,
     readAt: message.readAt ? message.readAt.toISOString() : null,
     replyToMessageId: message.replyToMessageId,

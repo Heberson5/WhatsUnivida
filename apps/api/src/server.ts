@@ -21,6 +21,7 @@ import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { fireDueReminders, sendDueScheduledMessages } from "./modules/agent-tools/agent-tools.service";
 import { abandonIdleFlowSessions, dispatchWaitingTransfers } from "./modules/flows/flow-engine.service";
+import { sweepAssistantSessions } from "./modules/ai-assistant/ai-engine.service";
 import { processDueSchedules, refreshNextRuns } from "./modules/report-schedules/report-schedules.service";
 import { purgeExpiredTrash } from "./modules/announcements/announcements.service";
 import { todayKey } from "./modules/announcements/announcement-days";
@@ -116,6 +117,12 @@ async function main() {
   }, QUEUE_REMINDER_CHECK_INTERVAL_MS);
   deviceRequeueTimer.unref();
 
+  // Assistente Virtual: customers who stopped answering, conversations taken away, messages left by a restart.
+  const assistantTimer = setInterval(() => {
+    sweepAssistantSessions().catch((err) => logger.error({ err }, "failed to sweep the assistant sessions"));
+  }, 60_000);
+  assistantTimer.unref();
+
   const idleSessionTimer = setInterval(() => {
     endIdleSessions().catch((err) => logger.error({ err }, "failed to end idle sessions"));
   }, IDLE_SESSION_SWEEP_INTERVAL_MS);
@@ -204,6 +211,7 @@ async function main() {
     clearInterval(deviceRequeueTimer);
     clearInterval(dataSourceTimer);
     clearInterval(idleSessionTimer);
+    clearInterval(assistantTimer);
     clearInterval(contactsSyncTimer);
     clearInterval(closingMessageTimer);
     clearInterval(autoMessagesTimer);

@@ -15,6 +15,7 @@ import * as service from "./client-panel.service";
 import * as dataSources from "../data-sources/data-sources.service";
 import * as birthdays from "../birthdays/birthdays.service";
 import * as whatsappService from "../whatsapp/whatsapp.service";
+import { realtimeEvents } from "../../realtime/realtime";
 
 // Mounted next to conversationsRouter (/api/conversations/:id/...): the
 // client panel beside the chat (tags, earlier conversations) and internal notes.
@@ -121,6 +122,36 @@ clientPanelRouter.put(
       metadata: { firstName: firstName || null },
     });
     res.json(await service.getContactPanel(conversation.id, conversation.contactId, conversation.contact.firstConversationAt));
+  })
+);
+
+// Cadastro desatualizado: what the customer told the Assistente Virtual differs from the data source — the pop-up when
+// someone attends this customer, until someone marks the record as updated.
+clientPanelRouter.get(
+  "/:id/data-corrections",
+  requireAttendanceAccess,
+  asyncHandler(async (req, res) => {
+    const conversation = await conversationForRead(req);
+    res.json(await service.pendingCorrections(conversation));
+  })
+);
+
+clientPanelRouter.post(
+  "/:id/data-corrections/:correctionId/resolve",
+  requireAttendanceAccess,
+  asyncHandler(async (req, res) => {
+    const conversation = await conversationForWrite(req);
+    const resolved = await service.resolveCorrection(conversation, req.params.correctionId, { id: req.auth!.userId, name: req.auth!.displayName });
+    await writeAudit({
+      userId: req.auth!.userId,
+      action: "CLIENT_DATA_CORRECTION_RESOLVED",
+      entity: "ClientDataCorrection",
+      entityId: resolved.id,
+      ipAddress: req.ip ?? null,
+      metadata: { conversationId: conversation.id, informedAddress: resolved.informedAddress },
+    });
+    realtimeEvents.notesChanged(conversation.id, [req.auth!.userId]);
+    res.json(resolved);
   })
 );
 

@@ -122,8 +122,8 @@ main() {
   # IA local (Assistente Virtual), compartilhada pelos dois sistemas. Nunca derruba o deploy: sem ela, o
   # assistente só passa as conversas para a fila.
   if [ -f infrastructure/ia-local/docker-compose.yml ]; then
-    log "IA local (Ollama + $AI_MODEL)"
-    if docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d --remove-orphans; then
+    log "IA local (Ollama + $AI_MODEL e transcrição Whisper large-v3-turbo)"
+    if docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d --build --remove-orphans; then
       if docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml exec -T ollama ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$AI_MODEL"; then
         echo "Modelo $AI_MODEL já está baixado."
       else

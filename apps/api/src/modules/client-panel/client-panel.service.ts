@@ -1,5 +1,5 @@
 import { contactContractsOf } from "../../lib/contact-contracts";
-import { AUTO_MESSAGE_KINDS, type AutoMessageKind, type ContactPanelDTO, type ConversationNoteDTO, type PreviousConversationDetailDTO, type TagDTO } from "@whatsatendende/types";
+import { AUTO_MESSAGE_KINDS, type AutoMessageKind, type ClientDataCorrectionDTO, type ContactPanelDTO, type ConversationNoteDTO, type PreviousConversationDetailDTO, type TagDTO } from "@whatsatendende/types";
 import { toMessageDTO } from "../messages/messages.mapper";
 import { messageInclude } from "../messages/messages.service";
 import { prisma } from "../../lib/prisma";
@@ -156,4 +156,52 @@ export async function createNote(conversationId: string, authorId: string, body:
     include: { author: { select: { displayName: true } } },
   });
   return toNoteDTO(note);
+}
+
+// --- Cadastro desatualizado (Assistente Virtual) -----------------------------------------------------------------
+
+function toCorrectionDTO(row: {
+  id: string;
+  createdAt: Date;
+  cpfKey: string;
+  clientName: string | null;
+  registeredAddress: string | null;
+  informedName: string | null;
+  informedAddress: string | null;
+  resolvedAt: Date | null;
+  resolvedByName: string | null;
+}): ClientDataCorrectionDTO {
+  const digits = row.cpfKey;
+  const cpf = digits.length === 11 ? `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**` : digits.length === 14 ? `**.${digits.slice(2, 5)}.${digits.slice(5, 8)}/****-**` : "***";
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    cpf,
+    clientName: row.clientName,
+    registeredAddress: row.registeredAddress,
+    informedName: row.informedName,
+    informedAddress: row.informedAddress,
+    resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    resolvedByName: row.resolvedByName,
+  };
+}
+
+/** What still waits for someone to update the client's record — this phone's, or the CPF confirmed in this conversation. */
+export async function pendingCorrections(conversation: { contactId: string; dataCpfKey?: string | null }): Promise<ClientDataCorrectionDTO[]> {
+  const rows = await prisma.clientDataCorrection.findMany({
+    where: { resolvedAt: null, OR: [{ contactId: conversation.contactId }, ...(conversation.dataCpfKey ? [{ cpfKey: conversation.dataCpfKey }] : [])] },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toCorrectionDTO);
+}
+
+/** "Cadastro já atualizado": stops the pop-up, keeping who did it and when. */
+export async function resolveCorrection(conversation: { id: string; contactId: string; dataCpfKey?: string | null }, correctionId: string, user: { id: string; name: string }) {
+  const pending = await pendingCorrections(conversation);
+  if (!pending.some((c) => c.id === correctionId)) throw Errors.notFound("Aviso de cadastro não encontrado para este cliente");
+  const now = new Date();
+  const row = await prisma.clientDataCorrection.update({ where: { id: correctionId }, data: { resolvedAt: now, resolvedById: user.id, resolvedByName: user.name } });
+  const when = now.toLocaleString("pt-BR", { timeZone: "America/Cuiaba" });
+  await prisma.conversationNote.create({ data: { conversationId: conversation.id, authorId: user.id, body: `Cadastro atualizado por ${user.name} em ${when} (endereço informado ao Assistente Virtual: ${row.informedAddress ?? "—"}).` } });
+  return toCorrectionDTO(row);
 }

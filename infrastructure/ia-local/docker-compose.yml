@@ -1,4 +1,4 @@
-# IA local da VPS — UM serviço só, compartilhado pelo WhatsAtendende e pelo
+# IA local da VPS — Ollama (conversa) e Whisper (áudio), UM de cada, compartilhado pelo WhatsAtendende e pelo
 # WhatsUnivida (os dois repositórios trazem este mesmo arquivo). Sobe como o
 # projeto "ia-local", independente dos sistemas:
 #
@@ -28,8 +28,24 @@ services:
     mem_limit: 5g
     networks: [ia-local]
 
+  # Transcrição dos áudios (Whisper large-v3-turbo, int8). ~1,5–2 GB de memória; o modelo (~1,6 GB) é baixado
+  # uma vez para o volume. A imagem é construída aqui mesmo (whisper/Dockerfile), para x86 ou ARM.
+  whisper:
+    build: ./whisper
+    image: ia-local-whisper:1
+    restart: unless-stopped
+    environment:
+      WHISPER_MODEL: large-v3-turbo
+      WHISPER_CPU_THREADS: "2"
+    volumes:
+      - whisper_models:/models
+    cpu_shares: 512
+    mem_limit: 3g
+    networks: [ia-local]
+
 volumes:
   ollama_models:
+  whisper_models:
 
 networks:
   ia-local:

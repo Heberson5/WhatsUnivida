@@ -354,7 +354,7 @@ export interface TemplateContextDTO {
   templates: MessageTemplateDTO[];
 }
 
-export type FlowNodeType = "START" | "TEXT_MESSAGE" | "MENU" | "TRANSFER_TO_AGENT" | "BUSINESS_HOURS" | "END";
+export type FlowNodeType = "START" | "TEXT_MESSAGE" | "MENU" | "TRANSFER_TO_AGENT" | "BUSINESS_HOURS" | "END" | "AI_ASSISTANT";
 
 /** Exits of a BUSINESS_HOURS node — used as its FlowEdgeDTO.sourceHandle values. */
 export const FLOW_HOURS_OPEN = "open";
@@ -450,7 +450,7 @@ export type FlowNodeData = { name?: string } & (
   | FlowBusinessHoursData // BUSINESS_HOURS
   | { assignedAgentIds: string[]; mode?: "any" | "selected" } // TRANSFER_TO_AGENT — "selected": those people attend it, from any connection
   | FlowStartData // START
-  | Record<string, never> // END — no config
+  | Record<string, never> // END, AI_ASSISTANT — no config
 );
 
 /** The step's own name (shown on the drawing and in the notes), or null. */
@@ -1069,6 +1069,8 @@ export interface MessageDTO {
   reactions: MessageReactionDTO[];
   /** Group messages only (inbound): who in the group wrote it. `color` is fixed per person. */
   senderParticipant?: { name: string; phone: string | null; color: string } | null;
+  /** An audio transcribed on the server for the Assistente Virtual — what the customer said. */
+  transcription?: string | null;
 }
 
 /** One person of the team who can see a WhatsApp group, and how far they have read it. */
@@ -4001,5 +4003,27 @@ export interface AiAssistantStatusDTO {
   /** The model is downloaded and ready to load. */
   modelReady: boolean;
   transcriptionModel: string;
+  /** The transcription service answered and its model is loaded. */
+  transcriptionReady: boolean;
   error: string | null;
+}
+
+/** Label of the messages the Assistente Virtual sends (Message.automatedBy). */
+export const AI_ASSISTANT_AUTOMATED_BY = "AI";
+
+/**
+ * "Cadastro desatualizado": what the customer told the Assistente Virtual differs from the data source. Shown as a
+ * pop-up whenever someone accepts a conversation of this customer, until someone marks it as updated.
+ */
+export interface ClientDataCorrectionDTO {
+  id: string;
+  createdAt: string;
+  /** Masked: ***.456.789-** */
+  cpf: string;
+  clientName: string | null;
+  registeredAddress: string | null;
+  informedName: string | null;
+  informedAddress: string | null;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
 }

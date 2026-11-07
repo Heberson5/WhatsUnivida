@@ -85,7 +85,13 @@ const PALETTE: { category: string; items: { type: FlowNodeType; defaultData: Flo
       { type: "MENU", defaultData: { options: [] }, hint: "Pergunta com opções numeradas" },
     ],
   },
-  { category: "Atendimento", items: [{ type: "TRANSFER_TO_AGENT", defaultData: { assignedAgentIds: [], mode: "any" }, hint: "Passa para um atendente" }] },
+  {
+    category: "Atendimento",
+    items: [
+      { type: "TRANSFER_TO_AGENT", defaultData: { assignedAgentIds: [], mode: "any" }, hint: "Passa para um atendente" },
+      { type: "AI_ASSISTANT", defaultData: {}, hint: "Passa para a IA (boleto, débitos)" },
+    ],
+  },
   {
     category: "Controle",
     items: [
@@ -126,6 +132,7 @@ function nodePreview(node: FlowNodeDTO, agentsById: Map<string, AgentOption>, sc
     return names.length ? names.join(", ") : "Nenhum atendente selecionado";
   }
   if (node.type === "START") return "Primeira mensagem do cliente";
+  if (node.type === "AI_ASSISTANT") return "A IA atende: boleto, linha digitável e débitos";
   if (node.type === "BUSINESS_HOURS") {
     const data = node.data as FlowBusinessHoursData;
     if (data.workScheduleId) return schedulesById.get(data.workScheduleId) ?? "Horário de expediente";
@@ -138,7 +145,7 @@ function nodePreview(node: FlowNodeDTO, agentsById: Map<string, AgentOption>, sc
 
 /** Where a node's outputs leave from, in world coordinates relative to the node. */
 function outputAnchors(node: FlowNodeDTO): { handle: string | null; label?: string; dy: number }[] {
-  if (node.type === "END" || node.type === "TRANSFER_TO_AGENT") return [];
+  if (node.type === "END" || node.type === "TRANSFER_TO_AGENT" || node.type === "AI_ASSISTANT") return [];
   if (node.type === "MENU") {
     // Matches the option rows drawn in the node: 8px top padding, 22px rows, 4px gap.
     return menuOptions(node).map((o, i) => ({ handle: o.id, label: o.label, dy: HEADER_HEIGHT + 8 + i * 26 + 11 }));
@@ -1341,6 +1348,14 @@ function NodeInspector({
 
         {node.type === "END" && (
           <p className="text-sm text-muted">Encerra a conversa sem passar por um atendente. Use depois de uma mensagem final; para levar o cliente até a equipe, use Transferir.</p>
+        )}
+
+        {node.type === "AI_ASSISTANT" && (
+          <p className="text-sm text-muted">
+            O Assistente Virtual cumprimenta o cliente e cuida de boleto, linha digitável e débitos em aberto (confirmando CPF, nome e endereço). Para outros assuntos, ou se o cliente
+            pedir um atendente, passa a conversa para a fila com um resumo. Se o assistente estiver desligado, em Modo teste para outro número, ou o cliente tiver uma etiqueta que o
+            bloqueia, a conversa vai direto para a fila. Configure em Configurações › Assistente Virtual.
+          </p>
         )}
       </div>
     </div>

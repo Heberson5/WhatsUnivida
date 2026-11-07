@@ -352,6 +352,14 @@ export function MessageBubble({
 
       {message.body && <p className="whitespace-pre-wrap break-words">{renderWhatsAppFormatting(message.body)}</p>}
 
+      {/* An audio the Assistente Virtual transcribed on the server: what the customer said, readable without playing it. */}
+      {message.transcription && (
+        <p className="mt-1 whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 px-2 py-1 text-xs italic" data-testid="audio-transcription">
+          <span className="not-italic font-semibold">Transcrição: </span>
+          {message.transcription}
+        </p>
+      )}
+
       <div className={clsx("mt-1 flex items-center gap-1 text-[11px] opacity-75", isOutbound ? "justify-end" : "justify-start")}>
         <span>{format(new Date(message.createdAt), "HH:mm")}</span>
         {isOutbound && <StatusIcon status={message.status} />}

@@ -31,6 +31,7 @@ import * as conversationsService from "../conversations/conversations.service";
 import * as messagesService from "../messages/messages.service";
 import * as satisfaction from "../satisfaction/satisfaction.service";
 import * as flowEngine from "../flows/flow-engine.service";
+import * as aiEngine from "../ai-assistant/ai-engine.service";
 import { assertWorkScheduleExists } from "../work-schedules/work-schedules.service";
 import * as groupsService from "../groups/groups.service";
 import { announceGroupTyping } from "../groups/groups.service";
@@ -564,6 +565,14 @@ function wireProviderEvents(connectionId: string, provider: WhatsAppProvider) {
       if (conversation.status === "IN_FLOW") {
         realtimeEvents.newMessage(conversation.id, null);
         await flowEngine.handleInboundForFlow(conversation.id, flowId, event.body ?? null, event.selectedOptionId ?? null);
+        return;
+      }
+
+      // The Assistente Virtual is talking to this customer: it answers (after transcribing an audio), and hands the
+      // conversation to the queue when a person is needed.
+      if (conversation.status === "IN_AI") {
+        realtimeEvents.newMessage(conversation.id, null);
+        aiEngine.handleInboundForAi(conversation.id);
         return;
       }
 
