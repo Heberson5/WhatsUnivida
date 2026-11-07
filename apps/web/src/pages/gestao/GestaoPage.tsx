@@ -32,7 +32,7 @@ import { SkeletonRows, SkeletonBlock } from "../../components/common/Skeleton";
 // Same "still active" scope the backend enforces (see
 // assignConversationFromGestao/returnConversationToQueue) — CLOSED/ABANDONED
 // are terminal, nothing to route there anymore.
-const ROUTABLE_STATUSES = new Set<ConversationStatus>(["IN_FLOW", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"]);
+const ROUTABLE_STATUSES = new Set<ConversationStatus>(["IN_FLOW", "IN_AI", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"]);
 const INTERVENABLE_STATUSES = new Set<ConversationStatus>(["IN_PROGRESS", "TRANSFERRED"]);
 const SEARCH_DEBOUNCE_MS = 400;
 const ALREADY_QUEUED_STATUSES = new Set<ConversationStatus>(["NEW", "WAITING"]);
@@ -40,6 +40,7 @@ const ALREADY_QUEUED_STATUSES = new Set<ConversationStatus>(["NEW", "WAITING"]);
 // Filter chips (each one a group of statuses), with live counts.
 const STATUS_CHIPS: { key: string; label: string; statuses: ConversationStatus[] }[] = [
   { key: "flow", label: "No fluxo", statuses: ["IN_FLOW"] },
+  { key: "ai", label: "Com a IA", statuses: ["IN_AI"] },
   { key: "queue", label: "Na fila", statuses: ["NEW", "WAITING"] },
   { key: "inProgress", label: "Em atendimento", statuses: ["IN_PROGRESS", "TRANSFERRED"] },
   { key: "external", label: "Pelo celular", statuses: ["HANDLED_EXTERNALLY"] },

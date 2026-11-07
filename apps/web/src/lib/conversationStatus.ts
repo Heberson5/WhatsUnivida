@@ -1,6 +1,7 @@
 /** Conversation status labels and chip colors — shared by Gestão and Contatos. */
 export const STATUS_LABEL: Record<string, string> = {
   IN_FLOW: "No fluxo",
+  IN_AI: "Com a IA",
   NEW: "Nova",
   WAITING: "Aguardando",
   IN_PROGRESS: "Em atendimento",
@@ -13,6 +14,7 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export const STATUS_COLOR: Record<string, string> = {
   IN_FLOW: "bg-info-soft text-info",
+  IN_AI: "bg-info-soft text-info",
   NEW: "bg-warning-soft text-warning",
   WAITING: "bg-warning-soft text-warning",
   IN_PROGRESS: "bg-primary/15 text-primary",

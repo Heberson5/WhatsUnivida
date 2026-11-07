@@ -449,7 +449,7 @@ export async function getOldestMessageAnchor(
  */
 export async function findActiveConversationForContact(contactId: string) {
   return prisma.conversation.findFirst({
-    where: { contactId, status: { in: ["IN_FLOW", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"] } },
+    where: { contactId, status: { in: ["IN_FLOW", "IN_AI", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"] } },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -683,7 +683,7 @@ export async function findOrOpenConversationForInboundMessage(
     // Nobody is with this customer yet — waiting in the queue, still in the Fluxo, or on the
     // linked phone ("Atendido pelo celular") — so an "@nome" now still takes it to that person.
     // One already with an agent (IN_PROGRESS/TRANSFERRED) never moves on a customer's say-so.
-    const unattended = ["NEW", "WAITING", "IN_FLOW", "FLOW_ABANDONED", "HANDLED_EXTERNALLY"].includes(active.status);
+    const unattended = ["NEW", "WAITING", "IN_FLOW", "IN_AI", "FLOW_ABANDONED", "HANDLED_EXTERNALLY"].includes(active.status);
     const mentionedAgent = unattended ? await findOnlineMention() : null;
     if (!mentionedAgent) {
       return { conversation: active, isNewConversation: false, autoAssignedAgentId: null as string | null, flowId: null as string | null, closedMessage: null as string | null };
@@ -819,7 +819,8 @@ export async function findOrOpenConversationForInboundMessage(
 export async function findOrOpenConversationForDeviceSentMessage(connectionId: string, contactId: string) {
   const active = await findActiveConversationForContact(contactId);
   if (active) {
-    if (active.status === "NEW" || active.status === "WAITING" || active.status === "IN_FLOW") {
+    // IN_AI too: someone answering from the phone takes over from the Assistente Virtual, which only ever speaks in IN_AI.
+    if (active.status === "NEW" || active.status === "WAITING" || active.status === "IN_FLOW" || active.status === "IN_AI") {
       if (active.status === "IN_FLOW") await endFlowSession(active.id);
       const conversation = await prisma.conversation.update({
         where: { id: active.id },
@@ -1291,7 +1292,7 @@ async function foldActiveConversationDuplicates(contactId: string): Promise<void
   // included so a stray duplicate left over from before that fix (or from
   // any other race) still gets folded away instead of lingering forever.
   const actives = await prisma.conversation.findMany({
-    where: { contactId, status: { in: ["IN_FLOW", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"] } },
+    where: { contactId, status: { in: ["IN_FLOW", "IN_AI", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"] } },
   });
   if (actives.length < 2) return;
 
@@ -1588,7 +1589,7 @@ export async function transferConversation(
 // ABANDONED are terminal on purpose (see that function's own doc comment)
 // and stay out of Gestão's reach here too; a genuinely new conversation for
 // that contact is what picks the thread back up from those.
-const GESTAO_TRANSFERABLE_STATUSES: ConversationStatus[] = ["IN_FLOW", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"];
+const GESTAO_TRANSFERABLE_STATUSES: ConversationStatus[] = ["IN_FLOW", "IN_AI", "NEW", "WAITING", "FLOW_ABANDONED", "IN_PROGRESS", "TRANSFERRED", "HANDLED_EXTERNALLY"];
 
 /**
  * Gestão (MANAGER/ADMIN) directly assigning or reassigning a conversation to

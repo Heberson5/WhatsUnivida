@@ -31,6 +31,8 @@ export const CONVERSATION_STATUS = {
   // An active Fluxo is talking to the customer before any human — kept out
   // of the queue until the flow hands the conversation over.
   IN_FLOW: "IN_FLOW",
+  // The Assistente Virtual (local AI) is talking to the customer — out of the queue, like IN_FLOW, until it hands over.
+  IN_AI: "IN_AI",
   NEW: "NEW",
   WAITING: "WAITING",
   IN_PROGRESS: "IN_PROGRESS",
@@ -2312,7 +2314,7 @@ export type PermissionMap = Record<Permission, boolean>;
  * The automatic messages a tag can stop (Etiquetas › "Não enviar estas mensagens automáticas"). SURVEY also leaves the
  * contact out of the NPS; NO_RETURN also stops the automatic close; FLOW sends the customer straight to the queue.
  */
-export const AUTO_MESSAGE_KINDS = ["QUEUE_WAIT", "ACCEPT", "TRANSFER", "CLOSING", "SURVEY", "NO_RETURN", "OUT_OF_HOURS", "FLOW"] as const;
+export const AUTO_MESSAGE_KINDS = ["QUEUE_WAIT", "ACCEPT", "TRANSFER", "CLOSING", "SURVEY", "NO_RETURN", "OUT_OF_HOURS", "FLOW", "AI"] as const;
 export type AutoMessageKind = (typeof AUTO_MESSAGE_KINDS)[number];
 
 export const AUTO_MESSAGE_KIND_LABEL: Record<AutoMessageKind, string> = {
@@ -2324,6 +2326,7 @@ export const AUTO_MESSAGE_KIND_LABEL: Record<AutoMessageKind, string> = {
   NO_RETURN: "Falta de retorno",
   OUT_OF_HOURS: "Fora do expediente",
   FLOW: "Fluxo",
+  AI: "Assistente Virtual",
 };
 
 /** What each one means, for the tag form. */
@@ -2336,6 +2339,7 @@ export const AUTO_MESSAGE_KIND_HINT: Record<AutoMessageKind, string> = {
   NO_RETURN: "Lembrete e encerramento por falta de retorno — a conversa não é encerrada automaticamente.",
   OUT_OF_HOURS: "Aviso de fora do expediente.",
   FLOW: "Robô do Fluxo — o cliente vai direto para a fila.",
+  AI: "Assistente Virtual (IA) — não conversa com o cliente; se estiver conversando, para e passa para a fila.",
 };
 
 export interface AutoMessageBlockDTO {
@@ -3947,3 +3951,55 @@ export const DASHBOARD_CHARTS: Record<DashboardChartId, { label: string; kinds: 
   conversationsByAgent: { label: "Conversas por atendente", kinds: SERIES_CHART_KINDS },
   messagesByAgent: { label: "Mensagens enviadas x recebidas por atendente", kinds: SERIES_CHART_KINDS },
 };
+
+// ---------------------------------------------------------------------------
+// Assistente Virtual: IA local (Ollama, na própria VPS) que atende antes da fila.
+// Configurações › Assistente Virtual — administrador. Desligado por padrão.
+// ---------------------------------------------------------------------------
+
+export interface AiAssistantSettingsDTO {
+  enabled: boolean;
+  /** Goes in bold at the start of every reply: "*Assistente Virtual:* ...". */
+  name: string;
+  /** Connections where it answers. Empty = none. */
+  connectionIds: string[];
+  /** Modo teste: only the phones below are answered by the assistant; everyone else follows the normal path. */
+  testMode: boolean;
+  /** Digits only (DDD + number, with or without 55). */
+  testPhones: string[];
+  /** First message of a conversation the assistant takes. */
+  greeting: string;
+  /** Sent when it hands the conversation to the queue inside working hours. */
+  transferMessage: string;
+}
+
+export const AI_ASSISTANT_NAME_MAX = 40;
+export const AI_ASSISTANT_TEXT_MAX = 1000;
+export const AI_ASSISTANT_TEST_PHONES_MAX = 50;
+
+export const DEFAULT_AI_ASSISTANT_SETTINGS: AiAssistantSettingsDTO = {
+  enabled: false,
+  name: "Assistente Virtual",
+  connectionIds: [],
+  testMode: true,
+  testPhones: [],
+  greeting: "Olá! Sou o assistente virtual. Posso ajudar com boleto, linha digitável e débitos em aberto. Como posso ajudar?",
+  transferMessage: "Vou transferir você para um de nossos atendentes. Em instantes alguém irá atendê-lo.",
+};
+
+/** "*Assistente Virtual:* texto" — how every reply of the assistant reaches the customer. */
+export function aiAssistantReply(name: string, text: string): string {
+  const label = name.trim() || DEFAULT_AI_ASSISTANT_SETTINGS.name;
+  return `*${label}:* ${text}`;
+}
+
+/** What the server reaches of the local AI right now (Configurações › Assistente Virtual › Situação). */
+export interface AiAssistantStatusDTO {
+  /** The Ollama service answered. */
+  reachable: boolean;
+  model: string;
+  /** The model is downloaded and ready to load. */
+  modelReady: boolean;
+  transcriptionModel: string;
+  error: string | null;
+}

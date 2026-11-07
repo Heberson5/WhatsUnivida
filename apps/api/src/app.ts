@@ -28,6 +28,7 @@ import { birthdayMessagesRouter } from "./modules/birthdays/birthdays.routes";
 import { announcementsRouter } from "./modules/announcements/announcements.routes";
 import { reportSchedulesRouter } from "./modules/report-schedules/report-schedules.routes";
 import { smsRouter } from "./modules/sms/sms.routes";
+import { aiAssistantRouter } from "./modules/ai-assistant/ai-assistant.routes";
 import { backupRouter } from "./modules/backup/backup.routes";
 import { autoMessageTemplatesRouter } from "./modules/auto-message-templates/auto-message-templates.routes";
 import { satisfactionRouter } from "./modules/satisfaction/satisfaction.routes";
@@ -151,6 +152,7 @@ export function createApp() {
   app.use("/api/reports", reportsRouter);
   app.use("/api/settings/backup", backupRouter);
   app.use("/api/settings/sms", smsRouter);
+  app.use("/api/settings/ai-assistant", aiAssistantRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/audit-logs", auditRouter);
   app.use("/api/whatsapp", whatsappRouter);

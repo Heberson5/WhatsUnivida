@@ -1,0 +1,36 @@
+# IA local da VPS — UM serviço só, compartilhado pelo WhatsAtendende e pelo
+# WhatsUnivida (os dois repositórios trazem este mesmo arquivo). Sobe como o
+# projeto "ia-local", independente dos sistemas:
+#
+#   docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d
+#
+# O deploy automático (infrastructure/vps/auto-deploy.sh) faz isso e baixa o
+# modelo na primeira vez. A API de cada sistema chega aqui pela rede Docker
+# "ia-local" (ver docker-compose.yml da raiz) — nenhuma porta fica aberta.
+name: ia-local
+
+services:
+  ollama:
+    image: ollama/ollama:0.5.7
+    restart: unless-stopped
+    environment:
+      # Modelo carregado o tempo todo: a primeira resposta do dia não espera ~20 s para carregar.
+      OLLAMA_KEEP_ALIVE: 24h
+      # Um modelo e uma resposta por vez: a VPS tem poucos núcleos e é dividida com os sistemas.
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama_models:/root/.ollama
+    # Peso menor que os sistemas na disputa pelo processador (o padrão é 1024):
+    # com a VPS ocupada, o atendimento vem primeiro; com ela livre, a IA usa tudo.
+    cpu_shares: 512
+    # Qwen2.5 3B usa ~3 GB; o teto protege os sistemas se algo sair do esperado.
+    mem_limit: 5g
+    networks: [ia-local]
+
+volumes:
+  ollama_models:
+
+networks:
+  ia-local:
+    name: ia-local

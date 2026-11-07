@@ -756,6 +756,9 @@ enum ConversationStatus {
   // An active Fluxo is talking to the customer (welcome, menu...) before
   // any human — stays out of the queue until the flow hands it over.
   IN_FLOW
+  // The Assistente Virtual (local AI) is talking to the customer — out of the queue like IN_FLOW, until it hands over
+  // (modules/ai-assistant). Never set while the assistant is switched off.
+  IN_AI
   NEW
   WAITING
   IN_PROGRESS

@@ -63,6 +63,10 @@ services:
     volumes:
       - api_uploads:/data/uploads
       - whatsapp_sessions:/data/whatsapp-sessions
+    # "ia-local": rede do Assistente Virtual (infrastructure/ia-local), compartilhada
+    # pelos dois sistemas da VPS. Criada aqui se ainda não existir; sem a IA no ar,
+    # o assistente só passa as conversas para a fila.
+    networks: [default, ia-local]
     # No host port published: the web container's nginx already proxies
     # /api, /uploads and /socket.io to this service internally (see
     # infrastructure/docker/nginx.conf) — the browser never needs to reach
@@ -87,6 +91,10 @@ services:
       # survives every future `git pull` + rebuild, the same way
       # api_uploads/whatsapp_sessions already do for the api service.
       - app_downloads:/usr/share/nginx/downloads
+
+networks:
+  ia-local:
+    name: ia-local
 
 volumes:
   postgres_data:

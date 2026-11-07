@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, Search, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
+import { Bot, Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, Search, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
 import { PERMISSION, type Permission } from "@whatsatendende/types";
 import { BrandingPanel } from "./BrandingPanel";
 import { AppInstallPanel } from "./AppInstallPanel";
 import { ExportacoesPanel } from "./ExportacoesPanel";
 import { FeriadosPanel } from "./FeriadosPanel";
+import { AssistenteVirtualPanel } from "./AssistenteVirtualPanel";
 import { FilaSettingsPanel } from "./FilaSettingsPanel";
 import { NumerosTelefonePanel } from "./NumerosTelefonePanel";
 import { EmailSettingsPanel } from "./EmailSettingsPanel";
@@ -19,11 +20,12 @@ import { VisoesColunasPanel } from "./VisoesColunasPanel";
 import { BackupPanel } from "./BackupPanel";
 import { useAuthStore } from "../../store/auth-store";
 
-type Tab = "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
+type Tab = "assistente" | "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
 
 // Grouped by subject in the left-hand section menu.
 // `keywords`: what someone might type in "Buscar configuração…" without knowing the section's name.
 const TABS: { key: Tab; label: string; group: string; icon: LucideIcon; keywords: string }[] = [
+  { key: "assistente", label: "Assistente Virtual", group: "Atendimento", icon: Bot, keywords: "ia inteligência artificial robô chatbot boleto automático" },
   { key: "fila", label: "Fila", group: "Atendimento", icon: Clock3, keywords: "tempo espera alerta sem resposta minutos aceite" },
   { key: "feriados", label: "Feriados", group: "Atendimento", icon: CalendarDays, keywords: "nacional estadual municipal cidade bloqueio acesso" },
   { key: "telefone", label: "Números de telefone", group: "Atendimento", icon: Phone, keywords: "formato ddd celular" },
@@ -85,7 +87,7 @@ export default function ConfiguracoesPage() {
   // tabs — this is a UI-only restriction, not a backend one.)
   const visibleTabs = TABS.filter((t) => {
     // Notas de versão is edited by administrators only (enforced by the API too — release-notes.routes.ts).
-    if (t.key === "permissoes" || t.key === "seguranca" || t.key === "notas-de-versao" || t.key === "backup") return role === "ADMIN";
+    if (t.key === "permissoes" || t.key === "seguranca" || t.key === "notas-de-versao" || t.key === "backup" || t.key === "assistente") return role === "ADMIN";
     const permission = TAB_PERMISSION[t.key];
     return !permission || permissions?.[permission];
   });
@@ -159,6 +161,7 @@ export default function ConfiguracoesPage() {
         {activeTab === "sms" && <SmsSettingsPanel />}
         {activeTab === "feriados" && <FeriadosPanel />}
         {activeTab === "fila" && <FilaSettingsPanel />}
+        {activeTab === "assistente" && role === "ADMIN" && <AssistenteVirtualPanel />}
         {activeTab === "telefone" && <NumerosTelefonePanel />}
         {activeTab === "visoes" && <VisoesColunasPanel />}
         {activeTab === "seguranca" && role === "ADMIN" && <SecuritySettingsPanel />}

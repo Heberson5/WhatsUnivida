@@ -21,6 +21,7 @@ const PREVIOUS_PAGE = 5;
 
 const STATUS_LABEL: Record<string, string> = {
   IN_FLOW: "No fluxo",
+  IN_AI: "Com a IA",
   NEW: "Nova",
   WAITING: "Na fila",
   IN_PROGRESS: "Em atendimento",

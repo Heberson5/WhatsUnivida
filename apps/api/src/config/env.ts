@@ -20,6 +20,11 @@ const schema = z.object({
   WHATSAPP_PROVIDER: z.enum(["mock", "baileys"]).default("mock"),
   WHATSAPP_AUTH_DIR: z.string().default("./whatsapp-sessions"),
   WEB_APP_URL: z.string().default("http://localhost:5173"),
+  // Assistente Virtual: the local AI (Ollama) shared by the systems on the VPS — infrastructure/ia-local, reached over
+  // the "ia-local" Docker network. Unreachable means the assistant hands every conversation to the queue.
+  AI_OLLAMA_URL: z.string().default("http://ollama:11434"),
+  AI_MODEL: z.string().default("qwen2.5:3b"),
+  AI_TRANSCRIPTION_MODEL: z.string().default("large-v3-turbo"),
   // Where Auditoria looks up the approximate place of an IP (each IP once). Empty turns the lookup off.
   IP_GEOLOCATION_URL: z.string().default("https://ipwho.is"),
   // Minutes the business is behind UTC (what JS getTimezoneOffset() reports; 240 = UTC-4,

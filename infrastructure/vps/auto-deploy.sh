@@ -24,6 +24,7 @@ main() {
   SHA="$4"       # commit exato que passou nos testes
   KEEP_BACKUPS=7
   HEALTH_TIMEOUT=300
+  AI_MODEL="qwen2.5:3b"
 
   log() { printf '\n=== %s ===\n' "$*"; }
 
@@ -113,9 +114,33 @@ main() {
 
   docker image prune -f >/dev/null
   docker image rm erikvl87/languagetool:latest >/dev/null 2>&1 || true
+  # Cache de build com mais de 7 dias (chegou a 64 GB): o build seguinte continua rápido com o cache recente.
+  docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
   log "OK — no ar com $(git log -1 --oneline)"
   docker compose ps
+
+  # IA local (Assistente Virtual), compartilhada pelos dois sistemas. Nunca derruba o deploy: sem ela, o
+  # assistente só passa as conversas para a fila.
+  if [ -f infrastructure/ia-local/docker-compose.yml ]; then
+    log "IA local (Ollama + $AI_MODEL)"
+    if docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d --remove-orphans; then
+      if docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml exec -T ollama ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$AI_MODEL"; then
+        echo "Modelo $AI_MODEL já está baixado."
+      else
+        echo "Baixando o modelo $AI_MODEL (só na primeira vez, ~2 GB)..."
+        docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml exec -T ollama ollama pull "$AI_MODEL" >/dev/null \
+          && echo "Modelo baixado." || echo "AVISO: não deu para baixar o modelo agora; o próximo deploy tenta de novo."
+      fi
+    else
+      echo "AVISO: a IA local não subiu; os sistemas seguem no ar normalmente."
+    fi
+  fi
+
+  log "Servidor"
+  uname -m
+  nproc
   free -h
+  df -h / | tail -1
 }
 
 main "$@" </dev/null

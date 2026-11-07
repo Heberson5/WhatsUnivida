@@ -93,6 +93,25 @@ regra padrão da Oracle aceita).
 O banco não volta sozinho: se uma atualização com migração der errado, o backup
 está na pasta do passo 2 (`banco.sql.gz`).
 
+## Assistente Virtual: IA local (Ollama)
+
+O Assistente Virtual usa uma IA que roda na própria VPS, sem custo por mensagem:
+o serviço `ollama` com o modelo `qwen2.5:3b` (~3 GB de memória), em
+`infrastructure/ia-local/docker-compose.yml`. É **um serviço só para os dois
+sistemas** (projeto Docker `ia-local`); a API de cada um chega nele pela rede
+Docker `ia-local`, sem nenhuma porta aberta.
+
+O deploy automático sobe o serviço e baixa o modelo na primeira vez (~2 GB). Para
+fazer à mão, na pasta de qualquer um dos sistemas:
+
+```bash
+docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d
+docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml exec ollama ollama pull qwen2.5:3b
+```
+
+A situação aparece em **Configurações › Assistente Virtual** (administrador). O
+assistente começa desligado; sem a IA no ar, as conversas seguem o caminho normal.
+
 ## Backup e restauração completos
 
 Antes de qualquer atualização arriscada (ex.: trocar a versão do Baileys),
