@@ -16,6 +16,7 @@ import {
   type TemplateSendInput,
   type WhatsAppProvider,
   type WhatsAppStatusSnapshot,
+  hasLinkedSession,
 } from "@whatsatendende/whatsapp";
 import { verifyWebhookSignature } from "../meta/meta.service";
 import * as messageTemplatesService from "../message-templates/message-templates.service";
@@ -385,7 +386,9 @@ export async function initWhatsAppConnections(): Promise<void> {
     // An OFFICIAL_API connection has no persistent socket to auto-reconnect
     // — its "CONNECTED" status just means the credentials were last known
     // valid, re-checked on demand (see connect() below), never on boot.
-    if (row.status === "CONNECTED" && row.connectionMode === "QRCODE") {
+    // A QR Code connection whose linked session is still on disk comes back too: an update that stops the API
+    // while WhatsApp is reconnecting finds it CONNECTING or DISCONNECTED, and it used to stay off after the update.
+    if (row.connectionMode === "QRCODE" && (row.status === "CONNECTED" || hasLinkedSession(path.join(env.WHATSAPP_AUTH_DIR, row.id)))) {
       provider.connect().catch((err) => logger.error({ err, connectionId: row.id }, "failed to auto-reconnect WhatsApp connection on startup"));
     }
   }

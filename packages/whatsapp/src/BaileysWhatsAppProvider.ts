@@ -79,6 +79,21 @@ function isLinked(creds: AuthenticationCreds): boolean {
   return Boolean(creds.account || creds.registered);
 }
 
+/**
+ * Whether a session folder still holds a session linked to a phone. Only "Desconectar", a connection's deletion
+ * or WhatsApp itself logging the device out (401) remove it, so a linked session on disk means the connection was
+ * meant to stay connected, whatever status the database last recorded (a deploy can land in the middle of a
+ * reconnect, when it reads CONNECTING or DISCONNECTED).
+ */
+export function hasLinkedSession(authStateDir: string): boolean {
+  try {
+    const creds = JSON.parse(fs.readFileSync(path.join(authStateDir, "creds.json"), "utf-8")) as AuthenticationCreds;
+    return isLinked(creds);
+  } catch {
+    return false;
+  }
+}
+
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
   private emitter = new EventEmitter();
   private socket: WASocket | null = null;

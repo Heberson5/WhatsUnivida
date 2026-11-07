@@ -11,6 +11,22 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.1",
+    date: "7 nov 2026",
+    name: "Conexão continua ligada nas atualizações",
+    summary: "Uma atualização do sistema não desliga mais a conexão do WhatsApp: ela volta sozinha assim que o sistema reinicia.",
+    notes: [
+      {
+        type: "correcao",
+        area: "conexoes",
+        title: "Conexão desligada depois de uma atualização",
+        text: "Se a atualização chegasse enquanto o WhatsApp estava reconectando, a conexão ficava desligada até alguém clicar em Conectar. Agora, toda conexão que continua ligada ao celular volta sozinha depois da atualização, sem novo QR Code. Só não volta a conexão que foi desconectada de propósito, em Conexões ou em Aparelhos conectados no celular.",
+        where: "Conexões",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     version: "2.37.0",
     date: "7 nov 2026",
     name: "Assistente Virtual",
