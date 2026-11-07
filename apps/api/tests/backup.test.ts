@@ -77,7 +77,13 @@ describe("Configurações › Backup", () => {
     expect(names).toContain("database/ChatMessage.jsonl");
     expect(names).toContain(`files/${uploadName}`);
     expect(names.some((n) => n.startsWith("whatsapp-sessions/"))).toBe(false);
-    expect(await prisma.systemSetting.findUnique({ where: { key: "backup" } })).toMatchObject({ value: { kind: "BACKUP", byName: "Admin Backup" } });
+    // The "último backup" marker is written right after the last byte is streamed — the client can finish first.
+    let marker = await prisma.systemSetting.findUnique({ where: { key: "backup" } });
+    for (let i = 0; i < 50 && !marker; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      marker = await prisma.systemSetting.findUnique({ where: { key: "backup" } });
+    }
+    expect(marker).toMatchObject({ value: { kind: "BACKUP", byName: "Admin Backup" } });
   });
 
   it("restaura tudo como estava, e recusa arquivo inválido ou sem a confirmação", async () => {
