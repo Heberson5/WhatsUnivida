@@ -262,6 +262,17 @@ async function handToQueue(conv: Conv, session: AiSession, settings: AiAssistant
 }
 
 const GOODBYE = "Obrigado pelo contato! Sempre que precisar, é só chamar por aqui. 👋";
+
+/**
+ * The customer doesn't need the assistant ("não preciso de nada", "foi engano", "deixa pra lá"): after something was
+ * done for them it closes like any attendance (goodbye + survey); with nothing done, a short goodbye and the
+ * conversation closes without the survey — there was no attendance to rate, and nothing goes to the queue.
+ */
+async function noNeed(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
+  if (data.done?.length) return finish(conv, session, settings, data, { outcome: "resolvido; cliente disse que não precisava de mais nada" });
+  await say(conv, settings, phrase("noNeedGoodbye", { virgula_nome: "", nome: nameOf(conv) }));
+  return finish(conv, session, settings, data, { silent: true, outcome: "cliente não precisava de atendimento" });
+}
 const GOODBYE_ON_REQUEST = "Tudo bem, vou encerrar nossa conversa. Sempre que precisar, é só chamar por aqui. 👋";
 
 /**
@@ -329,17 +340,31 @@ function parcelLine(parcel: ClientContractDTO["parcels"][number], contract: stri
   return `${month}: ${value}${late}${showContract ? ` (contrato ${contract})` : ""}`;
 }
 
-function buildOptions(contracts: ClientContractDTO[]): ParcelOption[] {
+/** Every open parcel, for the customer to see what is open (month, value, overdue). */
+function parcelList(contracts: ClientContractDTO[]): string[] {
   const showContract = contracts.filter((c) => c.parcels.length > 0).length > 1;
-  const options: ParcelOption[] = [];
-  for (const contract of contracts) {
-    contract.parcels.forEach((parcel, index) => {
-      options.push({ id: parcel.id, contract: contract.number, label: parcelLine(parcel, contract.number, showContract), ids: contract.parcels.slice(0, index + 1).map((p) => p.id) });
-    });
-  }
-  return options.slice(0, MAX_PARCELS_LISTED);
+  return contracts.flatMap((contract) => contract.parcels.map((parcel) => parcelLine(parcel, contract.number, showContract))).slice(0, MAX_PARCELS_LISTED);
 }
 
+/**
+ * What the customer can ask the boleto for — the same rule as the team's: never skipping an older parcel. Per
+ * contract, only the oldest open parcel, or the oldest and the next one together (one PDF).
+ */
+function buildOptions(contracts: ClientContractDTO[]): ParcelOption[] {
+  const withParcels = contracts.filter((c) => c.parcels.length > 0);
+  const showContract = withParcels.length > 1;
+  const options: ParcelOption[] = [];
+  for (const contract of withParcels) {
+    const [oldest, next] = contract.parcels;
+    const of = (parcel: typeof oldest) => monthOf(parcel.due) ?? parcel.due ?? "sem vencimento";
+    const suffix = showContract ? ` (contrato ${contract.number})` : "";
+    options.push({ id: oldest.id, contract: contract.number, label: `${parcelLine(oldest, contract.number, false)}${suffix}`, ids: [oldest.id] });
+    if (next) {
+      options.push({ id: next.id, contract: contract.number, label: `${of(oldest)} e ${of(next)} juntas, no mesmo PDF${suffix}`, ids: [oldest.id, next.id] });
+    }
+  }
+  return options;
+}
 // --- Steps ------------------------------------------------------------------------------------------------
 
 /** "O mesmo CPF de antes": this conversation's, else the last one this phone confirmed — still on the spreadsheet. */
@@ -488,6 +513,7 @@ async function onName(conv: Conv, session: AiSession, settings: AiAssistantSetti
     await say(conv, settings, phrase("nameMismatch"));
     return save(session, "AWAIT_NAME", next);
   }
+  if (!settings.confirmAddress) return confirmIdentity(conv, session, settings, { ...data, informedName, nameMatched: true }, found, null);
   await say(conv, settings, phrase("askAddress"));
   return save(session, "AWAIT_ADDRESS", { ...data, informedName, nameMatched: true });
 }
@@ -496,8 +522,15 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
   const found = data.cpfKey ? await findClientByCpf(conv, data.cpfKey, data.toleranceHours) : null;
   if (found === "UNAVAILABLE") return dataUnavailable(conv, session, settings, data, await clientDataAccess(conv));
   if (!found) return handToQueue(conv, session, settings, data, "cadastro do CPF não encontrado para confirmar o endereço");
-  const informedAddress = text.trim().slice(0, 300);
-  const addressDiffers = found.address ? !addressesMatch(informedAddress, found.address) : null;
+  return confirmIdentity(conv, session, settings, data, found, text.trim().slice(0, 300));
+}
+
+/**
+ * Name confirmed (and the address, when Configurações asks for it): the conversation is this client's from now on. An
+ * address different from the record, or a phone that isn't on it, raises "Cadastro desatualizado" for the team.
+ */
+async function confirmIdentity(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, found: ClientFound, informedAddress: string | null) {
+  const addressDiffers = informedAddress !== null && found.address ? !addressesMatch(informedAddress, found.address) : null;
   // A beneficiary or relative writing for the titular: their phone isn't on the record yet — the team adds it.
   const ownKey = phoneKey(conv.phone);
   const phoneMissing = Boolean(ownKey) && !found.phoneKeys.includes(ownKey!);
@@ -530,7 +563,13 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
     ipAddress: null,
     metadata: { cpf: maskCpf(data.cpfKey!), addressDiffers, phoneMissing },
   });
-  return deliver(conv, session, settings, { ...data, informedAddress, addressDiffers, phoneMissing, done: [...(data.done ?? []), "Dados confirmados pelo cliente"] });
+  return deliver(conv, session, settings, {
+    ...data,
+    informedAddress: informedAddress ?? undefined,
+    addressDiffers,
+    phoneMissing,
+    done: [...(data.done ?? []), informedAddress !== null ? "Nome e endereço confirmados pelo cliente" : "Nome confirmado pelo cliente"],
+  });
 }
 
 /** With the client confirmed: the open parcels, then the boleto. */
@@ -543,16 +582,17 @@ async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSett
     await say(conv, settings, phrase("noParcels", { cpf }));
     return save(session, "AWAIT_CPF", { ...data, afterEmpty: true, cpfAttempts: 0, offerCpf: undefined, done: [...(data.done ?? []), `Informado: nenhuma parcela em aberto para o CPF ${cpf}`] });
   }
-  const list = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n") + (data.staleSince ? `\n\n${phrase("staleList")}` : "");
-  const done = [...(data.done ?? []), `Débitos informados: ${options.map((o) => o.label).join("; ")}`];
+  const parcels = parcelList(contracts);
+  const list = parcels.map((line) => `• ${line}`).join("\n") + (data.staleSince ? `\n\n${phrase("staleList")}` : "");
+  const choices = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n");
+  const done = [...(data.done ?? []), `Débitos informados: ${parcels.join("; ")}`];
   if (data.intent === "BOLETO" && options.length === 1) {
     return sendBoletos(conv, session, settings, { ...data, done }, options[0]);
   }
-  const many = options.length > 1;
   if (data.intent === "BOLETO") {
-    await say(conv, settings, phrase("parcelsForBoleto", { lista: list, ou_todas: many ? ", ou *todas*" : "" }));
+    await say(conv, settings, phrase("parcelsForBoleto", { lista: list, opcoes: choices }));
   } else {
-    await say(conv, settings, phrase("parcelsForDebts", { lista: list, ou_todas_virgula: many ? ", *todas*" : "" }));
+    await say(conv, settings, phrase("parcelsForDebts", { lista: list, opcoes: choices }));
   }
   return save(session, "AWAIT_PARCEL", { ...data, options, done });
 }
@@ -568,12 +608,16 @@ async function onParcel(conv: Conv, session: AiSession, settings: AiAssistantSet
   if (choice === null) {
     const unclear = (data.unclear ?? 0) + 1;
     if (unclear >= MAX_UNCLEAR) return handToQueue(conv, session, settings, { ...data, unclear }, "não entendeu qual parcela o cliente queria");
-    await say(conv, settings, phrase("parcelUnclear", { total: options.length, ou_todas: options.length > 1 ? " ou *todas*" : "" }));
+    await say(conv, settings, phrase("parcelUnclear", { total: options.length }));
     return save(session, "AWAIT_PARCEL", { ...data, unclear });
   }
   if (choice === 0) {
-    // Every listed parcel, contract by contract (one PDF with all of them).
-    return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, { id: "all", contract: "", label: "todas as parcelas em aberto", ids: options.map((o) => o.id) });
+    // "Todas", "as duas", "juntas": the oldest and the next one, when there's only one such option. Never more than two.
+    const together = options.filter((o) => o.ids.length === 2);
+    if (together.length === 1) return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, together[0]);
+    if (options.length === 1) return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, options[0]);
+    await say(conv, settings, phrase("parcelOnlyTwo", { total: options.length }));
+    return save(session, "AWAIT_PARCEL", data);
   }
   return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, options[choice - 1]);
 }
@@ -585,9 +629,7 @@ async function sendBoletos(conv: Conv, session: AiSession, settings: AiAssistant
   try {
     const preview = await previewBoletos(target, ids);
     const prepared = await prepareBoletos(target, ids, true);
-    const olderIncluded = ids.length > 1 && option.id !== "all";
-    const intro = olderIncluded ? "Enviei no mesmo PDF também as parcelas anteriores em aberto desse contrato, que precisam ser pagas antes.\n\n" : "";
-    const caption = aiAssistantReply(settings.name, `${intro}${preview.message}`.trim());
+    const caption = aiAssistantReply(settings.name, preview.message.trim());
     const document = await recordAiMessage(conv.id, "DOCUMENT", caption);
     await addAttachment(document.id, { fileName: prepared.fileName, mimeType: "application/pdf", sizeBytes: prepared.pdf.length, storageKey: prepared.storageKey, kind: "DOCUMENT" });
     await whatsappService.sendOutboundFile(conv.connectionId, document.id, conv.phone, prepared.pdf, prepared.fileName, "application/pdf", null, caption);
@@ -616,6 +658,8 @@ async function sendBoletos(conv: Conv, session: AiSession, settings: AiAssistant
 /** What the customer wants, by the obvious words first and the local AI only when they don't say it. */
 async function intentOf(text: string, data: SessionData): Promise<{ intent: Intent | null; data: SessionData }> {
   const byRule = ruleIntent(text);
+  // The only "other subject" the rules recognize: cancelling the plan or the contract.
+  if (byRule === "OUTRO") return { intent: byRule, data: { ...data, summary: data.summary || "quer cancelar o plano ou o contrato" } };
   if (byRule) return { intent: byRule, data };
   const byAi = await classifyIntent(text);
   if (!byAi) return { intent: null, data };
@@ -632,9 +676,13 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
       return startFinance(conv, session, settings, { ...next, unclear: 0 }, intent, text);
     case "ENCERRAR":
       return finish(conv, session, settings, next, { goodbye: GOODBYE_ON_REQUEST, outcome: next.done?.length ? "resolvido; cliente pediu para encerrar" : "cliente pediu para encerrar" });
+    case "SEM_NECESSIDADE":
+      return noNeed(conv, session, settings, next);
     case "AGRADECIMENTO":
       if (state === "AWAIT_MORE") return finish(conv, session, settings, next);
       if (next.done?.length) return finish(conv, session, settings, next);
+      // "Não, obrigado" right after "Como posso ajudar?": nothing to do.
+      if (isNo(text)) return noNeed(conv, session, settings, next);
       await say(conv, settings, phrase("youreWelcome"));
       return save(session, state, next);
     case "SAUDACAO":
@@ -644,6 +692,8 @@ async function onIntent(conv: Conv, session: AiSession, settings: AiAssistantSet
       return handToQueue(conv, session, settings, next, "assunto para a equipe");
     default: {
       if (state === "AWAIT_MORE" && isNo(text)) return finish(conv, session, settings, next);
+      // A plain "não" to "Como posso ajudar?": nothing to do.
+      if (state === "AWAIT_INTENT" && isNo(text)) return noNeed(conv, session, settings, next);
       // Only a CPF, before saying what it is for: kept, and the customer is asked what they need.
       const cpf = extractCpf(text);
       if (cpf) {
@@ -732,6 +782,7 @@ async function run(conversationId: string): Promise<unknown> {
   if (state === "NEW") {
     await takeAsAttendant(conv);
     if (text && ruleIntent(text) === "ENCERRAR") return finish(conv, session, settings, data, { goodbye: GOODBYE_ON_REQUEST, outcome: "cliente pediu para encerrar" });
+    if (text && ruleIntent(text) === "SEM_NECESSIDADE") return noNeed(conv, session, settings, data);
     if (settings.greeting.trim()) await say(conv, settings, openingOf(conv, settings.greeting));
     session = await save(session, "AWAIT_INTENT", data);
     if (!text) {
@@ -755,13 +806,18 @@ async function run(conversationId: string): Promise<unknown> {
     return finish(conv, session, settings, data, { goodbye: GOODBYE_ON_REQUEST, outcome: data.done?.length ? "resolvido; cliente pediu para encerrar" : "cliente pediu para encerrar" });
   }
 
+  // "Não preciso de nada", "foi engano", "deixa pra lá": a goodbye, not the queue (never while giving the name or address).
+  if (state !== "AWAIT_NAME" && state !== "AWAIT_ADDRESS" && ruleIntent(text) === "SEM_NECESSIDADE") return noNeed(conv, session, settings, data);
+
   // "Quero falar com um atendente" in the middle of anything: straight to the queue.
   if (state !== "AWAIT_NAME" && state !== "AWAIT_ADDRESS" && ruleIntent(text) === "ATENDENTE") {
     return handToQueue(conv, session, settings, data, "cliente pediu um atendente");
   }
 
   // "Errei o CPF", "não é esse", "o endereço tá errado": back to that step instead of going on with the wrong data.
-  const correction = state === "AWAIT_NAME" || state === "AWAIT_ADDRESS" || state === "AWAIT_PARCEL" || state === "AWAIT_MORE" ? correctionTarget(text) : null;
+  const asked = state === "AWAIT_NAME" || state === "AWAIT_ADDRESS" || state === "AWAIT_PARCEL" || state === "AWAIT_MORE" ? correctionTarget(text) : null;
+  // Without the address step there is no address to correct.
+  const correction = asked === "ENDERECO" && !settings.confirmAddress ? null : asked;
   if (correction) {
     const reset: SessionData = { ...data, nameAttempts: 0, informedName: undefined, nameMatched: undefined, options: undefined, unclear: 0 };
     if (extractCpf(text)) return onCpf(conv, session, settings, { ...reset, cpfAttempts: 0 }, text);
@@ -865,6 +921,9 @@ export async function sweepAssistantSessions(now = new Date()): Promise<void> {
       const data = dataOf(session);
       if (data.done?.some((d) => d.startsWith("Boleto enviado") || d.startsWith("Débitos informados") || d.startsWith("Informado:"))) {
         await finish(conv, session, null, data, { silent: true, outcome: `resolvido; cliente sem responder por ${IDLE_MINUTES} minutos` });
+      } else if (!data.intent && !data.pendingCpf && !data.summary && !data.unclear) {
+        // Only greeted or thanked, never asked for anything: nothing for the team to do.
+        await finish(conv, session, null, data, { silent: true, outcome: `cliente não fez nenhum pedido e parou de responder por ${IDLE_MINUTES} minutos` });
       } else {
         await handToQueue(conv, session, null, data, `cliente parou de responder por ${IDLE_MINUTES} minutos`, false);
       }
@@ -968,6 +1027,7 @@ const INTENT_LABEL: Record<Intent, string> = {
   DEBITOS: "débitos em aberto",
   ATENDENTE: "falar com um atendente",
   ENCERRAR: "encerrar a conversa",
+  SEM_NECESSIDADE: "não precisa de nada",
   SAUDACAO: "cumprimento",
   AGRADECIMENTO: "agradecimento",
   OUTRO: "outro assunto",
@@ -1035,6 +1095,8 @@ export async function simulateAssistant(input: { connectionId: string; message: 
       return done(closed ? "Enviaria a mensagem de fora do expediente da conexão, deixaria a conversa na fila e pararia de responder." : "Avisaria que vai transferir e colocaria a conversa na fila, com uma nota do pedido.");
     case "ENCERRAR":
       return done("Encerraria a conversa na hora, com a despedida e a pesquisa de satisfação (seguindo as regras das etiquetas).");
+    case "SEM_NECESSIDADE":
+      return done("Se despediria (\"Tudo bem! Se precisar, é só chamar por aqui.\") e encerraria a conversa sem pesquisa, já que nada foi pedido.");
     case "SAUDACAO":
     case "AGRADECIMENTO":
       return done("Responderia com a saudação e perguntaria como pode ajudar.");
@@ -1072,7 +1134,7 @@ export async function simulateAssistant(input: { connectionId: string; message: 
     steps.push({ title: "CPF", status: "stop", detail: `${maskCpf(cpf)} não está nos dados dos clientes.` });
     return done("Diria que não conseguiu confirmar os dados e pediria para conferir o CPF (no 3º erro, passaria para a equipe).");
   }
-  steps.push({ title: "CPF", status: "ok", detail: `${maskCpf(cpf)}: ${found.name ? shortName(found.name) : "cliente sem nome no cadastro"} — pediria o nome completo e o endereço para confirmar.` });
+  steps.push({ title: "CPF", status: "ok", detail: `${maskCpf(cpf)}: ${found.name ? shortName(found.name) : "cliente sem nome no cadastro"} — pediria o nome completo${settings.confirmAddress ? " e o endereço" : ""} para confirmar.` });
   if (!found.name) return done("Passaria para a equipe: o cadastro não tem o nome para confirmar.");
 
   const target = {
@@ -1090,21 +1152,24 @@ export async function simulateAssistant(input: { connectionId: string; message: 
     steps.push({ title: "Parcelas em aberto", status: "info", detail: "Nenhuma." });
     return done("Diria que não há parcelas em aberto para esse CPF e perguntaria se o boleto é de outra pessoa (o titular).");
   }
-  steps.push({ title: "Parcelas em aberto", status: "ok", detail: options.map((o, i) => `${i + 1}. ${o.label}`).join("\n") });
+  steps.push({ title: "Parcelas em aberto", status: "ok", detail: parcelList(data.client!.contracts).map((line) => `• ${line}`).join("\n") });
+  steps.push({ title: "Opções de boleto", status: "info", detail: options.map((o, i) => `${i + 1}. ${o.label}`).join("\n") });
   if (intent === "DEBITOS") return done(`Informaria ${options.length === 1 ? "a parcela em aberto" : `as ${options.length} parcelas em aberto`} e ofereceria o boleto.`);
 
   const option = options[0];
   try {
     const preview = await previewBoletos(target, [...new Set(option.ids)]);
     const items = preview.items.map((i) => `vencimento ${i.due}, ${i.updatedValue ?? i.value}`).join("; ");
-    steps.push({ title: "Boleto", status: staleSince ? "warn" : "ok", detail: `Geraria o boleto da 1ª parcela da lista: ${items}.` });
+    steps.push({ title: "Boleto", status: staleSince ? "warn" : "ok", detail: `Geraria o boleto da parcela mais antiga: ${items}.` });
   } catch (err) {
     steps.push({ title: "Boleto", status: "stop", detail: `Não geraria: ${(err as Error).message}.` });
     return done("Avisaria que não conseguiu gerar o boleto e passaria para a equipe com o motivo.");
   }
+  const confirm = settings.confirmAddress ? "Depois de confirmar nome e endereço" : "Depois de confirmar o nome";
+  const caveat = staleSince ? ', com "se já pagou, desconsidere"' : "";
   return done(
     options.length === 1
-      ? `Depois de confirmar nome e endereço, enviaria o PDF do boleto e a linha digitável${staleSince ? ', com "se já pagou, desconsidere"' : ""}.`
-      : `Depois de confirmar nome e endereço, listaria as ${options.length} parcelas e enviaria o PDF e a linha digitável da escolhida${staleSince ? ', com "se já pagou, desconsidere"' : ""}.`
+      ? `${confirm}, enviaria o PDF do boleto e a linha digitável${caveat}.`
+      : `${confirm}, mostraria as parcelas em aberto e as ${options.length} opções de boleto (sempre a partir da mais antiga) e enviaria o PDF e a linha digitável da escolhida${caveat}.`
   );
 }

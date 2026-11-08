@@ -15,7 +15,7 @@ const CLASSIFY_TIMEOUT_MS = 45_000;
 const RETRY_DELAY_MS = 5_000;
 const TRANSCRIBE_TIMEOUT_MS = 240_000;
 
-const INTENTS: Intent[] = ["BOLETO", "DEBITOS", "ATENDENTE", "ENCERRAR", "SAUDACAO", "AGRADECIMENTO", "OUTRO"];
+const INTENTS: Intent[] = ["BOLETO", "DEBITOS", "ATENDENTE", "ENCERRAR", "SEM_NECESSIDADE", "SAUDACAO", "AGRADECIMENTO", "OUTRO"];
 
 const SYSTEM_PROMPT = `Você classifica mensagens de clientes de uma empresa de planos (funerária/saúde) recebidas pelo WhatsApp.
 Responda só com JSON no formato {"intent": "...", "resumo": "..."}.
@@ -24,6 +24,7 @@ intent:
 - "DEBITOS": quer saber se deve, quanto deve, parcelas em aberto ou atrasadas, valor atualizado.
 - "ATENDENTE": pede para falar com uma pessoa/atendente.
 - "ENCERRAR": quer encerrar ou sair desta conversa (não confundir com cancelar contrato ou plano, que é "OUTRO").
+- "SEM_NECESSIDADE": diz que não precisa de nada, que não quer mais o que pediu, que já resolveu ou que mandou mensagem por engano.
 - "SAUDACAO": só cumprimenta.
 - "AGRADECIMENTO": agradece ou encerra a conversa.
 - "OUTRO": qualquer outro assunto (cancelamento, mudança de plano, reclamação, dúvida, comprovante etc.).

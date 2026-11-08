@@ -156,7 +156,7 @@ function plain(text: string): string {
   return fold(text).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export type Intent = "BOLETO" | "DEBITOS" | "ATENDENTE" | "ENCERRAR" | "SAUDACAO" | "AGRADECIMENTO" | "OUTRO";
+export type Intent = "BOLETO" | "DEBITOS" | "ATENDENTE" | "ENCERRAR" | "SEM_NECESSIDADE" | "SAUDACAO" | "AGRADECIMENTO" | "OUTRO";
 
 const RULES: [Intent, RegExp][] = [
   // Asked for a person: always first, it wins over anything else in the same message.
@@ -185,11 +185,47 @@ function isClosingTalk(folded: string): boolean {
   return words.length > 0 && words.length <= 12 && words.every((w) => CLOSING_WORDS.has(w)) && CLOSING_MARKERS.test(folded);
 }
 
+// "Não preciso de nada", "foi engano", "deixa pra lá", "já consegui": the customer doesn't need the assistant.
+const NO_NEED = new RegExp(
+  [
+    "^(nao|n) (preciso|precisa|quero|necessito)( mais)?( de)?( nada| ajuda| mais nada)?( nao)?( (obrigad[oa]|valeu|vlw))?$",
+    "\\bnao (preciso|precisa|necessito|vou precisar) (de )?(mais )?(nada|ajuda|mais)\\b",
+    "\\bnao precisa mais\\b",
+    "\\bnao (quero|preciso) mais\\b",
+    "\\b(nada nao|nada nao obrigad[oa]|por enquanto nao|por enquanto nada|agora nao|no momento nao)\\b",
+    "\\bdeixa (pra|para) la\\b",
+    "\\b(pode )?esquece(r)?\\b",
+    "\\b(foi|era) (engano|sem querer)\\b",
+    "\\b(por|foi) engano\\b",
+    "\\bmandei (errado|sem querer|por engano|pra pessoa errada|no numero errado)\\b",
+    "\\b(numero|contato|conversa) errad[oa]\\b",
+    "\\bsem querer\\b",
+    "\\bja (consegui|resolvi|resolveu|esta resolvido|ta resolvido|deu certo|achei|encontrei)\\b",
+    "\\b(ja )?(esta|ta) tudo (certo|ok|resolvido)\\b",
+  ].join("|")
+);
+// A message asking for something else is never "no need", whatever else it says ("não quero o boleto, quero cancelar").
+const STILL_ASKING = /\b(cancel\w*|plano|contrato|carteirinha|comprovante|reclama\w*|mudar|trocar|alterar|atualizar|segunda via|2a via|quero (o|a|um|uma|saber|falar)|preciso (do|da|de um|de uma|saber|falar)|como (faco|faz)|qual|quando|onde|por que|porque)\b/;
+
+const CANCEL_PLAN = /\b(cancelar|cancela|cancelamento|encerrar|encerramento|rescindir|rescisao|sair)\b.*\b(plano|contrato|assinatura|convenio)\b/;
+
+/** The customer says they don't need anything (any more) — short, and not asking for something else. */
+export function isNoNeed(text: string): boolean {
+  const folded = plain(text);
+  if (!folded || folded.split(" ").length > 14) return false;
+  return NO_NEED.test(folded) && !STILL_ASKING.test(folded);
+}
+
 /** The request in a message when it is obvious; null when only the AI can tell. */
 export function ruleIntent(text: string): Intent | null {
   const folded = plain(text);
   if (!folded) return null;
+  if (isNoNeed(folded)) return "SEM_NECESSIDADE";
+  // Cancelling the plan or the contract is for the team, even when the boleto is mentioned ("não quero o boleto, quero cancelar").
+  if (CANCEL_PLAN.test(folded)) return "OUTRO";
   for (const [intent, pattern] of RULES) {
+    // "Não quero falar com atendente" is not asking for one.
+    if (intent === "ATENDENTE" && /\bnao (quero|preciso|precisa) falar com\b/.test(folded)) continue;
     if (intent === "AGRADECIMENTO" && isClosingTalk(folded)) return intent;
     if (pattern.test(folded)) return intent;
   }
@@ -224,7 +260,7 @@ export function isNo(text: string): boolean {
 /** "2", "a 2", "opção 2", "segunda"… — the option picked, 1-based; "todas" = 0. Null when it isn't a choice. */
 export function parseChoice(text: string, count: number): number | null {
   const folded = fold(text);
-  if (/\b(todas|todos|tudo|todas elas)\b/.test(folded)) return 0;
+  if (/\b(todas|todos|tudo|todas elas|as duas|os dois|ambas|ambos|juntas|juntos)\b/.test(folded)) return 0;
   const ordinals = ["primeira", "segunda", "terceira", "quarta", "quinta", "sexta", "setima", "oitava", "nona", "decima"];
   const ordinal = ordinals.findIndex((o) => new RegExp(`\\b${o}\\b`).test(folded));
   if (ordinal >= 0 && ordinal < count) return ordinal + 1;

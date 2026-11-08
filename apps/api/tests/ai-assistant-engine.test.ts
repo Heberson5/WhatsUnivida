@@ -90,7 +90,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
 
   /** Each test its own customer phone (on the Modo teste list), so conversations don't mix. */
   async function newCustomer(phone = `55659888${String(70000 + ++phoneSeq)}`) {
-    await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, enabled: true, connectionIds: [connectionId], testMode: true, testPhones: [phone, CUSTOMER] });
+    await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, enabled: true, connectionIds: [connectionId], testMode: true, testPhones: [phone, CUSTOMER], confirmAddress: true });
     const contact = await prisma.contact.upsert({ where: { id: `00000000-0000-4000-8000-${phone.slice(-12).padStart(12, "0")}` }, update: {}, create: { id: `00000000-0000-4000-8000-${phone.slice(-12).padStart(12, "0")}`, phone, name: "Cliente", whatsappConnectionId: connectionId } });
     return contact;
   }
@@ -136,8 +136,12 @@ describe("Assistente Virtual: conversa com o cliente", () => {
 
     await customerSays(contact.id, "R. das Flores nº 100 - centro");
     expect((await lastText(contact.id))).toContain("parcelas em aberto");
-    expect((await lastText(contact.id))).toMatch(/\*1\.\* janeiro\/2026/);
-    expect((await lastText(contact.id))).toMatch(/\*3\.\* dezembro\/2030/);
+    // Every open parcel is shown; the boleto only from the oldest: the oldest, or the oldest and the next one.
+    expect((await lastText(contact.id))).toContain("• janeiro/2026");
+    expect((await lastText(contact.id))).toContain("• dezembro/2030");
+    expect((await lastText(contact.id))).toMatch(/\*1\.\* janeiro\/2026: R\$/);
+    expect((await lastText(contact.id))).toContain("*2.* janeiro/2026 e fevereiro/2026 juntas, no mesmo PDF");
+    expect((await lastText(contact.id))).not.toContain("*3.*");
 
     await resetSent();
     conversation = await customerSays(contact.id, "a 2");
@@ -265,12 +269,12 @@ describe("Assistente Virtual: conversa com o cliente", () => {
 
   it("outro assunto entendido pela IA local: passa para a fila com o resumo na nota", async () => {
     const contact = await newCustomer();
-    llm.intent = { intent: "OUTRO", summary: "quer cancelar o plano" };
-    const conversation = await customerSays(contact.id, "gostaria de cancelar meu plano funerário");
+    llm.intent = { intent: "OUTRO", summary: "quer mudar o vencimento" };
+    const conversation = await customerSays(contact.id, "gostaria de mudar a data do vencimento");
     expect(conversation.status).toBe("NEW");
     const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
-    expect(note.body).toContain("Resumo: quer cancelar o plano");
-    expect(note.body).toContain("gostaria de cancelar meu plano funerário");
+    expect(note.body).toContain("Resumo: quer mudar o vencimento");
+    expect(note.body).toContain("gostaria de mudar a data do vencimento");
   });
 
   it("IA local fora do ar: não entendeu duas vezes → fila (nunca deixa o cliente sem resposta)", async () => {
@@ -641,7 +645,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       await customerSays(contact.id, "Maria Aparecida da Silva");
       await customerSays(contact.id, "Rua das Flores, 100, Centro");
       expect(await lastText(contact.id)).toContain("Se você pagou alguma delas nos últimos dias");
-      const conversation = await customerSays(contact.id, "3");
+      const conversation = await customerSays(contact.id, "1");
       expect(conversation.status).toBe("IN_AI");
       expect(await lastText(contact.id)).toContain("Se você já pagou esta parcela nos últimos dias, pode desconsiderar.");
       expect((await texts(contact.id)).join(" ")).not.toContain("fora do expediente");
@@ -695,9 +699,9 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(panel.body[0]).toMatchObject({ connectionId, sourceName: "Planilha", status: "OK", usableNow: true, closedNow: false, reason: null });
       let sim = await request(app).post("/api/settings/ai-assistant/simulate").set(auth).send({ connectionId, message: "quero meu boleto", cpf: "529.982.247-25", when: "open" });
       expect(sim.status).toBe(200);
-      expect(sim.body.steps.map((s: { title: string }) => s.title)).toEqual(["Assistente", "Entendimento", "Expediente", "Dados dos clientes", "CPF", "Parcelas em aberto", "Boleto"]);
+      expect(sim.body.steps.map((s: { title: string }) => s.title)).toEqual(["Assistente", "Entendimento", "Expediente", "Dados dos clientes", "CPF", "Parcelas em aberto", "Opções de boleto", "Boleto"]);
       expect(sim.body.steps.find((s: { title: string }) => s.title === "CPF").detail).toContain("Maria A. D. S. — pediria");
-      expect(sim.body.outcome).toContain("listaria as 3 parcelas");
+      expect(sim.body.outcome).toContain("as 2 opções de boleto (sempre a partir da mais antiga)");
       expect(await prisma.auditLog.count({ where: { action: "AI_ASSISTANT_SIMULATED" } })).toBeGreaterThan(0);
       // Nothing was sent and no conversation was opened.
       expect(await prisma.message.count({ where: { createdAt: { gt: mark }, automatedBy: "AI" } })).toBe(0);
@@ -728,6 +732,84 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       const agent = await createTestUser({ email: `agente-sim-${Date.now()}@test.dev`, role: "AGENT" });
       const agentToken = (await request(app).post("/api/auth/login").send({ email: agent.email, password: TEST_PASSWORD })).body.accessToken as string;
       expect((await request(app).post("/api/settings/ai-assistant/simulate").set("Authorization", `Bearer ${agentToken}`).send({ connectionId, message: "boleto" })).status).toBe(403);
+    });
+  });
+
+  describe("cliente que não precisa de ajuda, endereço opcional e opções de boleto", () => {
+    const closedConv = (contactId: string) => prisma.conversation.findFirstOrThrow({ where: { contactId }, orderBy: { createdAt: "desc" } });
+
+    it("\"foi engano\" logo de cara: despedida curta e encerra, sem pesquisa e sem ir para a fila", async () => {
+      const contact = await newCustomer();
+      const conversation = await customerSays(contact.id, "Desculpa, foi engano");
+      expect(conversation.status).toBe("CLOSED");
+      expect(conversation.closeReason).toBe("AI_ASSISTANT");
+      expect(await texts(contact.id)).toEqual(["*Assistente Virtual:*\n\nTudo bem! Se precisar, é só chamar por aqui. 👋"]);
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
+      expect(note.body).toContain("cliente não precisava de atendimento");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(await prisma.satisfactionSurvey.count({ where: { conversationId: conversation.id } })).toBe(0);
+    });
+
+    it("\"não, obrigado\" depois da saudação, ou \"deixa pra lá\" no meio do pedido: encerra, não vai para a fila", async () => {
+      const first = await newCustomer();
+      await customerSays(first.id, "oi");
+      expect((await customerSays(first.id, "não, obrigado")).status).toBe("CLOSED");
+      const second = await newCustomer();
+      await customerSays(second.id, "quero meu boleto");
+      expect(await lastText(second.id)).toContain("CPF");
+      expect((await customerSays(second.id, "deixa pra lá")).status).toBe("CLOSED");
+      expect(await lastText(second.id)).toContain("Se precisar, é só chamar");
+    });
+
+    it("só cumprimentou e parou de responder: encerra sozinho depois de 30 minutos, sem ir para a fila", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "boa tarde");
+      await sweepAssistantSessions(new Date(Date.now() + 31 * 60_000));
+      expect((await closedConv(contact.id)).status).toBe("CLOSED");
+    });
+
+    it("sem a confirmação do endereço (padrão): depois do nome já mostra as parcelas; o telefone fora do cadastro ainda gera o aviso", async () => {
+      const contact = await newCustomer();
+      await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, enabled: true, connectionIds: [connectionId], testMode: true, testPhones: [contact.phone!] });
+      await customerSays(contact.id, "quero meu boleto");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Aparecida da Silva");
+      const said = (await texts(contact.id)).join(" ");
+      expect(said).not.toContain("endereço");
+      expect(await lastText(contact.id)).toContain("Estas são as parcelas em aberto");
+      const correction = await prisma.clientDataCorrection.findFirstOrThrow({ where: { contactId: contact.id } });
+      expect(correction).toMatchObject({ informedAddress: null, contactPhone: contact.phone });
+      // "O endereço está errado" means nothing without that step.
+      await customerSays(contact.id, "o endereço está errado");
+      expect(await lastText(contact.id)).not.toContain("endereço certo");
+    });
+
+    it("boleto: só a mais antiga ou a mais antiga e a próxima; \"as duas\" manda as duas e uma terceira não existe", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero meu boleto");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Aparecida da Silva");
+      await customerSays(contact.id, "Rua das Flores, 100, Centro");
+      await customerSays(contact.id, "3");
+      expect(await lastText(contact.id)).toContain("Não entendi qual opção");
+      await resetSent();
+      await customerSays(contact.id, "as duas");
+      const linhas = (await texts(contact.id)).filter((t) => /^\d{47}$/.test(t));
+      expect(linhas).toHaveLength(2);
+      expect((await outbound(contact.id)).find((m) => m.type === "DOCUMENT")?.body).not.toContain("parcelas anteriores");
+    });
+
+    it("depois do boleto, \"não preciso de mais nada\": encerra como um atendimento (com a pesquisa)", async () => {
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero meu boleto");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Aparecida da Silva");
+      await customerSays(contact.id, "Rua das Flores, 100, Centro");
+      await customerSays(contact.id, "1");
+      const conversation = await customerSays(contact.id, "não preciso de mais nada");
+      expect(conversation.status).toBe("CLOSED");
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { contains: "não precisava de mais nada" } } });
+      expect(note.body).toContain("Boleto enviado");
     });
   });
 });

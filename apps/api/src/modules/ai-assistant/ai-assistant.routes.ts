@@ -21,6 +21,7 @@ const settingsSchema = z.object({
   greeting: z.string().max(AI_ASSISTANT_TEXT_MAX),
   transferMessage: z.string().max(AI_ASSISTANT_TEXT_MAX),
   agentTranscription: z.boolean().default(false),
+  confirmAddress: z.boolean().default(false),
 });
 
 aiAssistantRouter.get(
@@ -40,7 +41,7 @@ aiAssistantRouter.put(
       entity: "SystemSetting",
       entityId: "aiAssistant",
       ipAddress: req.ip ?? null,
-      metadata: { enabled: saved.enabled, testMode: saved.testMode, connections: saved.connectionIds.length, testPhones: saved.testPhones.length, agentTranscription: saved.agentTranscription },
+      metadata: { enabled: saved.enabled, testMode: saved.testMode, connections: saved.connectionIds.length, testPhones: saved.testPhones.length, agentTranscription: saved.agentTranscription, confirmAddress: saved.confirmAddress },
     });
     res.json(saved);
   })

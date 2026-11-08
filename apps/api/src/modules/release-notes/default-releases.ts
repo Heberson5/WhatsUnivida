@@ -11,6 +11,39 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.4",
+    date: "8 nov 2026",
+    name: "Assistente Virtual: mais atento ao cliente",
+    summary: "O assistente percebe quando o cliente não precisa de ajuda e se despede, sem passar a conversa para a fila. A confirmação do endereço virou opção nas Configurações (desligada de início). E o boleto segue a mesma regra da equipe: o cliente escolhe só a parcela mais antiga ou a mais antiga junto com a próxima.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Cliente que não precisa de ajuda",
+        text: "Mensagens como \"foi engano\", \"mandei errado\", \"não preciso de nada\", \"deixa pra lá\", \"já consegui\" ou um \"não, obrigado\" logo depois do Como posso ajudar? recebem uma despedida curta, e a conversa é encerrada sem pesquisa de satisfação e sem ir para a fila. Se o assistente já tinha enviado boleto ou débitos, encerra como um atendimento normal, com a pesquisa. Quem só cumprimentou e parou de responder tem a conversa encerrada depois de 30 minutos, também sem ir para a fila. Pedidos para cancelar o plano ou o contrato continuam indo para a equipe.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-sem-necessidade.webp", caption: "\"Mandei mensagem errado\": despedida e conversa encerrada", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "configuracoes",
+        title: "Confirmação do endereço opcional",
+        text: "O assistente sempre pede o CPF e o nome completo do titular. A confirmação do endereço agora é uma opção em Configurações › Assistente Virtual, desligada de início. Ligada, um endereço diferente do cadastro gera o aviso de cadastro desatualizado; desligada, o aviso continua aparecendo quando o telefone que entrou em contato não está no cadastro do CPF.",
+        where: "Configurações › Assistente Virtual",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/assistente-confirmar-endereco.webp", caption: "A opção nas Configurações", size: "small" }],
+      },
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Boleto sempre a partir da parcela mais antiga",
+        text: "O assistente mostra todas as parcelas em aberto, mas para o boleto oferece só duas opções por contrato: a parcela mais antiga, ou a mais antiga e a próxima juntas no mesmo PDF. Antes era possível escolher, por exemplo, a terceira parcela e receber as três de uma vez. \"As duas\" ou \"juntas\" escolhem a segunda opção.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-boleto-opcoes.webp", caption: "As parcelas em aberto e as duas opções de boleto", size: "small" }],
+      },
+    ],
+  },
+  {
     version: "2.37.3",
     date: "7 nov 2026",
     name: "Assistente Virtual: dados dos clientes",

@@ -139,6 +139,22 @@ export function AssistenteVirtualPanel() {
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
+                checked={form.confirmAddress}
+                onChange={(e) => setForm({ ...form, confirmAddress: e.target.checked })}
+                className="h-4 w-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-sm font-medium">Confirmar também o endereço do cadastro</span>
+            </label>
+            <p className="text-xs text-muted">
+              O assistente sempre pede o CPF e o nome completo do titular. Ligado, pede também o endereço, e um endereço diferente do cadastro gera o aviso de cadastro desatualizado. Desligado
+              (padrão), o CPF e o nome bastam.
+            </p>
+          </div>
+
+          <div className="space-y-1 rounded-card border border-border p-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
                 checked={form.agentTranscription}
                 onChange={(e) => setForm({ ...form, agentTranscription: e.target.checked })}
                 className="h-4 w-4 accent-[var(--color-primary)]"

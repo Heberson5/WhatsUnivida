@@ -3978,6 +3978,11 @@ export interface AiAssistantSettingsDTO {
    * attends (automatically, before it answers).
    */
   agentTranscription: boolean;
+  /**
+   * After the full name, also ask the address on the record to confirm who the customer is (an address different from
+   * the record raises "Cadastro desatualizado"). Off: the CPF and the full name are enough.
+   */
+  confirmAddress: boolean;
 }
 
 /** What any logged-in person needs to know of the Assistente Virtual (the button on audios). */
@@ -3998,6 +4003,7 @@ export const DEFAULT_AI_ASSISTANT_SETTINGS: AiAssistantSettingsDTO = {
   greeting: "Olá! Sou o assistente virtual. Posso ajudar com boleto, linha digitável e débitos em aberto. Como posso ajudar?",
   transferMessage: "Vou transferir você para um de nossos atendentes. Em instantes alguém irá atendê-lo.",
   agentTranscription: false,
+  confirmAddress: false,
 };
 
 /** "*Assistente Virtual:* texto" — how every reply of the assistant reaches the customer. */

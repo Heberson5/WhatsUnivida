@@ -73,8 +73,20 @@ describe("Assistente Virtual: pedidos óbvios (sem precisar da IA)", () => {
     expect(ruleIntent(text)).toBe(intent);
   });
 
-  it("assunto que as regras não reconhecem fica para a IA local", () => {
-    expect(ruleIntent("gostaria de cancelar meu plano")).toBeNull();
+  it("assunto que as regras não reconhecem fica para a IA local; cancelar o plano vai sempre para a equipe", () => {
+    expect(ruleIntent("gostaria de mudar a data de vencimento")).toBeNull();
+    expect(ruleIntent("gostaria de cancelar meu plano")).toBe("OUTRO");
+    expect(ruleIntent("não quero o boleto, quero cancelar o plano")).toBe("OUTRO");
+    expect(ruleIntent("não quero falar com atendente")).toBeNull();
+  });
+
+  it("cliente que não precisa de ajuda", () => {
+    for (const t of ["não preciso de nada", "foi engano", "desculpa, mandei errado", "deixa pra lá", "esquece", "já consegui, obrigado", "tá tudo certo", "nada não", "não quero mais o boleto", "por enquanto não, obrigado"]) {
+      expect(ruleIntent(t), t).toBe("SEM_NECESSIDADE");
+    }
+    for (const t of ["quero meu boleto", "não preciso do boleto, preciso saber o valor", "já paguei", "não sei meu cpf"]) {
+      expect(ruleIntent(t), t).not.toBe("SEM_NECESSIDADE");
+    }
   });
 
   it("sim, não e a escolha da parcela", () => {
