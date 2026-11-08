@@ -467,10 +467,61 @@ export async function sourceForConnection(connectionId: string | null) {
   return linked ?? (await prisma.dataSource.findFirst({ where: { active: true, allConnections: true } }));
 }
 
+/**
+ * Whether the data can be used: OK, or — with a tolerance (see ConversationForData.staleToleranceHours) — past its
+ * deadline or kept from before a failed update, for that many hours more. Never empty or switched-off data.
+ */
+export function sourceUsable(source: DataSource, toleranceHours = 0, now = new Date()): boolean {
+  const status = sourceStatus(source, now);
+  if (status === "OK") return true;
+  if (toleranceHours <= 0 || (status !== "STALE" && status !== "ERROR") || source.rowCount === 0 || !source.dataUpdatedAt) return false;
+  return now.getTime() - source.dataUpdatedAt.getTime() <= (source.maxAgeHours + toleranceHours) * HOUR_MS;
+}
+
+/** "07/11 às 18:35" at the business' local time. */
+export function localDateTime(date: Date): string {
+  const local = new Date(date.getTime() - env.BUSINESS_TZ_OFFSET_MINUTES * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(local.getUTCDate())}/${pad(local.getUTCMonth() + 1)} às ${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
+}
+
+export interface DataAccess {
+  sourceId: string | null;
+  sourceName: string | null;
+  /** NONE = no source for this connection (none linked to it and none for all connections). */
+  status: DataSourceStatus | "NONE";
+  usable: boolean;
+  /** Usable only thanks to the tolerance: the data is older than the source's deadline. */
+  stale: boolean;
+  dataUpdatedAt: Date | null;
+  maxAgeHours: number | null;
+  /** Why it can't be used, in words for the team (null when usable). */
+  reason: string | null;
+}
+
+/** Whether a connection's client data can be used now — and if not, why (the Assistente Virtual and its panel). */
+export async function dataAccessFor(connectionId: string | null, toleranceHours = 0, now = new Date()): Promise<DataAccess> {
+  const source = await sourceForConnection(connectionId);
+  if (!source) {
+    return { sourceId: null, sourceName: null, status: "NONE", usable: false, stale: false, dataUpdatedAt: null, maxAgeHours: null, reason: "nenhuma fonte de dados ligada a esta conexão" };
+  }
+  const status = sourceStatus(source, now);
+  const usable = sourceUsable(source, toleranceHours, now);
+  const base = { sourceId: source.id, sourceName: source.name, status, usable, stale: usable && status !== "OK", dataUpdatedAt: source.dataUpdatedAt, maxAgeHours: source.maxAgeHours };
+  if (usable) return { ...base, reason: null };
+  const when = source.dataUpdatedAt ? ` (dados de ${localDateTime(source.dataUpdatedAt)})` : "";
+  const reason =
+    status === "INACTIVE" ? `a fonte de dados "${source.name}" está desativada`
+    : status === "EMPTY" ? `a fonte de dados "${source.name}" ainda não trouxe nenhuma linha`
+    : status === "ERROR" ? `a última atualização da fonte de dados "${source.name}" deu erro${when}`
+    : `os dados da fonte "${source.name}" passaram do prazo de atualização de ${source.maxAgeHours} horas${when}`;
+  return { ...base, reason };
+}
+
 /** The conversation's source, when its data can be used right now. */
-export async function usableSource(conversation: Pick<ConversationForData, "whatsappConnectionId">) {
+export async function usableSource(conversation: Pick<ConversationForData, "whatsappConnectionId" | "staleToleranceHours">) {
   const source = await sourceForConnection(conversation.whatsappConnectionId);
-  return source && sourceStatus(source) === "OK" ? source : null;
+  return source && sourceUsable(source, conversation.staleToleranceHours ?? 0) ? source : null;
 }
 
 // Shown in the panel some other way (the contract's header, its boletos and beneficiaries) or only a rule for the
@@ -652,6 +703,11 @@ export interface ConversationForData {
   dataCpfKey?: string | null;
   dataSuspensionAckAt: Date | null;
   contact: { phone: string | null };
+  /**
+   * Only the Assistente Virtual, outside working hours and on holidays: data past the source's update deadline (or kept
+   * from before a failed update) is still used for this many hours more. Everyone else uses the data only when it's OK.
+   */
+  staleToleranceHours?: number;
 }
 
 /** The rows of this conversation's phone grouped by client, and the client the conversation is about. */
@@ -677,8 +733,8 @@ export async function getClientData(conversation: ConversationForData, role: Rol
   if (!source) return empty;
   const status = sourceStatus(source);
   const dataUpdatedAt = source.dataUpdatedAt?.toISOString() ?? null;
-  if (status !== "OK") {
-    const reason = (await canViewSources(role)) ? (source.lastSyncError ?? STATUS_REASON[status]) : null;
+  if (!sourceUsable(source, conversation.staleToleranceHours ?? 0)) {
+    const reason = (await canViewSources(role)) ? (source.lastSyncError ?? STATUS_REASON[status as Exclude<DataSourceStatus, "OK">]) : null;
     return { ...empty, status: "UNAVAILABLE", reason, dataUpdatedAt };
   }
   const { map, byClient, selectedKey } = await clientRows(source, conversation);

@@ -53,7 +53,7 @@ describe("contexto do cliente: conversas anteriores e observação fixa", () => 
   });
 
   it("não abre conversa de outro contato", async () => {
-    const res = await request(app).get(`/api/conversations/${currentId}/previous/${currentId.replace(/.$/, "0")}`).set("Authorization", `Bearer ${agentToken}`);
+    const res = await request(app).get(`/api/conversations/${currentId}/previous/${currentId.replace(/.$/, currentId.endsWith("0") ? "1" : "0")}`).set("Authorization", `Bearer ${agentToken}`);
     expect(res.status).toBe(404);
   });
 

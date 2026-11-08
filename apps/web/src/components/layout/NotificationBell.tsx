@@ -23,6 +23,7 @@ function entityPath(notification: NotificationDTO): string | null {
   if (notification.entityType === "Announcement" && notification.entityId) return `/comunicados?aviso=${notification.entityId}`;
   if (notification.entityType === "ReportSchedule") return "/configuracoes?secao=email-templates&agendamento=1";
   if (notification.entityType === "SatisfactionSurvey") return "/relatorios?aba=satisfacao";
+  if (notification.entityType === "AiAssistant") return "/configuracoes?secao=assistente";
   return null;
 }
 

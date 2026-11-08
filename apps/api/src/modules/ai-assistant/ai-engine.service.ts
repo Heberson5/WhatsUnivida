@@ -1,5 +1,14 @@
 import type { AiSession, Prisma } from "@prisma/client";
-import { AI_ASSISTANT_AUTOMATED_BY, aiAssistantReply, type AiAssistantSettingsDTO, type ClientContractDTO } from "@whatsatendende/types";
+import {
+  AI_ASSISTANT_AUTOMATED_BY,
+  aiAssistantReply,
+  type AiAssistantClientDataDTO,
+  type AiAssistantSettingsDTO,
+  type AiAssistantSimulationDTO,
+  type AiAssistantSimulationStepDTO,
+  type AiAssistantSimulationWhen,
+  type ClientContractDTO,
+} from "@whatsatendende/types";
 import { prisma } from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { writeAudit } from "../../lib/audit";
@@ -7,10 +16,12 @@ import { blockingTag } from "../../lib/auto-messages";
 import { phoneKey } from "../../lib/phone-key";
 import { fillSendTags } from "../../lib/customer-tags";
 import { realtimeEvents } from "../../realtime/realtime";
+import { createNotification } from "../notifications/notifications.service";
+import { toNotificationDTO } from "../notifications/notifications.mapper";
 import { addAttachment } from "../messages/messages.service";
 import * as whatsappService from "../whatsapp/whatsapp.service";
-import { getClosedMessageForConnection } from "../work-schedules/work-schedules.service";
-import { clientRows, cpfKeyOf, getClientData, usableSource, type ColumnMap, type Row } from "../data-sources/data-sources.service";
+import { getClosedMessageForConnection, getConnectionSchedule, isWorkScheduleOpen } from "../work-schedules/work-schedules.service";
+import { clientRows, cpfKeyOf, dataAccessFor, getClientData, localDateTime, usableSource, type ColumnMap, type Row } from "../data-sources/data-sources.service";
 import { prepareBoletos, previewBoletos } from "../boletos/boletos.service";
 import { assistantAnswers, getAiAssistantSettings, getAssistantUser } from "./ai-assistant.service";
 import { scheduleCloseFollowUp } from "../satisfaction/satisfaction.service";
@@ -55,6 +66,11 @@ const MAX_UNCLEAR = 2;
 const MAX_PARCELS_LISTED = 12;
 // CPFs that didn't match (not found, or the name didn't match) from one phone in 24 hours, across conversations.
 const MAX_AUDIO_FAILS = 2;
+/**
+ * Outside working hours and on holidays the spreadsheet usually isn't updated: the assistant still uses data this many
+ * hours past the source's own deadline (the boleto goes with "se já pagou, desconsidere"). In working hours, never.
+ */
+export const STALE_TOLERANCE_HOURS_CLOSED = 72;
 const MAX_FAILED_CPF_PER_DAY = 5;
 
 /** "Boa tarde, Maria! Sou o assistente virtual…": the greeting of the settings, with the time of day and the name. */
@@ -106,6 +122,10 @@ interface SessionData {
   options?: ParcelOption[];
   /** Audios in a row that could not be transcribed: the first one asks the customer to write, the second goes to the team. */
   audioFails?: number;
+  /** Hours past the data source's deadline accepted in this conversation (only outside working hours). */
+  toleranceHours?: number;
+  /** When the (older than its deadline) data used was last updated — "07/11 às 18:35". */
+  staleSince?: string;
   /** What the customer wrote (or said), for the note. */
   said?: string[];
   summary?: string;
@@ -280,8 +300,8 @@ interface ClientFound {
   phones: string[];
 }
 
-async function findClientByCpf(conv: Conv, cpfKey: string): Promise<ClientFound | null | "UNAVAILABLE"> {
-  const source = await usableSource({ whatsappConnectionId: conv.connectionId });
+async function findClientByCpf(conv: Conv, cpfKey: string, toleranceHours = 0): Promise<ClientFound | null | "UNAVAILABLE"> {
+  const source = await usableSource({ whatsappConnectionId: conv.connectionId, staleToleranceHours: toleranceHours });
   if (!source) return "UNAVAILABLE";
   const { map, byClient } = await clientRows(source, { id: conv.id, whatsappConnectionId: conv.connectionId, dataClientKey: null, dataCpfKey: cpfKey, dataSuspensionAckAt: null, contact: { phone: conv.phone } });
   const first = [...byClient.entries()][0];
@@ -295,9 +315,9 @@ async function findClientByCpf(conv: Conv, cpfKey: string): Promise<ClientFound 
   return { clientKey, name: col(row, "clientName") || null, address: address || null, phoneKeys, phones };
 }
 
-async function openContracts(conv: Conv): Promise<ClientContractDTO[] | null> {
+async function openContracts(conv: Conv, toleranceHours = 0): Promise<ClientContractDTO[] | null> {
   const fresh = await prisma.conversation.findUniqueOrThrow({ where: { id: conv.id } });
-  const data = await getClientData({ ...fresh, contact: { phone: conv.phone } }, "ADMIN");
+  const data = await getClientData({ ...fresh, contact: { phone: conv.phone }, staleToleranceHours: toleranceHours }, "ADMIN");
   if (data.status !== "OK" || !data.client) return null;
   return data.client.contracts;
 }
@@ -328,11 +348,54 @@ async function previousCpf(conv: Conv): Promise<string | null> {
     conv.dataCpfKey,
     ...(await prisma.contactCpfVerification.findMany({ where: { contactId: conv.contactId }, orderBy: { verifiedAt: "desc" }, take: 3 })).map((v) => v.cpfKey),
   ].filter((c): c is string => Boolean(c));
+  if (candidates.length === 0) return null;
+  const { toleranceHours } = await clientDataAccess(conv);
   for (const cpf of [...new Set(candidates)]) {
-    const found = await findClientByCpf(conv, cpf);
+    const found = await findClientByCpf(conv, cpf, toleranceHours);
     if (found && found !== "UNAVAILABLE") return cpf;
   }
   return null;
+}
+
+/** Outside working hours (or a holiday) on this connection's Horário de expediente. No schedule = always open. */
+async function closedNow(conv: Pick<Conv, "connectionId">): Promise<boolean> {
+  const schedule = await getConnectionSchedule("WHATSAPP", conv.connectionId).catch(() => null);
+  if (!schedule) return false;
+  return !(await isWorkScheduleOpen(schedule).catch(() => true));
+}
+
+interface ClientDataAccess {
+  usable: boolean;
+  closed: boolean;
+  toleranceHours: number;
+  /** Set when the data used is past its deadline (tolerated outside working hours). */
+  staleSince?: string;
+  reason: string | null;
+}
+
+/** Whether the client data can be consulted now: in working hours only when up to date; outside, a little older too. */
+async function clientDataAccess(conv: Conv): Promise<ClientDataAccess> {
+  const closed = await closedNow(conv);
+  const toleranceHours = closed ? STALE_TOLERANCE_HOURS_CLOSED : 0;
+  const access = await dataAccessFor(conv.connectionId, toleranceHours);
+  return {
+    usable: access.usable,
+    closed,
+    toleranceHours,
+    staleSince: access.stale && access.dataUpdatedAt ? localDateTime(access.dataUpdatedAt) : undefined,
+    reason: access.reason,
+  };
+}
+
+/**
+ * The data can't be consulted: the customer hears it plainly (not just the out-of-hours notice), the request goes to the
+ * team with the CPF and the reason, and — outside working hours — the connection's out-of-hours notice follows.
+ */
+async function dataUnavailable(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, access: ClientDataAccess) {
+  const what = data.intent === "DEBITOS" ? "os débitos" : "os boletos";
+  const cpf = data.cpfKey ? ` com o CPF ${maskCpf(data.cpfKey)}` : "";
+  await say(conv, settings, phrase(access.closed ? "dataUnavailableClosed" : "dataUnavailable", { o_que: what, com_cpf: cpf }));
+  return handToQueue(conv, session, settings, data, `consulta indisponível: ${access.reason ?? "dados dos clientes indisponíveis"}`, access.closed);
 }
 
 /**
@@ -355,10 +418,8 @@ async function askCpf(conv: Conv, session: AiSession, settings: AiAssistantSetti
  * a CPF already in the message is used right away.
  */
 async function startFinance(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, intent: FinanceIntent, text = "") {
+  // The CPF is asked even when the data can't be consulted: the request reaches the team with it.
   const next: SessionData = { ...data, intent, cpfAttempts: 0, afterEmpty: false, offerCpf: undefined };
-  if (!(await usableSource({ whatsappConnectionId: conv.connectionId }))) {
-    return handToQueue(conv, session, settings, next, "dados dos clientes indisponíveis no momento");
-  }
   if (text && extractCpf(text)) return onCpf(conv, session, settings, { ...next, pendingCpf: undefined }, text);
   if (data.pendingCpf) return onCpf(conv, session, settings, { ...next, pendingCpf: undefined }, data.pendingCpf);
   return askCpf(conv, session, settings, next);
@@ -388,8 +449,11 @@ async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettin
     await say(conv, settings, phrase("cpfLimit"));
     return handToQueue(conv, session, settings, data, `limite de ${MAX_FAILED_CPF_PER_DAY} tentativas de CPF em 24 horas neste telefone`, false);
   }
-  const found = await findClientByCpf(conv, cpfKeyOf(cpf)!);
-  if (found === "UNAVAILABLE") return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
+  const access = await clientDataAccess(conv);
+  if (!access.usable) return dataUnavailable(conv, session, settings, { ...data, cpfKey: cpf }, access);
+  data = { ...data, toleranceHours: access.toleranceHours, staleSince: access.staleSince };
+  const found = await findClientByCpf(conv, cpfKeyOf(cpf)!, access.toleranceHours);
+  if (found === "UNAVAILABLE") return dataUnavailable(conv, session, settings, { ...data, cpfKey: cpf }, await clientDataAccess(conv));
   if (!found) {
     await recordFailedCpfCheck(conv, "NOT_FOUND");
     const attempts = (data.cpfAttempts ?? 0) + 1;
@@ -409,8 +473,9 @@ async function onCpf(conv: Conv, session: AiSession, settings: AiAssistantSettin
 }
 
 async function onName(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, text: string) {
-  const found = data.cpfKey ? await findClientByCpf(conv, data.cpfKey) : null;
-  if (!found || found === "UNAVAILABLE" || !found.name) return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
+  const found = data.cpfKey ? await findClientByCpf(conv, data.cpfKey, data.toleranceHours) : null;
+  if (found === "UNAVAILABLE") return dataUnavailable(conv, session, settings, data, await clientDataAccess(conv));
+  if (!found || !found.name) return handToQueue(conv, session, settings, data, "cadastro do CPF não encontrado para confirmar o nome");
   const informedName = text.trim().slice(0, 200);
   if (!namesMatch(informedName, found.name)) {
     await recordFailedCpfCheck(conv, "NAME_MISMATCH");
@@ -428,8 +493,9 @@ async function onName(conv: Conv, session: AiSession, settings: AiAssistantSetti
 }
 
 async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, text: string) {
-  const found = data.cpfKey ? await findClientByCpf(conv, data.cpfKey) : null;
-  if (!found || found === "UNAVAILABLE") return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
+  const found = data.cpfKey ? await findClientByCpf(conv, data.cpfKey, data.toleranceHours) : null;
+  if (found === "UNAVAILABLE") return dataUnavailable(conv, session, settings, data, await clientDataAccess(conv));
+  if (!found) return handToQueue(conv, session, settings, data, "cadastro do CPF não encontrado para confirmar o endereço");
   const informedAddress = text.trim().slice(0, 300);
   const addressDiffers = found.address ? !addressesMatch(informedAddress, found.address) : null;
   // A beneficiary or relative writing for the titular: their phone isn't on the record yet — the team adds it.
@@ -469,15 +535,15 @@ async function onAddress(conv: Conv, session: AiSession, settings: AiAssistantSe
 
 /** With the client confirmed: the open parcels, then the boleto. */
 async function deliver(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
-  const contracts = await openContracts(conv);
-  if (!contracts) return handToQueue(conv, session, settings, data, "dados dos clientes indisponíveis no momento");
+  const contracts = await openContracts(conv, data.toleranceHours);
+  if (!contracts) return dataUnavailable(conv, session, settings, data, await clientDataAccess(conv));
   const options = buildOptions(contracts);
   if (options.length === 0) {
     const cpf = data.cpfKey ? maskCpf(data.cpfKey) : "informado";
     await say(conv, settings, phrase("noParcels", { cpf }));
     return save(session, "AWAIT_CPF", { ...data, afterEmpty: true, cpfAttempts: 0, offerCpf: undefined, done: [...(data.done ?? []), `Informado: nenhuma parcela em aberto para o CPF ${cpf}`] });
   }
-  const list = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n");
+  const list = options.map((o, i) => `*${i + 1}.* ${o.label}`).join("\n") + (data.staleSince ? `\n\n${phrase("staleList")}` : "");
   const done = [...(data.done ?? []), `Débitos informados: ${options.map((o) => o.label).join("; ")}`];
   if (data.intent === "BOLETO" && options.length === 1) {
     return sendBoletos(conv, session, settings, { ...data, done }, options[0]);
@@ -515,7 +581,7 @@ async function onParcel(conv: Conv, session: AiSession, settings: AiAssistantSet
 async function sendBoletos(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData, option: ParcelOption) {
   const ids = [...new Set(option.ids)];
   const fresh = await prisma.conversation.findUniqueOrThrow({ where: { id: conv.id } });
-  const target = { ...fresh, contact: { name: conv.contactName, phone: conv.phone } };
+  const target = { ...fresh, contact: { name: conv.contactName, phone: conv.phone }, staleToleranceHours: data.toleranceHours ?? 0 };
   try {
     const preview = await previewBoletos(target, ids);
     const prepared = await prepareBoletos(target, ids, true);
@@ -530,12 +596,14 @@ async function sendBoletos(conv: Conv, session: AiSession, settings: AiAssistant
       await sayRaw(conv, item.linha.replace(/\D/g, ""));
       if (item.pix) await sayRaw(conv, item.pix);
     }
-    const sent = prepared.items.map((i) => `contrato ${i.contract}, vencimento ${i.due}, ${i.updatedValue ?? i.value}`).join("; ");
+    const sent =
+      prepared.items.map((i) => `contrato ${i.contract}, vencimento ${i.due}, ${i.updatedValue ?? i.value}`).join("; ") +
+      (data.staleSince ? ` — fora do expediente, com os dados de ${data.staleSince} (já passaram do prazo de atualização)` : "");
     await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: `Boleto enviado pelo Assistente Virtual: ${sent}.` } });
     for (const item of prepared.items) {
       await writeAudit({ userId: null, action: "BOLETO_SENT", entity: "Conversation", entityId: conv.id, ipAddress: null, metadata: { ...item, byAssistant: true, contactPhone: conv.phone } });
     }
-    await say(conv, settings, phrase("boletoSent"));
+    await say(conv, settings, phrase(data.staleSince ? "boletoSentStale" : "boletoSent"));
     return save(session, "AWAIT_MORE", { ...data, done: [...(data.done ?? []), `Boleto enviado: ${sent}`] });
   } catch (err) {
     const reason = (err as Error).message ?? "erro ao gerar o boleto";
@@ -782,6 +850,7 @@ export function runAssistantNow(conversationId: string): Promise<void> {
  * left unanswered by a restart are answered.
  */
 export async function sweepAssistantSessions(now = new Date()): Promise<void> {
+  await alertUnusableClientData(now).catch((err) => logger.warn({ err }, "assistant could not check the client data"));
   const open = await prisma.aiSession.findMany({ where: { endedAt: null }, take: 200 });
   for (const session of open) {
     const conversation = await prisma.conversation.findUnique({ where: { id: session.conversationId }, select: { status: true, lastMessageAt: true } });
@@ -831,4 +900,211 @@ export async function assistantTakes(connectionId: string, contactId: string, ph
   const settings = await getAiAssistantSettings();
   if (!assistantAnswers(settings, connectionId, phone)) return false;
   return !(await blockingTag(contactId, "AI"));
+}
+
+// --- Client data health and the simulator (Configurações › Assistente Virtual) -----------------------------------
+
+/** Each connection the assistant attends: can it consult the client data right now — and if not, why. */
+export async function assistantClientData(now = new Date()): Promise<AiAssistantClientDataDTO[]> {
+  const settings = await getAiAssistantSettings();
+  if (settings.connectionIds.length === 0) return [];
+  const connections = await prisma.whatsAppConnection.findMany({ where: { id: { in: settings.connectionIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  const result: AiAssistantClientDataDTO[] = [];
+  for (const connection of connections) {
+    const closed = await closedNow({ connectionId: connection.id });
+    const toleranceHours = closed ? STALE_TOLERANCE_HOURS_CLOSED : 0;
+    const access = await dataAccessFor(connection.id, toleranceHours, now);
+    result.push({
+      connectionId: connection.id,
+      connectionName: connection.name,
+      sourceName: access.sourceName,
+      status: access.status,
+      dataUpdatedAt: access.dataUpdatedAt?.toISOString() ?? null,
+      maxAgeHours: access.maxAgeHours,
+      closedNow: closed,
+      usableNow: access.usable,
+      staleToleranceHours: STALE_TOLERANCE_HOURS_CLOSED,
+      reason: access.reason,
+    });
+  }
+  return result;
+}
+
+const ALERT_EVERY_MS = 10 * 60_000;
+const ALERT_REPEAT_MS = 12 * 3_600_000;
+let lastAlertCheck = 0;
+
+/**
+ * With the assistant on, a connection whose client data it can't consult: the administrators hear it in the bell —
+ * once every 12 hours per connection, checked every 10 minutes — before customers start going to the queue for it.
+ */
+async function alertUnusableClientData(now: Date): Promise<void> {
+  if (now.getTime() - lastAlertCheck < ALERT_EVERY_MS) return;
+  lastAlertCheck = now.getTime();
+  const settings = await getAiAssistantSettings();
+  if (!settings.enabled) return;
+  for (const item of await assistantClientData(now)) {
+    if (item.usableNow) continue;
+    const title = `Assistente Virtual sem dados dos clientes em "${item.connectionName}"`;
+    const recent = await prisma.notification.findFirst({ where: { type: "AI_ASSISTANT_DATA", title, createdAt: { gt: new Date(Date.now() - ALERT_REPEAT_MS) } } }); // stored with the real clock
+    if (recent) continue;
+    const admins = await prisma.user.findMany({ where: { role: "ADMIN", status: "ACTIVE", isAssistant: false }, select: { id: true } });
+    for (const admin of admins) {
+      const notification = await createNotification({
+        userId: admin.id,
+        type: "AI_ASSISTANT_DATA",
+        title,
+        body: `Motivo: ${item.reason ?? "dados indisponíveis"}. Enquanto isso, quem pedir boleto ou débitos vai para a equipe com o CPF anotado.`,
+        entityType: "AiAssistant",
+        entityId: item.connectionId,
+      });
+      realtimeEvents.notificationCreated(admin.id, toNotificationDTO(notification));
+    }
+  }
+}
+
+const INTENT_LABEL: Record<Intent, string> = {
+  BOLETO: "boleto",
+  DEBITOS: "débitos em aberto",
+  ATENDENTE: "falar com um atendente",
+  ENCERRAR: "encerrar a conversa",
+  SAUDACAO: "cumprimento",
+  AGRADECIMENTO: "agradecimento",
+  OUTRO: "outro assunto",
+};
+
+/** "Maria Aparecida da Silva" → "Maria A. D. S." — enough to recognize, without the whole name on the screen. */
+function shortName(name: string): string {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  return [first, ...rest.map((w) => `${w.charAt(0).toUpperCase()}.`)].join(" ");
+}
+
+/**
+ * "Simular atendimento": what the assistant would do with this message (and CPF), step by step — the same checks as a
+ * real conversation (understanding, working hours, client data, CPF, open parcels, the boleto), without sending
+ * anything to WhatsApp and without creating a conversation.
+ */
+export async function simulateAssistant(input: { connectionId: string; message: string; cpf?: string | null; when: AiAssistantSimulationWhen }): Promise<AiAssistantSimulationDTO> {
+  const steps: AiAssistantSimulationStepDTO[] = [];
+  const done = (outcome: string): AiAssistantSimulationDTO => ({ steps, outcome });
+  const settings = await getAiAssistantSettings();
+  const connection = await prisma.whatsAppConnection.findUnique({ where: { id: input.connectionId }, select: { id: true, name: true } });
+  if (!connection) return done("Conexão não encontrada.");
+
+  if (!settings.enabled) steps.push({ title: "Assistente", status: "warn", detail: "Está desligado: hoje a conversa iria para o Fluxo ou para a fila. A simulação continua como se estivesse ligado." });
+  else if (!settings.connectionIds.includes(connection.id)) steps.push({ title: "Assistente", status: "warn", detail: `Não atende a conexão ${connection.name}. A simulação continua como se atendesse.` });
+  else steps.push({ title: "Assistente", status: "ok", detail: settings.testMode ? `Ligado em ${connection.name}, em Modo teste: só atende os telefones da lista.` : `Ligado em ${connection.name}.` });
+
+  const text = input.message.trim();
+  const cpfInMessage = extractCpf(text);
+  let intent: Intent | null = ruleIntent(text);
+  let how = "pelas palavras da mensagem";
+  if (!intent && cpfInMessage) {
+    intent = null;
+  } else if (!intent && text) {
+    const byAi = await classifyIntent(text);
+    if (byAi) {
+      intent = byAi.intent;
+      how = `pela IA local${byAi.summary ? ` ("${byAi.summary}")` : ""}`;
+    } else {
+      steps.push({ title: "Entendimento", status: "stop", detail: "Nem as palavras da mensagem nem a IA local identificaram o pedido (a IA pode estar fora do ar)." });
+      return done("Pediria para o cliente explicar em poucas palavras (boleto, débitos ou outro assunto). Se não entendesse de novo, passaria para a equipe.");
+    }
+  }
+  if (!intent && !cpfInMessage) {
+    steps.push({ title: "Entendimento", status: "stop", detail: "Mensagem vazia." });
+    return done("Escreva uma mensagem como o cliente escreveria.");
+  }
+  if (!intent) {
+    steps.push({ title: "Entendimento", status: "info", detail: "A mensagem só tem um CPF." });
+    return done("Perguntaria se o cliente quer o boleto ou os débitos em aberto, e usaria esse CPF em seguida.");
+  }
+  steps.push({ title: "Entendimento", status: "ok", detail: `Pedido: ${INTENT_LABEL[intent]} (${how}).` });
+
+  const closed = input.when === "closed" ? true : input.when === "open" ? false : await closedNow({ connectionId: connection.id });
+  steps.push({
+    title: "Expediente",
+    status: "info",
+    detail: closed
+      ? `Fora do expediente ou feriado${input.when === "now" ? " agora" : " (simulado)"}: usa dados até ${STALE_TOLERANCE_HOURS_CLOSED} horas além do prazo da fonte.`
+      : `Dentro do expediente${input.when === "now" ? " agora" : " (simulado)"}: só usa dados dentro do prazo da fonte.`,
+  });
+
+  switch (intent) {
+    case "ATENDENTE":
+      return done(closed ? "Enviaria a mensagem de fora do expediente da conexão, deixaria a conversa na fila e pararia de responder." : "Avisaria que vai transferir e colocaria a conversa na fila, com uma nota do pedido.");
+    case "ENCERRAR":
+      return done("Encerraria a conversa na hora, com a despedida e a pesquisa de satisfação (seguindo as regras das etiquetas).");
+    case "SAUDACAO":
+    case "AGRADECIMENTO":
+      return done("Responderia com a saudação e perguntaria como pode ajudar.");
+    case "OUTRO":
+      return done(closed ? "Passaria para a equipe com o resumo do assunto e enviaria a mensagem de fora do expediente." : "Passaria para a equipe com o resumo do assunto, avisando que um atendente vai continuar.");
+    default:
+      break;
+  }
+
+  const toleranceHours = closed ? STALE_TOLERANCE_HOURS_CLOSED : 0;
+  const access = await dataAccessFor(connection.id, toleranceHours);
+  if (!access.usable) {
+    steps.push({ title: "Dados dos clientes", status: "stop", detail: `Não dá para consultar: ${access.reason}.` });
+    return done(
+      `Pediria o CPF, avisaria o cliente que não consegue consultar ${intent === "DEBITOS" ? "os débitos" : "os boletos"} agora e passaria para a equipe com o CPF e o motivo${closed ? ", seguido da mensagem de fora do expediente" : ""}.`
+    );
+  }
+  const staleSince = access.stale && access.dataUpdatedAt ? localDateTime(access.dataUpdatedAt) : null;
+  steps.push({
+    title: "Dados dos clientes",
+    status: staleSince ? "warn" : "ok",
+    detail: staleSince
+      ? `"${access.sourceName}" passou do prazo (dados de ${staleSince}), mas fora do expediente ainda é usada; o boleto vai com "se já pagou, desconsidere".`
+      : `"${access.sourceName}" em dia${access.dataUpdatedAt ? ` (dados de ${localDateTime(access.dataUpdatedAt)})` : ""}.`,
+  });
+
+  const cpf = extractCpf(input.cpf ?? "") ?? cpfInMessage;
+  if (!cpf) {
+    steps.push({ title: "CPF", status: "info", detail: "O assistente pediria o CPF do titular agora." });
+    return done("Pediria o CPF do titular. Informe um CPF de teste no simulador para ver o resto.");
+  }
+  const conv: Conv = { id: "simulacao", connectionId: connection.id, contactId: "", phone: "", contactName: null, firstName: null, dataCpfKey: null, dataClientKey: null };
+  const found = await findClientByCpf(conv, cpfKeyOf(cpf)!, toleranceHours);
+  if (found === "UNAVAILABLE" || !found) {
+    steps.push({ title: "CPF", status: "stop", detail: `${maskCpf(cpf)} não está nos dados dos clientes.` });
+    return done("Diria que não conseguiu confirmar os dados e pediria para conferir o CPF (no 3º erro, passaria para a equipe).");
+  }
+  steps.push({ title: "CPF", status: "ok", detail: `${maskCpf(cpf)}: ${found.name ? shortName(found.name) : "cliente sem nome no cadastro"} — pediria o nome completo e o endereço para confirmar.` });
+  if (!found.name) return done("Passaria para a equipe: o cadastro não tem o nome para confirmar.");
+
+  const target = {
+    id: "simulacao",
+    whatsappConnectionId: connection.id,
+    dataClientKey: found.clientKey,
+    dataCpfKey: cpfKeyOf(cpf),
+    dataSuspensionAckAt: null,
+    contact: { phone: null, name: found.name },
+    staleToleranceHours: toleranceHours,
+  };
+  const data = await getClientData(target, "ADMIN");
+  const options = data.status === "OK" && data.client ? buildOptions(data.client.contracts) : [];
+  if (options.length === 0) {
+    steps.push({ title: "Parcelas em aberto", status: "info", detail: "Nenhuma." });
+    return done("Diria que não há parcelas em aberto para esse CPF e perguntaria se o boleto é de outra pessoa (o titular).");
+  }
+  steps.push({ title: "Parcelas em aberto", status: "ok", detail: options.map((o, i) => `${i + 1}. ${o.label}`).join("\n") });
+  if (intent === "DEBITOS") return done(`Informaria ${options.length === 1 ? "a parcela em aberto" : `as ${options.length} parcelas em aberto`} e ofereceria o boleto.`);
+
+  const option = options[0];
+  try {
+    const preview = await previewBoletos(target, [...new Set(option.ids)]);
+    const items = preview.items.map((i) => `vencimento ${i.due}, ${i.updatedValue ?? i.value}`).join("; ");
+    steps.push({ title: "Boleto", status: staleSince ? "warn" : "ok", detail: `Geraria o boleto da 1ª parcela da lista: ${items}.` });
+  } catch (err) {
+    steps.push({ title: "Boleto", status: "stop", detail: `Não geraria: ${(err as Error).message}.` });
+    return done("Avisaria que não conseguiu gerar o boleto e passaria para a equipe com o motivo.");
+  }
+  return done(
+    options.length === 1
+      ? `Depois de confirmar nome e endereço, enviaria o PDF do boleto e a linha digitável${staleSince ? ', com "se já pagou, desconsidere"' : ""}.`
+      : `Depois de confirmar nome e endereço, listaria as ${options.length} parcelas e enviaria o PDF e a linha digitável da escolhida${staleSince ? ', com "se já pagou, desconsidere"' : ""}.`
+  );
 }

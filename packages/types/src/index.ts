@@ -4020,6 +4020,44 @@ export interface AiAssistantStatusDTO {
   error: string | null;
 }
 
+/**
+ * Configurações › Assistente Virtual › Dados dos clientes: whether the assistant can consult the client data of each
+ * connection it attends — in working hours only up-to-date data; outside them and on holidays, data up to
+ * `staleToleranceHours` past the source's deadline (the boleto then goes with "se já pagou, desconsidere").
+ */
+export interface AiAssistantClientDataDTO {
+  connectionId: string;
+  connectionName: string;
+  sourceName: string | null;
+  /** NONE = no data source linked to the connection (nor one for all connections). */
+  status: DataSourceStatus | "NONE";
+  dataUpdatedAt: string | null;
+  maxAgeHours: number | null;
+  /** Outside working hours (or a holiday) right now on this connection. */
+  closedNow: boolean;
+  /** The assistant can consult the data right now. */
+  usableNow: boolean;
+  staleToleranceHours: number;
+  /** Why it can't be consulted now (null when it can). */
+  reason: string | null;
+}
+
+/** "Simular atendimento": as if now, or as if inside / outside working hours. */
+export type AiAssistantSimulationWhen = "now" | "open" | "closed";
+
+export interface AiAssistantSimulationStepDTO {
+  title: string;
+  /** ok = goes on; warn = goes on with a caveat; stop = the assistant stops here; info = just information. */
+  status: "ok" | "warn" | "stop" | "info";
+  detail: string;
+}
+
+export interface AiAssistantSimulationDTO {
+  steps: AiAssistantSimulationStepDTO[];
+  /** What the assistant would do, in one sentence. */
+  outcome: string;
+}
+
 /** Label of the messages the Assistente Virtual sends (Message.automatedBy). */
 export const AI_ASSISTANT_AUTOMATED_BY = "AI";
 

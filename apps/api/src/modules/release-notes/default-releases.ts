@@ -11,6 +11,47 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.3",
+    date: "7 nov 2026",
+    name: "Assistente Virtual: dados dos clientes",
+    summary: "Quando o assistente não consegue consultar a planilha dos clientes, ele não manda mais o cliente para a fila sem explicação: pede o CPF, avisa que não consegue consultar agora e deixa o pedido registrado para a equipe. Fora do expediente e nos feriados, ele usa dados um pouco mais antigos para continuar enviando boletos. E as Configurações ganharam o quadro Dados dos clientes, o aviso no sino e o Simular atendimento, para encontrar qualquer problema antes do cliente.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Pedido de boleto que ia para a fila sem explicação",
+        text: "Se a planilha dos clientes não pudesse ser consultada (fora do prazo de atualização, com erro, desativada ou sem fonte ligada à conexão), o assistente passava o cliente para a fila logo depois do pedido, e fora do expediente só chegava a mensagem de fora do expediente. Agora ele pede o CPF mesmo assim, avisa que não consegue consultar no momento e que um atendente vai continuar (em instantes, ou assim que o expediente começar), e a nota interna leva o CPF e o motivo.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-consulta-indisponivel.webp", caption: "Fora do expediente, com a planilha fora do prazo", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Fora do expediente, boleto com dados de até 72 horas além do prazo",
+        text: "No expediente, o assistente só usa dados dentro do prazo de atualização da fonte. Fora do expediente e nos feriados, quando a planilha costuma não ser atualizada, ele usa dados de até 72 horas além do prazo. A lista de parcelas e o boleto vão com o aviso \"se já pagou, pode desconsiderar\", e a nota do boleto enviado diz de quando eram os dados.",
+        where: "WhatsApp do cliente",
+      },
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Dados dos clientes no Assistente Virtual",
+        text: "Em Configurações › Assistente Virtual, o quadro Dados dos clientes mostra, para cada conexão em que o assistente atende, se ele consegue consultar a planilha agora e, se não consegue, o motivo. Com o assistente ligado, se a planilha de uma conexão ficar fora do ar, os administradores recebem um aviso no sino (no máximo um a cada 12 horas por conexão).",
+        where: "Configurações › Assistente Virtual",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/assistente-dados-clientes.webp", caption: "Uma conexão em dia e outra sem fonte de dados ligada", size: "small" }],
+      },
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Simular atendimento",
+        text: "Escreva como o cliente escreveria, informe um CPF se quiser, e escolha Agora, Dentro ou Fora do expediente. O simulador mostra passo a passo o que o assistente faria (entendimento, expediente, dados dos clientes, CPF, parcelas e boleto) e por que passaria para a equipe. Nada é enviado pelo WhatsApp e nenhuma conversa é aberta; cada simulação fica na Auditoria.",
+        where: "Configurações › Assistente Virtual",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/assistente-simular.webp", caption: "Pedido de boleto simulado fora do expediente" }],
+      },
+    ],
+  },
+  {
     version: "2.37.2",
     date: "7 nov 2026",
     name: "Assistente Virtual: ajustes",

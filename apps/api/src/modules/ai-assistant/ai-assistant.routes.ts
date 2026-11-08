@@ -5,6 +5,8 @@ import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { writeAudit } from "../../lib/audit";
 import * as service from "./ai-assistant.service";
+import { assistantClientData, simulateAssistant } from "./ai-engine.service";
+import { maskCpf, extractCpf } from "./ai-text";
 
 /** Configurações › Assistente Virtual — administrador only (it decides who talks to customers). */
 export const aiAssistantRouter = Router();
@@ -48,6 +50,40 @@ aiAssistantRouter.get(
   "/status",
   asyncHandler(async (_req, res) => {
     res.json(await service.getAiAssistantStatus());
+  })
+);
+
+/** Dados dos clientes: can the assistant consult each connection's data right now (and why not). */
+aiAssistantRouter.get(
+  "/client-data",
+  asyncHandler(async (_req, res) => {
+    res.json(await assistantClientData());
+  })
+);
+
+const simulateSchema = z.object({
+  connectionId: z.string().uuid(),
+  message: z.string().max(1000),
+  cpf: z.string().max(30).nullable().optional(),
+  when: z.enum(["now", "open", "closed"]).default("now"),
+});
+
+/** Simular atendimento: what the assistant would do, step by step — nothing goes to WhatsApp. */
+aiAssistantRouter.post(
+  "/simulate",
+  asyncHandler(async (req, res) => {
+    const input = simulateSchema.parse(req.body ?? {});
+    const result = await simulateAssistant(input);
+    const cpf = extractCpf(input.cpf ?? "") ?? extractCpf(input.message);
+    await writeAudit({
+      userId: req.auth!.userId,
+      action: "AI_ASSISTANT_SIMULATED",
+      entity: "WhatsAppConnection",
+      entityId: input.connectionId,
+      ipAddress: req.ip ?? null,
+      metadata: { when: input.when, cpf: cpf ? maskCpf(cpf) : null, outcome: result.outcome },
+    });
+    res.json(result);
   })
 );
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 import request from "supertest";
 import { prisma } from "../src/lib/prisma";
 import { resetDatabase, createTestUser, TEST_PASSWORD } from "./helpers";
@@ -592,6 +592,142 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       await customerSays(contact.id, CPF);
       await customerSays(contact.id, "Fulano de Tal");
       expect(await prisma.conversationEvent.count({ where: { conversationId: conversation.id, type: "AI_CPF_FAILED" } })).toBe(1);
+    });
+  });
+
+  describe("dados dos clientes fora do prazo ou indisponíveis", () => {
+    const HOUR = 3_600_000;
+    let original: { dataUpdatedAt: Date | null; maxAgeHours: number; lastSyncError: string | null; active: boolean };
+    const source = () => prisma.dataSource.findFirstOrThrow({ where: { name: "Planilha" } });
+    const setSource = async (data: Partial<typeof original>) => prisma.dataSource.update({ where: { id: (await source()).id }, data });
+    const useSchedule = async (open: boolean) => {
+      const days = open ? Object.fromEntries(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => [d, { allDay: true }])) : {};
+      const schedule = await prisma.workSchedule.create({ data: { name: open ? "Aberto" : "Fechado", state: "MT", city: "Tangará da Serra", days, closedMessage: "Estamos fora do expediente." } });
+      await prisma.whatsAppConnection.update({ where: { id: connectionId }, data: { workScheduleId: schedule.id } });
+    };
+
+    beforeAll(async () => {
+      const row = await source();
+      original = { dataUpdatedAt: row.dataUpdatedAt, maxAgeHours: row.maxAgeHours, lastSyncError: row.lastSyncError, active: row.active };
+    });
+    afterEach(async () => {
+      await setSource(original);
+    });
+
+    it("no expediente, com os dados fora do prazo: pede o CPF, avisa que não consegue consultar e passa para a equipe com o motivo", async () => {
+      await useSchedule(true);
+      await setSource({ maxAgeHours: 24, dataUpdatedAt: new Date(Date.now() - 30 * HOUR) });
+      const contact = await newCustomer();
+      let conversation = await customerSays(contact.id, "quero meu boleto");
+      expect(conversation.status).toBe("IN_AI");
+      expect(await lastText(contact.id)).toContain("CPF do titular");
+      conversation = await customerSays(contact.id, CPF);
+      expect(conversation.status).toBe("NEW");
+      expect(await lastText(contact.id)).toBe(
+        "*Assistente Virtual:*\n\nNo momento não consigo consultar os boletos por aqui. Seu pedido ficou registrado com o CPF ***.982.247-**, e um de nossos atendentes vai continuar o seu atendimento em instantes."
+      );
+      expect((await texts(contact.id)).join(" ")).not.toContain("fora do expediente");
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
+      expect(note.body).toContain('consulta indisponível: os dados da fonte "Planilha" passaram do prazo de atualização de 24 horas');
+      expect(note.body).toContain("***.982.247-**");
+    });
+
+    it("fora do expediente, com os dados um pouco fora do prazo: atende e envia o boleto com o aviso de desconsiderar se já pagou", async () => {
+      await useSchedule(false);
+      await setSource({ maxAgeHours: 24, dataUpdatedAt: new Date(Date.now() - 40 * HOUR) });
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero meu boleto");
+      await customerSays(contact.id, CPF);
+      await customerSays(contact.id, "Maria Aparecida da Silva");
+      await customerSays(contact.id, "Rua das Flores, 100, Centro");
+      expect(await lastText(contact.id)).toContain("Se você pagou alguma delas nos últimos dias");
+      const conversation = await customerSays(contact.id, "3");
+      expect(conversation.status).toBe("IN_AI");
+      expect(await lastText(contact.id)).toContain("Se você já pagou esta parcela nos últimos dias, pode desconsiderar.");
+      expect((await texts(contact.id)).join(" ")).not.toContain("fora do expediente");
+      const sent = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Boleto enviado" } } });
+      expect(sent.body).toContain("fora do expediente, com os dados de");
+    });
+
+    it("fora do expediente, com erro na última atualização mas dados recentes: também atende", async () => {
+      await useSchedule(false);
+      await setSource({ maxAgeHours: 24, dataUpdatedAt: new Date(Date.now() - 2 * HOUR), lastSyncError: "Planilha não encontrada" });
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero meu boleto");
+      const conversation = await customerSays(contact.id, CPF);
+      expect(conversation.status).toBe("IN_AI");
+      expect(await lastText(contact.id)).toContain("nome completo");
+    });
+
+    it("fora do expediente, com os dados velhos demais: avisa, deixa registrado e manda a mensagem de fora do expediente", async () => {
+      await useSchedule(false);
+      await setSource({ maxAgeHours: 24, dataUpdatedAt: new Date(Date.now() - (24 + 73) * HOUR) });
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quero meu boleto");
+      const conversation = await customerSays(contact.id, CPF);
+      expect(conversation.status).toBe("NEW");
+      const said = await texts(contact.id);
+      expect(said.at(-2)).toContain("assim que o expediente começar");
+      expect(said.at(-1)).toBe("*Assistente Virtual:*\n\nEstamos fora do expediente.");
+    });
+
+    it("fonte desativada: no expediente, avisa e passa para a equipe com o motivo", async () => {
+      await useSchedule(true);
+      await setSource({ active: false });
+      const contact = await newCustomer();
+      await customerSays(contact.id, "quanto eu devo?");
+      const conversation = await customerSays(contact.id, CPF);
+      expect(conversation.status).toBe("NEW");
+      expect(await lastText(contact.id)).toContain("não consigo consultar os débitos");
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
+      expect(note.body).toContain("nenhuma fonte de dados ligada a esta conexão");
+    });
+
+    it("Dados dos clientes, simulador e aviso no sino: mostram o motivo antes de chegar no cliente", async () => {
+      await useSchedule(true);
+      await updateAiAssistantSettings({ ...DEFAULT_AI_ASSISTANT_SETTINGS, enabled: true, connectionIds: [connectionId], testMode: false });
+      const token = (await request(app).post("/api/auth/login").send({ email: "admin-ia@test.dev", password: TEST_PASSWORD })).body.accessToken as string;
+      const auth = { Authorization: `Bearer ${token}` };
+
+      // Up to date: usable, and the simulation goes all the way to the boleto.
+      let panel = await request(app).get("/api/settings/ai-assistant/client-data").set(auth);
+      expect(panel.status).toBe(200);
+      expect(panel.body[0]).toMatchObject({ connectionId, sourceName: "Planilha", status: "OK", usableNow: true, closedNow: false, reason: null });
+      let sim = await request(app).post("/api/settings/ai-assistant/simulate").set(auth).send({ connectionId, message: "quero meu boleto", cpf: "529.982.247-25", when: "open" });
+      expect(sim.status).toBe(200);
+      expect(sim.body.steps.map((s: { title: string }) => s.title)).toEqual(["Assistente", "Entendimento", "Expediente", "Dados dos clientes", "CPF", "Parcelas em aberto", "Boleto"]);
+      expect(sim.body.steps.find((s: { title: string }) => s.title === "CPF").detail).toContain("Maria A. D. S. — pediria");
+      expect(sim.body.outcome).toContain("listaria as 3 parcelas");
+      expect(await prisma.auditLog.count({ where: { action: "AI_ASSISTANT_SIMULATED" } })).toBeGreaterThan(0);
+      // Nothing was sent and no conversation was opened.
+      expect(await prisma.message.count({ where: { createdAt: { gt: mark }, automatedBy: "AI" } })).toBe(0);
+
+      // Past its deadline: in working hours it stops, outside it goes on with the caveat.
+      await setSource({ maxAgeHours: 24, dataUpdatedAt: new Date(Date.now() - 30 * HOUR) });
+      panel = await request(app).get("/api/settings/ai-assistant/client-data").set(auth);
+      expect(panel.body[0]).toMatchObject({ status: "STALE", usableNow: false });
+      expect(panel.body[0].reason).toContain("passaram do prazo de atualização de 24 horas");
+      sim = await request(app).post("/api/settings/ai-assistant/simulate").set(auth).send({ connectionId, message: "quero meu boleto", cpf: CPF, when: "open" });
+      expect(sim.body.steps.at(-1)).toMatchObject({ title: "Dados dos clientes", status: "stop" });
+      expect(sim.body.outcome).toContain("Pediria o CPF, avisaria o cliente que não consegue consultar os boletos");
+      sim = await request(app).post("/api/settings/ai-assistant/simulate").set(auth).send({ connectionId, message: "quero meu boleto", cpf: CPF, when: "closed" });
+      expect(sim.body.steps.find((s: { title: string }) => s.title === "Dados dos clientes").status).toBe("warn");
+      expect(sim.body.outcome).toContain("se já pagou, desconsidere");
+
+      // The administrators hear it in the bell — once, not every minute.
+      const admin = await prisma.user.findFirstOrThrow({ where: { email: "admin-ia@test.dev" } });
+      const later = new Date(Date.now() + 10 * 24 * HOUR);
+      await sweepAssistantSessions(later);
+      await sweepAssistantSessions(new Date(later.getTime() + 11 * 60_000));
+      const alerts = await prisma.notification.findMany({ where: { userId: admin.id, type: "AI_ASSISTANT_DATA" } });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].title).toBe('Assistente Virtual sem dados dos clientes em "Central"');
+      expect(alerts[0].body).toContain("Motivo:");
+
+      // Only the administrator.
+      const agent = await createTestUser({ email: `agente-sim-${Date.now()}@test.dev`, role: "AGENT" });
+      const agentToken = (await request(app).post("/api/auth/login").send({ email: agent.email, password: TEST_PASSWORD })).body.accessToken as string;
+      expect((await request(app).post("/api/settings/ai-assistant/simulate").set("Authorization", `Bearer ${agentToken}`).send({ connectionId, message: "boleto" })).status).toBe(403);
     });
   });
 });

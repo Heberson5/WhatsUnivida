@@ -27,6 +27,10 @@ export type PhraseKey =
   | "notUnderstood"
   | "audioFailed"
   | "audioAskToWrite"
+  | "dataUnavailable"
+  | "dataUnavailableClosed"
+  | "staleList"
+  | "boletoSentStale"
   | "cpfReceivedWhichService"
   | "correctionCpf"
   | "correctionAddress"
@@ -86,6 +90,19 @@ const PHRASES: Record<PhraseKey, string[]> = {
   boletoSent: [
     "Pronto! O boleto está no PDF acima e a linha digitável logo abaixo dele, para copiar.\nPosso ajudar em algo mais?",
     "Prontinho! Mandei o boleto em PDF e a linha digitável logo abaixo, é só copiar.\nPosso ajudar em mais alguma coisa?",
+  ],
+  boletoSentStale: [
+    "Pronto! O boleto está no PDF acima e a linha digitável logo abaixo dele, para copiar.\nSe você já pagou esta parcela nos últimos dias, pode desconsiderar.\nPosso ajudar em algo mais?",
+    "Prontinho! Mandei o boleto em PDF e a linha digitável logo abaixo, é só copiar.\nSe já pagou esta parcela nos últimos dias, pode desconsiderar.\nPosso ajudar em mais alguma coisa?",
+  ],
+  staleList: ["_Se você pagou alguma delas nos últimos dias, ela ainda pode aparecer aqui._"],
+  dataUnavailable: [
+    "No momento não consigo consultar {o_que} por aqui. Seu pedido ficou registrado{com_cpf}, e um de nossos atendentes vai continuar o seu atendimento em instantes.",
+    "Agora não estou conseguindo consultar {o_que} por aqui. Já deixei seu pedido registrado{com_cpf}, e um de nossos atendentes vai te atender em instantes.",
+  ],
+  dataUnavailableClosed: [
+    "No momento não consigo consultar {o_que} por aqui. Seu pedido ficou registrado{com_cpf}, e um de nossos atendentes vai continuar o seu atendimento assim que o expediente começar.",
+    "Agora não estou conseguindo consultar {o_que} por aqui. Já deixei seu pedido registrado{com_cpf}, e um de nossos atendentes vai te atender assim que o expediente começar.",
   ],
   boletoFailed: ["Não consegui gerar o boleto agora.", "Tive um problema para gerar o boleto agora."],
   anythingElse: ["Posso ajudar em algo mais?", "Posso ajudar em mais alguma coisa?"],
