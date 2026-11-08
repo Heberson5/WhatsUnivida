@@ -18,10 +18,10 @@ vi.mock("../src/modules/ai-assistant/ai-llm", () => ({
 import { createApp } from "../src/app";
 import { findOrOpenConversationForInboundMessage } from "../src/modules/conversations/conversations.service";
 import { createInboundMessage } from "../src/modules/messages/messages.service";
-import { runAssistantNow, sweepAssistantSessions } from "../src/modules/ai-assistant/ai-engine.service";
+import { buildOptions, runAssistantNow, sweepAssistantSessions } from "../src/modules/ai-assistant/ai-engine.service";
 import { handleInboundForFlow } from "../src/modules/flows/flow-engine.service";
 import { updateAiAssistantSettings } from "../src/modules/ai-assistant/ai-assistant.service";
-import { CONVERSATION_UNDO_WINDOW_MS, DEFAULT_AI_ASSISTANT_SETTINGS } from "@whatsatendende/types";
+import { CONVERSATION_UNDO_WINDOW_MS, DEFAULT_AI_ASSISTANT_SETTINGS, type ClientContractDTO } from "@whatsatendende/types";
 import { createSurvey } from "../src/modules/satisfaction/satisfaction.service";
 import { createClosingMessage } from "../src/modules/closing-messages/closing-messages.service";
 import { getPerAgentReport } from "../src/modules/reports/reports.service";
@@ -142,7 +142,8 @@ describe("Assistente Virtual: conversa com o cliente", () => {
     expect((await lastText(contact.id))).toContain("• dezembro/2030");
     expect((await lastText(contact.id))).toMatch(/\*1\.\* janeiro\/2026: R\$/);
     expect((await lastText(contact.id))).toContain("*2.* janeiro/2026 e fevereiro/2026 juntas, no mesmo PDF");
-    expect((await lastText(contact.id))).not.toContain("*3.*");
+    expect((await lastText(contact.id))).toContain("*3.* todas as 3 parcelas em aberto juntas, no mesmo PDF");
+    expect((await lastText(contact.id))).not.toContain("*4.*");
 
     await resetSent();
     conversation = await customerSays(contact.id, "a 2");
@@ -709,7 +710,7 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(sim.status).toBe(200);
       expect(sim.body.steps.map((s: { title: string }) => s.title)).toEqual(["Assistente", "Entendimento", "Expediente", "Dados dos clientes", "CPF", "Parcelas em aberto", "Opções de boleto", "Boleto"]);
       expect(sim.body.steps.find((s: { title: string }) => s.title === "CPF").detail).toContain("Maria A. D. S. — pediria");
-      expect(sim.body.outcome).toContain("as 2 opções de boleto (sempre a partir da mais antiga)");
+      expect(sim.body.outcome).toContain("as 3 opções de boleto (sempre a partir da mais antiga)");
       expect(await prisma.auditLog.count({ where: { action: "AI_ASSISTANT_SIMULATED" } })).toBeGreaterThan(0);
       // Nothing was sent and no conversation was opened.
       expect(await prisma.message.count({ where: { createdAt: { gt: mark }, automatedBy: "AI" } })).toBe(0);
@@ -869,19 +870,50 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(await lastText(contact.id)).not.toContain("endereço certo");
     });
 
-    it("boleto: só a mais antiga ou a mais antiga e a próxima; \"as duas\" manda as duas e uma terceira não existe", async () => {
-      const contact = await newCustomer();
-      await customerSays(contact.id, "quero meu boleto");
-      await customerSays(contact.id, CPF);
-      await customerSays(contact.id, "Maria Aparecida da Silva");
-      await customerSays(contact.id, "Rua das Flores, 100, Centro");
-      await customerSays(contact.id, "3");
-      expect(await lastText(contact.id)).toContain("Não entendi qual opção");
-      await resetSent();
-      await customerSays(contact.id, "as duas");
-      const linhas = (await texts(contact.id)).filter((t) => /^\d{47}$/.test(t));
-      expect(linhas).toHaveLength(2);
-      expect((await outbound(contact.id)).find((m) => m.type === "DOCUMENT")?.body).not.toContain("parcelas anteriores");
+    it("boleto: a mais antiga, a mais antiga e a próxima, ou todas; nunca pulando uma parcela", async () => {
+      const ask = async () => {
+        const contact = await newCustomer();
+        await customerSays(contact.id, "quero meu boleto");
+        await customerSays(contact.id, CPF);
+        await customerSays(contact.id, "Maria Aparecida da Silva");
+        await customerSays(contact.id, "Rua das Flores, 100, Centro");
+        await resetSent();
+        return contact;
+      };
+      const linhasOf = async (contactId: string) => (await texts(contactId)).filter((t) => /^\d{47}$/.test(t)).length;
+
+      const four = await ask();
+      await customerSays(four.id, "4");
+      expect(await lastText(four.id)).toContain("Não entendi qual opção");
+
+      const both = await ask();
+      await customerSays(both.id, "as duas");
+      expect(await linhasOf(both.id)).toBe(2);
+
+      const all = await ask();
+      await customerSays(all.id, "manda todas");
+      expect(await linhasOf(all.id)).toBe(3);
+      const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversation: { contactId: all.id }, body: { startsWith: "Boleto enviado" } } });
+      expect(note.body).toContain("10/01/2026");
+      expect(note.body).toContain("10/12/2030");
+
+      const third = await ask();
+      await customerSays(third.id, "3");
+      expect(await linhasOf(third.id)).toBe(3);
+    });
+
+    it("opções: duas parcelas do mesmo mês aparecem com o dia e o valor; com só duas parcelas não há \"todas\" repetida", () => {
+      const parcel = (id: string, due: string, value: string) => ({ id, document: id, due, daysLate: 0, value, fine: null, interest: null, updatedValue: null, paymentMethod: "Boleto", overdue: false });
+      const contract = (parcels: ReturnType<typeof parcel>[]) => ({ number: "C-1", parcels }) as unknown as ClientContractDTO;
+      const sameMonth = buildOptions([contract([parcel("a", "23/10/2030", "171.65"), parcel("b", "28/10/2030", "1.02"), parcel("c", "19/11/2030", "184.49")])]);
+      expect(sameMonth.map((o) => o.label.replace(/\u00a0/g, " "))).toEqual([
+        "outubro/2030: R$ 171,65 — vence em 23/10/2030",
+        "23/10 (R$ 171,65) e 28/10 (R$ 1,02) juntas, no mesmo PDF",
+        "todas as 3 parcelas em aberto juntas, no mesmo PDF",
+      ]);
+      expect(sameMonth[2].ids).toEqual(["a", "b", "c"]);
+      const two = buildOptions([contract([parcel("a", "10/10/2030", "90"), parcel("b", "10/11/2030", "90")])]);
+      expect(two.map((o) => o.label.replace(/\u00a0/g, " "))).toEqual(["outubro/2030: R$ 90,00 — vence em 10/10/2030", "outubro/2030 e novembro/2030 juntas, no mesmo PDF"]);
     });
 
     it("depois do boleto, \"não preciso de mais nada\": encerra como um atendimento (com a pesquisa)", async () => {

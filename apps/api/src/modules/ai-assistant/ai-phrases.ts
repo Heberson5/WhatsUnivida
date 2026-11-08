@@ -27,7 +27,6 @@ export type PhraseKey =
   | "notUnderstood"
   | "audioFailed"
   | "audioAskToWrite"
-  | "parcelOnlyTwo"
   | "noNeedGoodbye"
   | "dataUnavailable"
   | "dataUnavailableClosed"
@@ -88,9 +87,6 @@ const PHRASES: Record<PhraseKey, string[]> = {
   parcelUnclear: [
     "Não entendi qual opção. Responda só com o número (de 1 a {total}).",
     "Desculpe, não entendi qual opção. Me manda só o número, de 1 a {total}.",
-  ],
-  parcelOnlyTwo: [
-    "Por aqui consigo enviar a parcela mais antiga ou a mais antiga junto com a próxima. Responda com o número da opção (de 1 a {total}).",
   ],
   noNeedGoodbye: [
     "Tudo bem! Se precisar, é só chamar por aqui. 👋",

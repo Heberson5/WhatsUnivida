@@ -644,6 +644,15 @@ export function buildContracts(rows: { id: string; data: Row }[], map: ColumnMap
     if (!groups.has(number)) groups.set(number, []);
     groups.get(number)!.push(row);
   }
+  // "Vencida" by the due date itself (today at the business' time), not by the ERP's days-late column, which can be
+  // stale or wrong for a parcel that hasn't fallen due yet. Without a readable date, the ERP's column decides.
+  const today = businessDay(new Date(), env.BUSINESS_TZ_OFFSET_MINUTES);
+  const todayKey = today.year * 10_000 + today.month * 100 + today.day;
+  const isLate = (due: string | null, erpDaysLate: number) => {
+    const date = parseBrDate(due ?? undefined);
+    if (!date) return erpDaysLate > 0;
+    return date.getFullYear() * 10_000 + (date.getMonth() + 1) * 100 + date.getDate() < todayKey;
+  };
   return [...groups.entries()].map(([number, group]) => {
     const first = group[0].data;
     const seen = new Set<string>();
@@ -655,7 +664,8 @@ export function buildContracts(rows: { id: string; data: Row }[], map: ColumnMap
       const key = `${document}|${due}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const daysLate = toInt(col(data, "daysLate"));
+      const overdue = isLate(due, toInt(col(data, "daysLate")));
+      const daysLate = overdue ? toInt(col(data, "daysLate")) : 0;
       parcels.push({
         id,
         document,
@@ -666,7 +676,7 @@ export function buildContracts(rows: { id: string; data: Row }[], map: ColumnMap
         interest: col(data, "interest") || null,
         updatedValue: col(data, "updatedValue") || null,
         paymentMethod: col(data, "paymentMethod") || null,
-        overdue: daysLate > 0,
+        overdue,
       });
     }
     parcels.sort((a, b) => (parseBrDate(a.due ?? undefined)?.getTime() ?? 0) - (parseBrDate(b.due ?? undefined)?.getTime() ?? 0));

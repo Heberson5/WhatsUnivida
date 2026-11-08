@@ -44,6 +44,8 @@ import {
   monthOf,
   namesMatch,
   parseChoice,
+  CHOICE_ALL,
+  CHOICE_BOTH,
   ruleIntent,
   type Intent,
 } from "./ai-text";
@@ -67,6 +69,8 @@ const MAX_CPF_ATTEMPTS = 3;
 const MAX_NAME_ATTEMPTS = 2;
 const MAX_UNCLEAR = 2;
 const MAX_PARCELS_LISTED = 12;
+/** The option with every open parcel ("todas"). */
+const ALL_PARCELS = "all";
 // CPFs that didn't match (not found, or the name didn't match) from one phone in 24 hours, across conversations.
 const MAX_AUDIO_FAILS = 2;
 /**
@@ -364,26 +368,45 @@ function parcelList(contracts: ClientContractDTO[]): string[] {
   return contracts.flatMap((contract) => contract.parcels.map((parcel) => parcelLine(parcel, contract.number, showContract))).slice(0, MAX_PARCELS_LISTED);
 }
 
+/** "outubro/2026" — or, for two parcels of the same month, "23/10 (R$ 171,65)" so the customer can tell them apart. */
+function shortParcel(parcel: ClientContractDTO["parcels"][number], sameMonth: boolean): string {
+  const month = monthOf(parcel.due) ?? parcel.due ?? "sem vencimento";
+  if (!sameMonth) return month;
+  const day = parcel.due?.slice(0, 5) ?? month;
+  const value = formatBrl(parcel.overdue ? (parcel.updatedValue ?? parcel.value) : parcel.value);
+  return value ? `${day} (${value})` : day;
+}
+
 /**
  * What the customer can ask the boleto for — the same rule as the team's: never skipping an older parcel. Per
- * contract, only the oldest open parcel, or the oldest and the next one together (one PDF).
+ * contract, the oldest open parcel, or the oldest and the next one together; and, when there are more parcels than
+ * that, all the open parcels together (one PDF), always from the oldest.
  */
-function buildOptions(contracts: ClientContractDTO[]): ParcelOption[] {
+export function buildOptions(contracts: ClientContractDTO[]): ParcelOption[] {
   const withParcels = contracts.filter((c) => c.parcels.length > 0);
   const showContract = withParcels.length > 1;
   const options: ParcelOption[] = [];
   for (const contract of withParcels) {
     const [oldest, next] = contract.parcels;
-    const of = (parcel: typeof oldest) => monthOf(parcel.due) ?? parcel.due ?? "sem vencimento";
     const suffix = showContract ? ` (contrato ${contract.number})` : "";
     options.push({ id: oldest.id, contract: contract.number, label: `${parcelLine(oldest, contract.number, false)}${suffix}`, ids: [oldest.id] });
     if (next) {
-      options.push({ id: next.id, contract: contract.number, label: `${of(oldest)} e ${of(next)} juntas, no mesmo PDF${suffix}`, ids: [oldest.id, next.id] });
+      const sameMonth = monthOf(oldest.due) !== null && monthOf(oldest.due) === monthOf(next.due);
+      options.push({
+        id: next.id,
+        contract: contract.number,
+        label: `${shortParcel(oldest, sameMonth)} e ${shortParcel(next, sameMonth)} juntas, no mesmo PDF${suffix}`,
+        ids: [oldest.id, next.id],
+      });
     }
   }
+  // Every open parcel at once, when that is more than the options above already give.
+  const all = withParcels.flatMap((c) => c.parcels.map((p) => p.id));
+  if (all.length > 2 || withParcels.length > 1) {
+    options.push({ id: ALL_PARCELS, contract: "", label: `todas as ${all.length} parcelas em aberto juntas, no mesmo PDF`, ids: all });
+  }
   return options;
-}
-// --- Steps ------------------------------------------------------------------------------------------------
+}// --- Steps ------------------------------------------------------------------------------------------------
 
 /** "O mesmo CPF de antes": this conversation's, else the last one this phone confirmed — still on the spreadsheet. */
 async function previousCpf(conv: Conv): Promise<string | null> {
@@ -629,13 +652,21 @@ async function onParcel(conv: Conv, session: AiSession, settings: AiAssistantSet
     await say(conv, settings, phrase("parcelUnclear", { total: options.length }));
     return save(session, "AWAIT_PARCEL", { ...data, unclear });
   }
-  if (choice === 0) {
-    // "Todas", "as duas", "juntas": the oldest and the next one, when there's only one such option. Never more than two.
-    const together = options.filter((o) => o.ids.length === 2);
+  if (choice === CHOICE_ALL) {
+    // "Todas", "tudo": every open parcel; with no such option, there are at most two — the oldest and the next one.
+    const all = options.find((o) => o.id === ALL_PARCELS) ?? options.find((o) => o.ids.length === 2) ?? (options.length === 1 ? options[0] : null);
+    if (all) return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, all);
+  }
+  if (choice === CHOICE_BOTH) {
+    // "As duas", "ambas": the oldest and the next one, when there is only one such option.
+    const together = options.filter((o) => o.ids.length === 2 && o.id !== ALL_PARCELS);
     if (together.length === 1) return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, together[0]);
-    if (options.length === 1) return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, options[0]);
-    await say(conv, settings, phrase("parcelOnlyTwo", { total: options.length }));
-    return save(session, "AWAIT_PARCEL", data);
+  }
+  if (choice === CHOICE_ALL || choice === CHOICE_BOTH) {
+    const unclear = (data.unclear ?? 0) + 1;
+    if (unclear >= MAX_UNCLEAR) return handToQueue(conv, session, settings, { ...data, unclear }, "não entendeu qual parcela o cliente queria");
+    await say(conv, settings, phrase("parcelUnclear", { total: options.length }));
+    return save(session, "AWAIT_PARCEL", { ...data, unclear });
   }
   return sendBoletos(conv, session, settings, { ...data, unclear: 0 }, options[choice - 1]);
 }

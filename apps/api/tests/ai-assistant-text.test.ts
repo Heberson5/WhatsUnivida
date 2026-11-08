@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addressesMatch, correctionTarget, extractCpf, isNo, isSameAnswer, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
+import { CHOICE_ALL, CHOICE_BOTH, addressesMatch, correctionTarget, extractCpf, isNo, isSameAnswer, isYes, maskCpf, monthOf, namesMatch, parseChoice, ruleIntent, validCnpj, validCpf } from "../src/modules/ai-assistant/ai-text";
 
 describe("Assistente Virtual: CPF em qualquer formato", () => {
   it.each([
@@ -96,7 +96,9 @@ describe("Assistente Virtual: pedidos óbvios (sem precisar da IA)", () => {
     expect(isNo("Não, obrigada.")).toBe(true);
     expect(parseChoice("a 2", 3)).toBe(2);
     expect(parseChoice("quero a segunda", 3)).toBe(2);
-    expect(parseChoice("todas", 3)).toBe(0);
+    expect(parseChoice("todas", 3)).toBe(CHOICE_ALL);
+    expect(parseChoice("manda tudo", 3)).toBe(CHOICE_ALL);
+    expect(parseChoice("as duas", 3)).toBe(CHOICE_BOTH);
     expect(parseChoice("7", 3)).toBeNull();
     expect(monthOf("10/03/2026")).toBe("março/2026");
   });

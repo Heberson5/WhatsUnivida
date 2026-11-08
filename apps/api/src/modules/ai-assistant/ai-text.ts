@@ -257,10 +257,16 @@ export function isNo(text: string): boolean {
   return /^(nao|n|nao obrigad[oa]|nada|nao precisa|so isso|era so isso|nao quero|nenhum|nenhuma)[\s!.,]*$/.test(plain(text));
 }
 
-/** "2", "a 2", "opção 2", "segunda"… — the option picked, 1-based; "todas" = 0. Null when it isn't a choice. */
+/** parseChoice: "todas", "tudo" — every open parcel. */
+export const CHOICE_ALL = 0;
+/** parseChoice: "as duas", "ambas", "juntas" — the oldest and the next one. */
+export const CHOICE_BOTH = -2;
+
+/** "2", "a 2", "opção 2", "segunda"… — the option picked, 1-based; CHOICE_ALL / CHOICE_BOTH; null when it isn't a choice. */
 export function parseChoice(text: string, count: number): number | null {
   const folded = fold(text);
-  if (/\b(todas|todos|tudo|todas elas|as duas|os dois|ambas|ambos|juntas|juntos)\b/.test(folded)) return 0;
+  if (/\b(todas|todos|tudo|todas elas)\b/.test(folded)) return CHOICE_ALL;
+  if (/\b(as duas|os dois|ambas|ambos|juntas|juntos)\b/.test(folded)) return CHOICE_BOTH;
   const ordinals = ["primeira", "segunda", "terceira", "quarta", "quinta", "sexta", "setima", "oitava", "nona", "decima"];
   const ordinal = ordinals.findIndex((o) => new RegExp(`\\b${o}\\b`).test(folded));
   if (ordinal >= 0 && ordinal < count) return ordinal + 1;

@@ -11,6 +11,36 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.6",
+    date: "8 nov 2026",
+    name: "Assistente Virtual: todos os boletos de uma vez",
+    summary: "O cliente agora também pode pedir ao Assistente Virtual todos os boletos em aberto de uma vez, no mesmo PDF, sempre a partir da parcela mais antiga. Parcelas que ainda não venceram não aparecem mais como vencidas, e duas parcelas do mesmo mês aparecem com o dia e o valor de cada uma.",
+    notes: [
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Opção de enviar todos os boletos",
+        text: "Além da parcela mais antiga e da mais antiga junto com a próxima, o assistente oferece todas as parcelas em aberto juntas, no mesmo PDF, com a linha digitável de cada uma. Basta responder o número da opção, ou \"todas\". A regra continua a mesma: o boleto começa sempre pela parcela mais antiga, sem pular nenhuma. Com só duas parcelas em aberto, a opção das duas juntas já é a de todas.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-boleto-todas.webp", caption: "As três opções, com as duas parcelas de outubro separadas pelo dia", size: "small" }],
+      },
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Parcela vencida pela data de vencimento",
+        text: "Uma parcela só aparece como vencida quando a data de vencimento já passou. Antes, a coluna de dias em atraso da planilha decidia, e uma parcela que ainda ia vencer podia aparecer como \"vencida\", com \"valor atualizado\". Vale para o assistente e para o painel de dados do cliente no atendimento; sem data de vencimento legível, a coluna da planilha continua valendo.",
+        where: "WhatsApp do cliente e Atendimento › Dados do cliente",
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Duas parcelas do mesmo mês",
+        text: "Quando a parcela mais antiga e a próxima vencem no mesmo mês, a opção de enviar as duas juntas mostra o dia e o valor de cada uma, por exemplo \"23/10 (R$ 171,65) e 28/10 (R$ 1,02) juntas\", em vez de \"outubro e outubro\".",
+        where: "WhatsApp do cliente",
+      },
+    ],
+  },
+  {
     version: "2.37.5",
     date: "8 nov 2026",
     name: "Assistente Virtual: encerramento como o da equipe",
