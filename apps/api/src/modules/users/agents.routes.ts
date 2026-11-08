@@ -3,6 +3,7 @@ import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import type { Role } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
+import { getAssistantUser } from "../ai-assistant/ai-assistant.service";
 
 /** Lightweight agent listings used by the transfer modal and management screens (not full user CRUD). */
 export const agentsRouter = Router();
@@ -41,16 +42,22 @@ agentsRouter.get(
       },
       orderBy: { displayName: "asc" },
     });
-    res.json(
-      agents.map((a) => ({
-        id: a.id,
-        displayName: a.displayName,
-        presence: a.presence,
-        photoUrl: a.photoUrl,
-        whatsappConnectionName: a.whatsappConnection?.name ?? null,
-        pauseReasonName: a.pauseReason?.name ?? null,
-      }))
-    );
+    const people = agents.map((a) => ({
+      id: a.id,
+      displayName: a.displayName,
+      presence: a.presence,
+      photoUrl: a.photoUrl,
+      whatsappConnectionName: a.whatsappConnection?.name ?? null,
+      pauseReasonName: a.pauseReason?.name ?? null,
+      isAssistant: false,
+    }));
+    // includeAssistant=true (Respostas › Encerramento only): the Assistente Virtual too, so its closing message can be
+    // chosen in the same list as the team's. Never a transfer target, and never online — it doesn't log in.
+    if (req.query.includeAssistant === "true") {
+      const assistant = await getAssistantUser();
+      people.unshift({ id: assistant.id, displayName: assistant.displayName, presence: "OFFLINE", photoUrl: null, whatsappConnectionName: null, pauseReasonName: null, isAssistant: true });
+    }
+    res.json(people);
   })
 );
 

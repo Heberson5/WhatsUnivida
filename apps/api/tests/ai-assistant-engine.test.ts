@@ -23,6 +23,7 @@ import { handleInboundForFlow } from "../src/modules/flows/flow-engine.service";
 import { updateAiAssistantSettings } from "../src/modules/ai-assistant/ai-assistant.service";
 import { CONVERSATION_UNDO_WINDOW_MS, DEFAULT_AI_ASSISTANT_SETTINGS } from "@whatsatendende/types";
 import { createSurvey } from "../src/modules/satisfaction/satisfaction.service";
+import { createClosingMessage } from "../src/modules/closing-messages/closing-messages.service";
 import { getPerAgentReport } from "../src/modules/reports/reports.service";
 import { getAssistantUser } from "../src/modules/ai-assistant/ai-assistant.service";
 import { __usePhraseVersionForTests } from "../src/modules/ai-assistant/ai-phrases";
@@ -467,6 +468,13 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       expect(note.body).toContain("cliente pediu para encerrar");
     });
 
+    it("\"foi engano\" também recebe a pesquisa, como qualquer encerramento", async () => {
+      const contact = await newCustomer();
+      const conversation = await closeAndFollowUp(contact.id, "foi engano");
+      expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("CLOSED");
+      expect(await surveyOf(conversation.id)).not.toBeNull();
+    });
+
     it("\"encerrar meu contrato\" não encerra a conversa: é assunto para a equipe", async () => {
       const contact = await newCustomer();
       llm.intent = { intent: "OUTRO", summary: "quer cancelar o contrato" };
@@ -738,16 +746,37 @@ describe("Assistente Virtual: conversa com o cliente", () => {
   describe("cliente que não precisa de ajuda, endereço opcional e opções de boleto", () => {
     const closedConv = (contactId: string) => prisma.conversation.findFirstOrThrow({ where: { contactId }, orderBy: { createdAt: "desc" } });
 
-    it("\"foi engano\" logo de cara: despedida curta e encerra, sem pesquisa e sem ir para a fila", async () => {
+    /** Runs what the close schedules right away, like the Encerrar button after its undo window. */
+    async function withFollowUp<T>(run: () => Promise<T>): Promise<T> {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      try {
+        const result = await run();
+        await vi.advanceTimersByTimeAsync(CONVERSATION_UNDO_WINDOW_MS + 100);
+        return result;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+    /** The closing message as it went out (an automatic message of kind Encerramento, sent as the assistant). */
+    async function closingOf(conversationId: string) {
+      for (let i = 0; i < 30; i++) {
+        const message = await prisma.message.findFirst({ where: { conversationId, automatedBy: "CLOSING" } });
+        if (message) return message;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    }
+
+    it("\"foi engano\" logo de cara: encerra como um atendimento, com a mensagem de encerramento, sem ir para a fila", async () => {
+      const assistant = await getAssistantUser();
       const contact = await newCustomer();
-      const conversation = await customerSays(contact.id, "Desculpa, foi engano");
+      const conversation = await withFollowUp(() => customerSays(contact.id, "Desculpa, foi engano"));
       expect(conversation.status).toBe("CLOSED");
       expect(conversation.closeReason).toBe("AI_ASSISTANT");
-      expect(await texts(contact.id)).toEqual(["*Assistente Virtual:*\n\nTudo bem! Se precisar, é só chamar por aqui. 👋"]);
+      const closing = await closingOf(conversation.id);
+      expect(closing).toMatchObject({ body: "Tudo bem! Se precisar, é só chamar por aqui. 👋", senderAgentId: assistant.id });
       const note = await prisma.conversationNote.findFirstOrThrow({ where: { conversationId: conversation.id, body: { startsWith: "Assistente Virtual" } } });
       expect(note.body).toContain("cliente não precisava de atendimento");
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      expect(await prisma.satisfactionSurvey.count({ where: { conversationId: conversation.id } })).toBe(0);
     });
 
     it("\"não, obrigado\" depois da saudação, ou \"deixa pra lá\" no meio do pedido: encerra, não vai para a fila", async () => {
@@ -757,15 +786,71 @@ describe("Assistente Virtual: conversa com o cliente", () => {
       const second = await newCustomer();
       await customerSays(second.id, "quero meu boleto");
       expect(await lastText(second.id)).toContain("CPF");
-      expect((await customerSays(second.id, "deixa pra lá")).status).toBe("CLOSED");
-      expect(await lastText(second.id)).toContain("Se precisar, é só chamar");
+      const conversation = await withFollowUp(() => customerSays(second.id, "deixa pra lá"));
+      expect(conversation.status).toBe("CLOSED");
+      expect((await closingOf(conversation.id))?.body).toContain("Se precisar, é só chamar");
     });
 
-    it("só cumprimentou e parou de responder: encerra sozinho depois de 30 minutos, sem ir para a fila", async () => {
+    it("a mensagem de encerramento escolhida para o Assistente Virtual em Respostas substitui a dele; a etiqueta que bloqueia o encerramento não deixa sair", async () => {
+      const assistant = await getAssistantUser();
+      const closingMessage = await createClosingMessage({
+        name: "Do assistente",
+        text: "Atendimento encerrado, {{primeiro_nome}}. Obrigado por falar com o {{atendente}}!",
+        active: true,
+        showSenderName: true,
+        userIds: [assistant.id],
+        connectionScope: { allConnections: true, connectionIds: [] },
+      });
+      try {
+        const contact = await newCustomer();
+        await prisma.contact.update({ where: { id: contact.id }, data: { firstName: "Joana" } });
+        const conversation = await withFollowUp(() => customerSays(contact.id, "pode encerrar"));
+        expect((await closingOf(conversation.id))?.body).toBe("Atendimento encerrado, Joana. Obrigado por falar com o Assistente Virtual!");
+
+        const blocked = await newCustomer();
+        const tag = await prisma.tag.create({ data: { name: `Sem encerramento ${Date.now()}`, blockedAutoMessages: ["CLOSING"] } });
+        await prisma.contactTag.create({ data: { contactId: blocked.id, tagId: tag.id } });
+        const other = await withFollowUp(() => customerSays(blocked.id, "pode encerrar"));
+        expect(other.status).toBe("CLOSED");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(await prisma.message.count({ where: { conversationId: other.id, automatedBy: "CLOSING" } })).toBe(0);
+        expect(await prisma.autoMessageBlockLog.count({ where: { conversationId: other.id, kind: "CLOSING" } })).toBe(1);
+      } finally {
+        await prisma.user.updateMany({ where: { closingMessageId: closingMessage.id }, data: { closingMessageId: null } });
+        await prisma.closingMessage.delete({ where: { id: closingMessage.id } });
+      }
+    });
+
+    it("Respostas › Encerramento lista o Assistente Virtual com a equipe, sem presença; ele nunca aparece para transferir", async () => {
+      const assistant = await getAssistantUser();
+      const token = (await request(app).post("/api/auth/login").send({ email: "admin-ia@test.dev", password: TEST_PASSWORD })).body.accessToken as string;
+      const transfer = await request(app).get("/api/agents/transfer-targets").set("Authorization", `Bearer ${token}`);
+      expect(transfer.body.some((u: { id: string }) => u.id === assistant.id)).toBe(false);
+      const closing = await request(app).get("/api/agents/transfer-targets").query({ excludeSelf: false, includeAssistant: true }).set("Authorization", `Bearer ${token}`);
+      expect(closing.body[0]).toMatchObject({ id: assistant.id, displayName: "Assistente Virtual", presence: "OFFLINE", isAssistant: true });
+      expect(closing.body.filter((u: { isAssistant: boolean }) => u.isAssistant)).toHaveLength(1);
+    });
+
+    it("etiqueta que bloqueia a mensagem de fora do expediente: o assistente também não a envia ao passar para a fila", async () => {
+      const schedule = await prisma.workSchedule.create({ data: { name: "Fechado", state: "MT", city: "Tangará da Serra", days: {}, closedMessage: "Estamos fora do expediente." } });
+      await prisma.whatsAppConnection.update({ where: { id: connectionId }, data: { workScheduleId: schedule.id } });
+      const contact = await newCustomer();
+      const tag = await prisma.tag.create({ data: { name: `Sem fora do expediente ${Date.now()}`, blockedAutoMessages: ["OUT_OF_HOURS"] } });
+      await prisma.contactTag.create({ data: { contactId: contact.id, tagId: tag.id } });
+      await customerSays(contact.id, "oi");
+      const conversation = await customerSays(contact.id, "quero falar com um atendente");
+      expect(conversation.status).toBe("NEW");
+      expect((await texts(contact.id)).join(" ")).not.toContain("fora do expediente");
+      expect(await prisma.autoMessageBlockLog.count({ where: { conversationId: conversation.id, kind: "OUT_OF_HOURS" } })).toBe(1);
+    });
+
+    it("só cumprimentou e parou de responder: encerra sozinho depois de 30 minutos, com a mensagem de encerramento, sem ir para a fila", async () => {
       const contact = await newCustomer();
       await customerSays(contact.id, "boa tarde");
-      await sweepAssistantSessions(new Date(Date.now() + 31 * 60_000));
-      expect((await closedConv(contact.id)).status).toBe("CLOSED");
+      await withFollowUp(() => sweepAssistantSessions(new Date(Date.now() + 31 * 60_000)));
+      const conversation = await closedConv(contact.id);
+      expect(conversation.status).toBe("CLOSED");
+      expect((await closingOf(conversation.id))?.body).toContain("Obrigado pelo contato");
     });
 
     it("sem a confirmação do endereço (padrão): depois do nome já mostra as parcelas; o telefone fora do cadastro ainda gera o aviso", async () => {

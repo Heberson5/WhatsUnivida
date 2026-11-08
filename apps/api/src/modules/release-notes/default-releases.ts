@@ -11,6 +11,39 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.5",
+    date: "8 nov 2026",
+    name: "Assistente Virtual: encerramento como o da equipe",
+    summary: "Todo encerramento feito pelo Assistente Virtual segue agora o mesmo caminho do botão Encerrar: a mensagem de encerramento e a pesquisa de satisfação, conforme as regras e as etiquetas, inclusive quando o cliente diz que foi engano ou para de responder. O Assistente aparece na lista de usuários da Mensagem de encerramento, e as etiquetas também valem para as mensagens que ele envia ao passar a conversa para a fila.",
+    notes: [
+      {
+        type: "correcao",
+        area: "atendimento",
+        title: "Encerramento e pesquisa em todo encerramento do assistente",
+        text: "Quando o assistente encerra a conversa (pedido resolvido, cliente pediu para encerrar, \"foi engano\", \"não preciso de nada\" ou cliente que parou de responder por 30 minutos), vai a mensagem de encerramento e a pesquisa de satisfação, como no botão Encerrar: com a pesquisa ligada, a mensagem de encerramento espera a nota do cliente. Só não vão quando a etiqueta do cliente está marcada para não receber o Encerramento ou a Pesquisa. Antes, nos casos de engano e de cliente que parou de responder, a conversa era encerrada sem nada. As mensagens de falta de retorno continuam não sendo enviadas enquanto o assistente atende.",
+        where: "WhatsApp do cliente",
+        images: [{ src: "/notas-de-versao/assistente-encerra-com-pesquisa.webp", caption: "\"Mandei no número errado\": pesquisa e mensagem de encerramento", size: "small" }],
+      },
+      {
+        type: "novo",
+        area: "respostas",
+        title: "Assistente Virtual na Mensagem de encerramento",
+        text: "Em Respostas › Encerramento, o Assistente Virtual aparece no alto da lista de usuários, com a equipe, para escolher a mensagem de encerramento dele (com as mesmas variáveis, como {{primeiro_nome}} e {{atendente}}). Sem mensagem escolhida, ele usa a despedida própria. Ele nunca aparece como online, não entra na lista de usuários do sistema e não recebe transferências.",
+        where: "Respostas › Encerramento",
+        roles: ["ADMIN", "MANAGER"],
+        images: [{ src: "/notas-de-versao/assistente-encerramento-usuarios.webp", caption: "O Assistente Virtual na lista de usuários do encerramento", size: "small" }],
+      },
+      {
+        type: "correcao",
+        area: "contatos",
+        title: "Etiquetas valem também para o assistente",
+        text: "Ao passar a conversa para a fila, o assistente envia a mensagem de fora do expediente ou a de transferência. Agora, se a etiqueta do cliente está marcada para não receber Fora do expediente ou Transferência, ele não envia, como já acontecia com as mensagens da equipe, e o bloqueio fica registrado.",
+        where: "Etiquetas",
+        roles: ["ADMIN", "MANAGER"],
+      },
+    ],
+  },
+  {
     version: "2.37.4",
     date: "8 nov 2026",
     name: "Assistente Virtual: mais atento ao cliente",

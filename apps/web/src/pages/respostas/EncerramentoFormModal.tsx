@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, Bot } from "lucide-react";
 import { PERMISSION, REPLY_MEDIA_CAPTION_MAX, type ClosingMessageDTO } from "@whatsatendende/types";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
@@ -34,6 +34,8 @@ interface AssignableUser {
   displayName: string;
   presence: "ONLINE" | "AWAY" | "OFFLINE";
   whatsappConnectionName: string | null;
+  /** The Assistente Virtual: chosen here like anyone, but it never logs in, so it has no presence. */
+  isAssistant?: boolean;
 }
 
 const PRESENCE_DOT: Record<string, string> = { ONLINE: "bg-green-500", AWAY: "bg-yellow-500", OFFLINE: "bg-gray-400" };
@@ -53,8 +55,8 @@ export function EncerramentoFormModal({
   const canEditMedia = Boolean(useAuthStore((s) => s.permissions)?.[PERMISSION.RESPOSTAS_MIDIA_GERENCIAR]);
   const [media, setMedia] = useState<ReplyMediaChange>({ kind: "keep" });
   const { data: users } = useQuery({
-    queryKey: ["agents-transfer-targets-all"],
-    queryFn: async () => (await api.get<AssignableUser[]>("/agents/transfer-targets", { params: { excludeSelf: false } })).data,
+    queryKey: ["agents-transfer-targets-all", "with-assistant"],
+    queryFn: async () => (await api.get<AssignableUser[]>("/agents/transfer-targets", { params: { excludeSelf: false, includeAssistant: true } })).data,
   });
 
   const [values, setValues] = useState<EncerramentoFormValues>({
@@ -233,12 +235,20 @@ export function EncerramentoFormModal({
                     className="flex w-full items-start gap-3 border-b border-border px-3 py-2 last:border-b-0 hover:bg-surface-alt"
                   >
                     <input type="checkbox" checked={checked} onChange={() => toggleUser(u.id)} className="mt-0.5 h-4 w-4 shrink-0 accent-primary" />
-                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PRESENCE_DOT[u.presence]}`} />
+                    {u.isAssistant ? (
+                      <Bot className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-label="Assistente Virtual" />
+                    ) : (
+                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PRESENCE_DOT[u.presence]}`} />
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">
                         {u.displayName}
+                        {u.isAssistant ? <span className="text-xs text-muted"> · automático, nunca fica online</span> : null}
                         {u.whatsappConnectionName ? <span className="text-xs text-muted"> · {u.whatsappConnectionName}</span> : null}
                       </span>
+                      {u.isAssistant && !checked && !elsewhere && (
+                        <span className="mt-0.5 block text-xs text-muted">Sem mensagem escolhida, ele usa a despedida própria.</span>
+                      )}
                       {elsewhere && checked && (
                         <span className="mt-0.5 flex items-center gap-1 text-xs text-amber-600">
                           <AlertTriangle className="h-3 w-3 shrink-0" /> Vai sair de "{elsewhere}"

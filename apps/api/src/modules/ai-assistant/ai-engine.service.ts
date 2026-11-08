@@ -12,7 +12,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { writeAudit } from "../../lib/audit";
-import { blockingTag } from "../../lib/auto-messages";
+import { blockingTag, isBlocked } from "../../lib/auto-messages";
 import { phoneKey } from "../../lib/phone-key";
 import { fillSendTags } from "../../lib/customer-tags";
 import { realtimeEvents } from "../../realtime/realtime";
@@ -24,7 +24,10 @@ import { getClosedMessageForConnection, getConnectionSchedule, isWorkScheduleOpe
 import { clientRows, cpfKeyOf, dataAccessFor, getClientData, localDateTime, usableSource, type ColumnMap, type Row } from "../data-sources/data-sources.service";
 import { prepareBoletos, previewBoletos } from "../boletos/boletos.service";
 import { assistantAnswers, getAiAssistantSettings, getAssistantUser } from "./ai-assistant.service";
-import { scheduleCloseFollowUp } from "../satisfaction/satisfaction.service";
+import { scheduleCloseFollowUp, type HeldClosingMessage } from "../satisfaction/satisfaction.service";
+import { getActiveClosingMessageForAgent } from "../closing-messages/closing-messages.service";
+import { renderAutoMessageTemplate } from "../auto-message-templates/auto-message-templates.service";
+import { copyReplyMediaFile } from "../../lib/reply-media";
 import { classifyIntent, transcribeAudio } from "./ai-llm";
 import { firstNameFor, greetingOfTheDay, phrase, typingDelayMs } from "./ai-phrases";
 import { env } from "../../config/env";
@@ -251,7 +254,9 @@ async function handToQueue(conv: Conv, session: AiSession, settings: AiAssistant
   if (tellCustomer && settings) {
     const closed = await getClosedMessageForConnection("WHATSAPP", conv.connectionId).catch(() => null);
     const text = closed ? fillSendTags(closed, conv.contactName ?? conv.phone, conv.firstName) : settings.transferMessage;
-    if (text.trim()) await say(conv, settings, text.trim()).catch((err) => logger.warn({ err }, "assistant could not send the transfer notice"));
+    // Same tags as the team's messages: "Fora do expediente" or "Transferência" marked as not sent for this customer.
+    const blocked = await isBlocked({ id: conv.id, contactId: conv.contactId }, closed ? "OUT_OF_HOURS" : "TRANSFER");
+    if (text.trim() && !blocked) await say(conv, settings, text.trim()).catch((err) => logger.warn({ err }, "assistant could not send the transfer notice"));
   }
   await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: noteOf(data, outcome) } });
   // A person attends from here: the queue's own times (Entrada na fila, Aceite, 1ª resposta) start now, not the assistant's.
@@ -270,18 +275,18 @@ const GOODBYE = "Obrigado pelo contato! Sempre que precisar, é só chamar por a
  */
 async function noNeed(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO, data: SessionData) {
   if (data.done?.length) return finish(conv, session, settings, data, { outcome: "resolvido; cliente disse que não precisava de mais nada" });
-  await say(conv, settings, phrase("noNeedGoodbye", { virgula_nome: "", nome: nameOf(conv) }));
-  return finish(conv, session, settings, data, { silent: true, outcome: "cliente não precisava de atendimento" });
+  return finish(conv, session, settings, data, { goodbye: phrase("noNeedGoodbye"), outcome: "cliente não precisava de atendimento" });
 }
 const GOODBYE_ON_REQUEST = "Tudo bem, vou encerrar nossa conversa. Sempre que precisar, é só chamar por aqui. 👋";
 
 /**
- * Closes the conversation as its attendant, like the Encerrar button: closed by the assistant (Relatórios count it),
- * and — unless `silent` — the goodbye goes as the closing message and the satisfaction survey follows by the same rules
- * as any attendant's close (Respostas › Pesquisa, the connection, and tags that block the survey). With the survey on,
- * the goodbye waits for the score, as it does for the team.
+ * Closes the conversation as its attendant, exactly like the Encerrar button: closed by the assistant (Relatórios count
+ * it), then the closing message and the satisfaction survey by the same rules as any attendant's close — the closing
+ * message chosen for the Assistente Virtual in Respostas › Encerramento (or, with none, the assistant's own goodbye), the
+ * survey of Respostas › Pesquisa, and the tags that stop either one. With the survey on, the closing message waits for
+ * the score, as it does for the team.
  */
-async function finish(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO | null, data: SessionData, options: { silent?: boolean; goodbye?: string; outcome?: string } = {}): Promise<void> {
+async function finish(conv: Conv, session: AiSession, settings: AiAssistantSettingsDTO | null, data: SessionData, options: { goodbye?: string; outcome?: string; endReason?: string } = {}): Promise<void> {
   const assistant = await getAssistantUser();
   const outcome = options.outcome ?? "resolvido pelo assistente";
   await prisma.conversationNote.create({ data: { conversationId: conv.id, authorId: null, body: noteOf(data, outcome) } });
@@ -290,13 +295,26 @@ async function finish(conv: Conv, session: AiSession, settings: AiAssistantSetti
     where: { id: conv.id, status: "IN_AI" },
     data: { status: "CLOSED", closedAt: now, closedByUserId: assistant.id, assignedAgentId: assistant.id, closeReason: "AI_ASSISTANT", pendingTransferDeadline: null },
   });
-  await end(session, options.silent ? "IDLE_CLOSED" : "RESOLVED");
+  await end(session, options.endReason ?? "RESOLVED");
   if (closed.count === 0) return;
   await prisma.conversationEvent.create({ data: { conversationId: conv.id, type: "CLOSED", payload: { agentId: assistant.id, byAssistant: true, previousStatus: "IN_AI", outcome } } });
-  if (!options.silent && settings) {
-    scheduleCloseFollowUp(conv.id, { text: aiAssistantReply(settings.name, options.goodbye ?? GOODBYE), senderId: assistant.id, senderDisplayName: null });
-  }
+  const current = settings ?? (await getAiAssistantSettings());
+  scheduleCloseFollowUp(conv.id, await closingMessageOf(conv, current, assistant.id, options.goodbye ?? GOODBYE));
   realtimeEvents.newMessage(conv.id, null);
+}
+
+/** The closing message of the Assistente Virtual: the one assigned to it in Respostas › Encerramento, else its own goodbye. */
+async function closingMessageOf(conv: Conv, settings: AiAssistantSettingsDTO, assistantId: string, fallback: string): Promise<HeldClosingMessage> {
+  const configured = await getActiveClosingMessageForAgent(assistantId, conv.connectionId);
+  if (!configured) return { text: fallback, senderId: assistantId, senderDisplayName: settings.name };
+  const text = renderAutoMessageTemplate(configured.text, {
+    atendente: settings.name,
+    atendenteNome: settings.name,
+    atendenteCargo: settings.name,
+    cliente: conv.contactName ?? conv.phone,
+    primeiroNome: conv.firstName,
+  });
+  return { text, senderId: assistantId, senderDisplayName: configured.showSenderName ? settings.name : null, media: copyReplyMediaFile(configured) };
 }
 
 // --- Client data ------------------------------------------------------------------------------------------
@@ -920,10 +938,10 @@ export async function sweepAssistantSessions(now = new Date()): Promise<void> {
       if (!conv) continue;
       const data = dataOf(session);
       if (data.done?.some((d) => d.startsWith("Boleto enviado") || d.startsWith("Débitos informados") || d.startsWith("Informado:"))) {
-        await finish(conv, session, null, data, { silent: true, outcome: `resolvido; cliente sem responder por ${IDLE_MINUTES} minutos` });
+        await finish(conv, session, null, data, { endReason: "IDLE_CLOSED", outcome: `resolvido; cliente sem responder por ${IDLE_MINUTES} minutos` });
       } else if (!data.intent && !data.pendingCpf && !data.summary && !data.unclear) {
         // Only greeted or thanked, never asked for anything: nothing for the team to do.
-        await finish(conv, session, null, data, { silent: true, outcome: `cliente não fez nenhum pedido e parou de responder por ${IDLE_MINUTES} minutos` });
+        await finish(conv, session, null, data, { endReason: "IDLE_CLOSED", outcome: `cliente não fez nenhum pedido e parou de responder por ${IDLE_MINUTES} minutos` });
       } else {
         await handToQueue(conv, session, null, data, `cliente parou de responder por ${IDLE_MINUTES} minutos`, false);
       }
@@ -1096,7 +1114,7 @@ export async function simulateAssistant(input: { connectionId: string; message: 
     case "ENCERRAR":
       return done("Encerraria a conversa na hora, com a despedida e a pesquisa de satisfação (seguindo as regras das etiquetas).");
     case "SEM_NECESSIDADE":
-      return done("Se despediria (\"Tudo bem! Se precisar, é só chamar por aqui.\") e encerraria a conversa sem pesquisa, já que nada foi pedido.");
+      return done("Encerraria como um atendimento: a mensagem de encerramento (a escolhida para o assistente em Respostas, ou \"Tudo bem! Se precisar, é só chamar por aqui.\") e a pesquisa, conforme as regras e as etiquetas.");
     case "SAUDACAO":
     case "AGRADECIMENTO":
       return done("Responderia com a saudação e perguntaria como pode ajudar.");
