@@ -30,11 +30,23 @@ export function BackupPanel() {
   const [progress, setProgress] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function download() {
-    // A plain link: the browser saves it as it arrives, however big it is.
+  async function download() {
+    // The link carries the session's token, which lasts a few minutes: asking for the summary first renews it when it
+    // is about to end (or already has) — with an old token the "download" was only an error page.
+    const fresh = await refetch();
+    if (fresh.isError) {
+      toast.error(getApiErrorMessage(fresh.error, "Não foi possível iniciar o backup. Entre de novo e tente outra vez."));
+      return;
+    }
+    // A plain link: the browser saves it as it arrives, however big it is. In the page while it is clicked (some
+    // browsers ignore a click on a link that isn't), and marked as a download so it never opens in place of the system.
     const link = document.createElement("a");
     link.href = withAuthToken(`/api/settings/backup/download?files=${files ? 1 : 0}&sessions=${sessions ? 1 : 0}`);
+    link.download = "";
+    link.style.display = "none";
+    document.body.appendChild(link);
     link.click();
+    link.remove();
     toast.success("Backup sendo gerado — o download começa em instantes.");
     setTimeout(() => void refetch(), 5000);
   }

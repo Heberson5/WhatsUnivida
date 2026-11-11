@@ -5,7 +5,7 @@ import readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import { createGunzip, createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import type { Readable, Writable } from "node:stream";
+import { Readable, type Writable } from "node:stream";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
 import { Errors } from "../../lib/http-error";
@@ -25,6 +25,8 @@ import { DEFAULT_RELEASES } from "../release-notes/default-releases";
 
 export const BACKUP_FORMAT = 1;
 const BATCH = 1000;
+// Up to this size a file is read whole before it goes into the backup (one consistent copy); bigger ones are streamed.
+const SMALL_FILE_BYTES = 16 * 1024 * 1024;
 const MIGRATIONS_TABLE = "_prisma_migrations";
 
 export interface BackupManifest {
@@ -56,8 +58,13 @@ const quote = (table: string) => `"${table.replace(/"/g, '""')}"`;
 
 /** Every file under `dir`, as paths relative to it. */
 function walk(dir: string, base = dir): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return []; // not there (yet, or any more)
+  }
+  return entries.flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return walk(full, base);
     return entry.isFile() ? [path.relative(base, full).split(path.sep).join("/")] : [];
@@ -65,7 +72,14 @@ function walk(dir: string, base = dir): string[] {
 }
 
 function folderSize(dir: string): number {
-  return walk(dir).reduce((sum, rel) => sum + fs.statSync(path.join(dir, rel)).size, 0);
+  // A file removed meanwhile (the WhatsApp sessions change all the time) counts as nothing — never an error on the screen.
+  return walk(dir).reduce((sum, rel) => {
+    try {
+      return sum + fs.statSync(path.join(dir, rel)).size;
+    } catch {
+      return sum;
+    }
+  }, 0);
 }
 
 export async function backupInfo() {
@@ -131,8 +145,34 @@ export async function writeBackup(output: Writable, options: BackupOptions, by: 
       if (!include) continue;
       for (const rel of walk(dir)) {
         const full = path.join(dir, rel);
-        const stat = fs.statSync(full);
-        await writeTarEntry(gzip, `${prefix}/${rel}`, { size: stat.size, stream: fs.createReadStream(full) });
+        // The system keeps running during the backup: a WhatsApp session file is rewritten or removed at any moment
+        // (the connection is live), an attachment may be arriving. A file that is gone is left out; a small one is
+        // read whole first, so what goes in is one consistent copy; a big one that changes size meanwhile still
+        // fits its entry (writeTarEntry). Nothing of this stops the backup.
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(full);
+          if (!stat.isFile()) continue;
+          if (stat.size <= SMALL_FILE_BYTES) {
+            await writeTarEntry(gzip, `${prefix}/${rel}`, fs.readFileSync(full));
+            continue;
+          }
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw err;
+        }
+        const stream = fs.createReadStream(full);
+        // Gone between the look and the read: its entry is already announced, so it is filled in (writeTarEntry).
+        const safe = Readable.from(
+          (async function* () {
+            try {
+              for await (const chunk of stream) yield chunk as Buffer;
+            } catch (err) {
+              logger.warn({ err, file: rel }, "a file could not be read to the end during the backup");
+            }
+          })()
+        );
+        if (!(await writeTarEntry(gzip, `${prefix}/${rel}`, { size: stat.size, stream: safe }))) logger.warn({ file: rel }, "a file changed while it was being backed up");
       }
     }
     await finishTar(gzip);

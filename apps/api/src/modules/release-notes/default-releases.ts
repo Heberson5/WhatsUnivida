@@ -11,6 +11,22 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.40.1",
+    date: "11 nov 2026",
+    name: "Backup com o sistema em uso",
+    summary: "O download do backup deixa de falhar quando é feito com o sistema em uso e as conexões do WhatsApp ligadas.",
+    notes: [
+      {
+        type: "correcao",
+        area: "administracao",
+        title: "Download do backup não é mais interrompido",
+        text: "Com as conexões do WhatsApp ligadas, os arquivos de sessão mudam o tempo todo, e um arquivo alterado ou removido durante a cópia interrompia o download no meio. Agora o backup segue até o fim nesses casos, aceita arquivos com nomes longos e renova a sessão antes de começar, para o download não abrir uma página de erro.",
+        where: "Configurações › Backup",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     version: "2.40.0",
     date: "11 nov 2026",
     name: "Verificação em duas etapas",
