@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { userActionLimiter } from "../../lib/rate-limit";
 import { z } from "zod";
 import { PERMISSION } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
@@ -16,7 +16,7 @@ reportSchedulesRouter.use(requireAuth, requirePermission(PERMISSION.CONFIGURACOE
 const canView = requirePermission(PERMISSION.CONFIGURACOES_AGENDAMENTO_VISUALIZAR);
 const canEdit = requirePermission(PERMISSION.CONFIGURACOES_AGENDAMENTO_EDITAR);
 // Building a deck reads the whole Dashboard: a few per minute is plenty.
-const deckLimiter = rateLimit({ windowMs: 60_000, limit: 6, standardHeaders: true, legacyHeaders: false });
+const deckLimiter = userActionLimiter({ windowMs: 60_000, limit: 6 });
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 const email = z.string().trim().email("E-mail inválido");

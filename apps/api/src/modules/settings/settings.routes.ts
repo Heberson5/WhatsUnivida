@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { imageSize } from "image-size";
 import { Jimp } from "jimp";
-import rateLimit from "express-rate-limit";
+import { userActionLimiter } from "../../lib/rate-limit";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
@@ -539,7 +539,7 @@ settingsRouter.patch(
 // E-mail / SMTP (used to deliver the password-reset link — section 5/56).
 // ---------------------------------------------------------------------------
 
-const emailTestLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+const emailTestLimiter = userActionLimiter({ windowMs: 15 * 60 * 1000, limit: 10 });
 
 settingsRouter.get(
   "/email",

@@ -24,7 +24,9 @@ const CSV = [
   "telefone_whatsapp,codigo_cliente,nome_cliente,cpf_cnpj,numero_contrato,plano,situacao_contrato,beneficiarios,parcelas_suspensao,documento,vencimento_parcela,dias_em_atraso,saldo,multa,juros,valor_atualizado,forma_pagamento",
   "5565999990001,10,Maria Teste,12345678901,C-1,Plano Ouro,Ativo,Maria Teste;Titular;01/02/1980;Não | João Teste;Filho;15/06/2010;Não,2,D-1,10/08/2026,70,89.90,1.80,2.10,93.80,Boleto",
   "5565999990001,10,Maria Teste,12345678901,C-1,Plano Ouro,Ativo,Maria Teste;Titular;01/02/1980;Não | João Teste;Filho;15/06/2010;Não,2,D-2,10/09/2026,39,89.90,1.80,1.17,92.87,Boleto",
-  "5565999990001,10,Maria Teste,12345678901,C-1,Plano Ouro,Ativo,Maria Teste;Titular;01/02/1980;Não | João Teste;Filho;15/06/2010;Não,2,D-3,10/11/2026,0,89.90,0.00,0.00,89.90,Boleto",
+  // D-3 is the parcel that has NOT fallen due: a parcel is overdue by its date (2.37.6), so this one stays far ahead —
+  // with 10/11/2026 the test started failing by itself on 11 Nov 2026, the day after that date.
+  "5565999990001,10,Maria Teste,12345678901,C-1,Plano Ouro,Ativo,Maria Teste;Titular;01/02/1980;Não | João Teste;Filho;15/06/2010;Não,2,D-3,10/11/2099,0,89.90,0.00,0.00,89.90,Boleto",
   "6599990002,20,Ana Um,11122233344,C-2,Plano Prata,Ativo,,3,,,,,,,,",
   "556599990002,21,Ana Dois,55566677788,C-3,Plano Prata,Ativo,,3,,,,,,,,",
 ].join("\n");

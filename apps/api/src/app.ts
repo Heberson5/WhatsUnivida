@@ -3,11 +3,11 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
 import path from "node:path";
 import pinoHttp from "pino-http";
 import { env } from "./config/env";
 import { logger } from "./lib/logger";
+import { apiLimiter } from "./lib/rate-limit";
 import { errorHandler } from "./middleware/error-handler";
 import { authRouter } from "./modules/auth/auth.routes";
 import { usersRouter } from "./modules/users/users.routes";
@@ -120,14 +120,8 @@ export function createApp() {
     })
   );
 
-  app.use(
-    rateLimit({
-      windowMs: env.RATE_LIMIT_WINDOW_MS,
-      max: env.RATE_LIMIT_MAX,
-      standardHeaders: true,
-      legacyHeaders: false,
-    })
-  );
+  // Counted per signed-in user, not per IP — see lib/rate-limit.ts.
+  app.use(apiLimiter());
 
   app.use("/uploads/branding", express.static(path.join(env.UPLOAD_DIR, "branding")));
   app.use("/uploads/profile", express.static(path.join(env.UPLOAD_DIR, "profile")));

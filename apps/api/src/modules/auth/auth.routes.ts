@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
+import { loginLimiters } from "../../lib/rate-limit";
 import { asyncHandler } from "../../lib/async-handler";
 import { env } from "../../config/env";
 import { requireAuth } from "../../middleware/auth";
@@ -20,7 +21,8 @@ export const authRouter = Router();
 // 20 times (one per agent/scenario) — that's test volume, not the login
 // brute-forcing this limiter exists to stop. Never skipped outside tests.
 const skipInTests = () => env.NODE_ENV === "test";
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, skip: skipInTests });
+// Only wrong passwords count, per e-mail and per IP — see loginLimiters.
+const loginLimiter = loginLimiters({ skip: skipInTests });
 // Password-reset endpoints are unauthenticated by nature — without their
 // own limiter they'd let an attacker spam e-mails to arbitrary addresses
 // (forgot-password) or brute-force reset tokens (reset-password).

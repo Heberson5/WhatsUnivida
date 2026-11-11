@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import rateLimit from "express-rate-limit";
+import { userActionLimiter } from "../../lib/rate-limit";
 import type { Channel, Role } from "@prisma/client";
 import { OVERSIGHT_PAGE_SIZES, PERMISSION, type OversightPageDTO } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
@@ -50,7 +50,7 @@ const requireAttendanceAccess = requirePermission(PERMISSION.ATENDIMENTO_ACESSAR
 // this exists so mashing the button can't turn into something that looks
 // like the account-wide dump BaileysWhatsAppProvider deliberately avoids.
 const skipInTests = () => env.NODE_ENV === "test";
-const historyBackfillLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, skip: skipInTests });
+const historyBackfillLimiter = userActionLimiter({ windowMs: 60 * 1000, limit: 5, skip: skipInTests });
 
 // Queue: an AGENT only ever sees their own WhatsApp connection's queue.
 // MANAGER/ADMIN have no fixed connection, so they see every connection's

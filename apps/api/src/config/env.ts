@@ -34,7 +34,10 @@ const schema = z.object({
   UPLOAD_DIR: z.string().default("./uploads"),
   UPLOAD_MAX_SIZE_MB: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  // Requests a minute for each signed-in user (an open Atendimento screen makes about 25 on its own).
   RATE_LIMIT_MAX: z.coerce.number().default(300),
+  // Requests a minute for each IP with no session (the login screen of a whole office behind one address).
+  RATE_LIMIT_ANON_MAX: z.coerce.number().default(600),
 });
 
 export const env = schema.parse(process.env);

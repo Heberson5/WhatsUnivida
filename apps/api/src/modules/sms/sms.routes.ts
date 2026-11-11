@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { userActionLimiter } from "../../lib/rate-limit";
 import { z } from "zod";
 import { PERMISSION, SMS_PROVIDERS, type SmsProviderId } from "@whatsatendende/types";
 import { asyncHandler } from "../../lib/async-handler";
@@ -16,7 +16,7 @@ const settings = requirePermission(PERMISSION.CONFIGURACOES_GERENCIAR);
 const providerIds = Object.keys(SMS_PROVIDERS) as [SmsProviderId, ...SmsProviderId[]];
 
 // Each test is a real, paid SMS.
-const testLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
+const testLimiter = userActionLimiter({ windowMs: 60_000, limit: 5 });
 
 /** Whether the "avisar por SMS" option can show — any schedule editor asks this. */
 smsRouter.get(

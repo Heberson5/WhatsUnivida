@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import rateLimit from "express-rate-limit";
+import { userActionLimiter } from "../../lib/rate-limit";
 import { PERMISSION } from "@whatsatendende/types";
 import type { MessageType } from "@prisma/client";
 import { asyncHandler } from "../../lib/async-handler";
@@ -67,7 +67,7 @@ groupsRouter.get(
 );
 
 // Same bound as a customer conversation's "mensagens anteriores": a handful of WhatsApp requests per minute.
-const historyBackfillLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, skip: () => env.NODE_ENV === "test" });
+const historyBackfillLimiter = userActionLimiter({ windowMs: 60 * 1000, limit: 5, skip: () => env.NODE_ENV === "test" });
 
 /** "Carregar mensagens anteriores": asks WhatsApp for older messages; they arrive later (group:history). */
 groupsRouter.post(

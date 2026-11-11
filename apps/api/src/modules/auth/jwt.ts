@@ -40,6 +40,20 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   return jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: [JWT_ALGORITHM] }) as AccessTokenPayload;
 }
 
+/**
+ * Whose token this is, for counting requests per user (lib/rate-limit.ts) — never for authorization. An expired
+ * token still names its user: the request is refused with 401 either way, but it is counted against that person
+ * rather than against the office's shared IP. Null when the signature doesn't check.
+ */
+export function readAccessTokenUserId(token: string): string | null {
+  try {
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: [JWT_ALGORITHM], ignoreExpiration: true }) as Partial<AccessTokenPayload>;
+    return typeof payload.sub === "string" && payload.sub ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function signRefreshToken(userId: string): string {
   return jwt.sign(
     // A random jti guarantees two refresh tokens minted for the same user

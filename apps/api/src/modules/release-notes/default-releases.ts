@@ -11,6 +11,28 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.7",
+    date: "11 nov 2026",
+    name: "Mais pessoas usando ao mesmo tempo",
+    summary: "O limite de uso do sistema agora é contado para cada pessoa, e não mais para o escritório inteiro. Com muita gente conectada pela mesma internet, as telas deixam de falhar por excesso de requisições, e o login só é bloqueado depois de várias senhas erradas.",
+    notes: [
+      {
+        type: "correcao",
+        area: "geral",
+        title: "Limite de uso por pessoa",
+        text: "O sistema limita quantas requisições aceita por minuto para se proteger de abusos. Esse limite era um só para todo mundo que acessava pela mesma internet, e com cerca de uma dúzia de pessoas conectadas no mesmo escritório as telas podiam parar de atualizar para todos. Agora cada pessoa tem o seu próprio limite, e o uso de um colega não afeta o seu.",
+        where: "Todas as telas",
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Bloqueio de login só com senha errada",
+        text: "Entrar com a senha certa não conta mais para o bloqueio de tentativas, então muitas pessoas podem entrar ao mesmo tempo, do mesmo lugar, sem serem barradas. O bloqueio vem depois de 10 senhas erradas seguidas para o mesmo e-mail, e dura alguns minutos; a tela avisa quando isso acontece.",
+        where: "Tela de login",
+      },
+    ],
+  },
+  {
     version: "2.37.6",
     date: "8 nov 2026",
     name: "Assistente Virtual: todos os boletos de uma vez",
