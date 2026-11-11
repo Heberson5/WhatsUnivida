@@ -53,8 +53,10 @@ describe("granular per-role permissions", () => {
     await createTestUser({ email: "manager2@test.dev", role: "MANAGER" });
     const token = await loginAs("manager2@test.dev");
 
+    // A Gestor gets only the Atendente's column (tests/permissions-manager.test.ts) — never the full matrix.
     const getRes = await request(app).get("/api/permissions").set("Authorization", `Bearer ${token}`);
-    expect(getRes.status).toBe(403);
+    expect(getRes.status).toBe(200);
+    expect(Object.keys(getRes.body.matrix)).toEqual(["AGENT"]);
 
     const putRes = await request(app)
       .put("/api/permissions")

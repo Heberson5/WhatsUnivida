@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { ROLE, PERMISSION_DEFINITIONS } from "@whatsatendende/types";
+import { ROLE, PERMISSION, PERMISSION_DEFINITIONS } from "@whatsatendende/types";
+import type { Role } from "@prisma/client";
+import { Errors } from "../../lib/http-error";
 import { asyncHandler } from "../../lib/async-handler";
-import { requireAuth, requireRole } from "../../middleware/auth";
+import { requireAuth } from "../../middleware/auth";
 import { writeAudit } from "../../lib/audit";
-import { getPermissionMatrix, getPermissionsForRole, savePermissionPatch } from "../../lib/permissions";
+import { getAgentPermissionsForManager, getPermissionMatrix, getPermissionsForRole, isPermissionAllowed, savePermissionPatch } from "../../lib/permissions";
 
 export const permissionsRouter = Router();
 permissionsRouter.use(requireAuth);
@@ -23,11 +25,20 @@ permissionsRouter.get(
 // requireRole rather than through the permission table itself — otherwise a
 // MANAGER granted "configuracoes.gerenciar" could grant themselves anything
 // else, and a mis-edited matrix could lock every admin out of fixing it.
+//
+// A MANAGER with "Editar as permissões do Atendente" reaches a narrower version of both routes: only the Atendente's
+// column, only the permissions the Gestor's own profile has (getAgentPermissionsForManager) — never their own column
+// nor anything exclusive to the Administrador.
+async function assertManagerMayEditAgent(role: Role) {
+  if (role !== "MANAGER" || !(await isPermissionAllowed(role, PERMISSION.CONFIGURACOES_PERMISSOES_ATENDENTE_EDITAR))) throw Errors.forbidden();
+}
+
 permissionsRouter.get(
   "/",
-  requireRole("ADMIN"),
-  asyncHandler(async (_req, res) => {
-    res.json({ definitions: PERMISSION_DEFINITIONS, matrix: await getPermissionMatrix() });
+  asyncHandler(async (req, res) => {
+    if (req.auth!.role === "ADMIN") return res.json({ definitions: PERMISSION_DEFINITIONS, matrix: await getPermissionMatrix() });
+    await assertManagerMayEditAgent(req.auth!.role);
+    res.json(await getAgentPermissionsForManager());
   })
 );
 
@@ -45,9 +56,15 @@ const patchSchema = z.object({
 
 permissionsRouter.put(
   "/",
-  requireRole("ADMIN"),
   asyncHandler(async (req, res) => {
     const { entries } = patchSchema.parse(req.body);
+    const isAdmin = req.auth!.role === "ADMIN";
+    if (!isAdmin) {
+      await assertManagerMayEditAgent(req.auth!.role);
+      // Everything asked for has to be inside what the Gestor sees — one entry outside it refuses the whole save.
+      const editable = new Set((await getAgentPermissionsForManager()).definitions.map((d) => d.key as string));
+      if (entries.some((e) => e.role !== ROLE.AGENT || !editable.has(e.permission))) throw Errors.forbidden("Você só pode alterar permissões do Atendente que o seu próprio perfil tem");
+    }
     const validKeys = new Set(PERMISSION_DEFINITIONS.map((d) => d.key));
     for (const entry of entries) {
       if (!validKeys.has(entry.permission as (typeof PERMISSION_DEFINITIONS)[number]["key"])) {
@@ -63,6 +80,6 @@ permissionsRouter.put(
       ipAddress: req.ip ?? null,
       metadata: { entries },
     });
-    res.json({ definitions: PERMISSION_DEFINITIONS, matrix: await getPermissionMatrix() });
+    res.json(isAdmin ? { definitions: PERMISSION_DEFINITIONS, matrix: await getPermissionMatrix() } : await getAgentPermissionsForManager());
   })
 );

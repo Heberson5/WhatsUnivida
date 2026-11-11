@@ -1233,6 +1233,8 @@ export const PERMISSION = {
   USUARIOS_EDITAR: "usuarios.editar",
   USUARIOS_INATIVAR: "usuarios.inativar",
   CONFIGURACOES_GERENCIAR: "configuracoes.gerenciar",
+  // Configurações › Permissões for a Gestor: only the Atendente's column, and only what the Gestor's own profile has.
+  CONFIGURACOES_PERMISSOES_ATENDENTE_EDITAR: "configuracoes.permissoes_atendente.editar",
   // Each layered ON TOP of CONFIGURACOES_GERENCIAR (need both) — see that
   // key's own doc comment. Identidade visual/E-mail/Modelos de e-mail are
   // each a single record to edit (no list to add/remove from), so they only
@@ -1513,6 +1515,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
       "Acesso geral à tela de Configurações. Necessária para qualquer uma das áreas abaixo — por padrão libera todas; restrinja áreas específicas desmarcando-as individualmente.",
     editableRoles: ["AGENT", "MANAGER"],
     defaultAllowed: { AGENT: false, MANAGER: false },
+  },
+  {
+    key: PERMISSION.CONFIGURACOES_PERMISSOES_ATENDENTE_EDITAR,
+    group: "Configurações",
+    label: "Editar as permissões do Atendente",
+    description:
+      "Abre Configurações › Permissões para o Gestor, mostrando só o perfil Atendente e só as permissões que o próprio Gestor tem. As permissões do Gestor e as exclusivas do Administrador não aparecem para ele.",
+    editableRoles: ["MANAGER"],
+    defaultAllowed: { MANAGER: true },
   },
   {
     key: PERMISSION.CONFIGURACOES_IDENTIDADE_VISUALIZAR,
@@ -4090,4 +4101,49 @@ export interface ClientDataCorrectionDTO {
   registeredPhones: string | null;
   resolvedAt: string | null;
   resolvedByName: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Avisos do administrador (Configurações › Avisos do administrador) — the channel of whoever runs the platform for the
+// company using it: its own e-mail server and SMS provider, apart from the company's own (Configurações › E-mail and
+// SMS), seen and edited by the Administrador only.
+// ---------------------------------------------------------------------------
+
+export const OWNER_ALERT_EVENTS = {
+  LOGIN_LOCKED: { label: "Login bloqueado por senhas erradas", description: "Alguém errou a senha de uma conta 10 vezes em 15 minutos — possível tentativa de invasão." },
+  WHATSAPP_DISCONNECTED: { label: "Conexão do WhatsApp caiu", description: "Uma conexão que estava no ar ficou desconectada por mais de 2 minutos." },
+  SEND_FAILED: { label: "Falha ao enviar mensagens", description: "Uma mensagem para um cliente não pôde ser enviada (no máximo um aviso a cada 30 minutos)." },
+  USER_CREATED: { label: "Novo usuário criado", description: "Um usuário foi cadastrado no sistema." },
+  SYSTEM_STARTED: { label: "Sistema reiniciado", description: "O sistema voltou a ficar no ar depois de uma atualização, uma queda ou um reinício do servidor." },
+} as const;
+
+export type OwnerAlertEvent = keyof typeof OWNER_ALERT_EVENTS;
+
+export interface OwnerAlertsDTO {
+  events: Record<OwnerAlertEvent, boolean>;
+  email: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    secure: boolean;
+    username: string;
+    /** Never sent back: only whether one is saved. */
+    hasPassword: boolean;
+    fromName: string;
+    fromEmail: string;
+    /** Who receives the alerts. */
+    recipients: string[];
+  };
+  sms: {
+    enabled: boolean;
+    provider: SmsProviderId | null;
+    /** Secret fields come back as "" with `secretsSet[key]` telling whether one is saved. */
+    config: Record<string, string>;
+    secretsSet: Record<string, boolean>;
+    /** Cell phones that receive the alerts. */
+    recipients: string[];
+  };
+  /** The last alert that could not be delivered, and when — so a wrong password here doesn't fail in silence. */
+  lastError: { at: string; channel: "email" | "sms"; message: string } | null;
+  lastSentAt: string | null;
 }

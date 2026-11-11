@@ -22,6 +22,7 @@ import { verifyWebhookSignature } from "../meta/meta.service";
 import * as messageTemplatesService from "../message-templates/message-templates.service";
 import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
+import { notifyOwner } from "../owner-alerts/owner-alerts.service";
 import { logger } from "../../lib/logger";
 import { Errors } from "../../lib/http-error";
 import type { Prisma, Role } from "@prisma/client";
@@ -1019,7 +1020,28 @@ async function groupParticipantName(connectionId: string, conversationId: string
   return contact?.name ?? null;
 }
 
+// A connection that was up and is still down this long after it dropped is worth telling the Administrador about —
+// a reconnection that takes a few seconds is not.
+const DISCONNECT_ALERT_AFTER_MS = 2 * 60_000;
+
+function alertIfStillDisconnected(connectionId: string): void {
+  setTimeout(() => {
+    prisma.whatsAppConnection
+      .findUnique({ where: { id: connectionId }, select: { name: true, status: true, connectedNumber: true } })
+      .then((connection) => {
+        if (!connection || connection.status === "CONNECTED") return;
+        return notifyOwner("WHATSAPP_DISCONNECTED", "Conexão do WhatsApp caiu", [`A conexão "${connection.name}" está desconectada há mais de 2 minutos. Enquanto isso, as mensagens dos clientes desse número não chegam ao sistema.`], {
+          throttleKey: connectionId,
+          throttleMs: 30 * 60_000,
+        });
+      })
+      .catch((err) => logger.warn({ err, connectionId }, "could not check a dropped connection for the owner alert"));
+  }, DISCONNECT_ALERT_AFTER_MS).unref();
+}
+
 async function persistConnectionStatus(connectionId: string, status: WhatsAppStatusSnapshot, linkedNumber?: string) {
+  const previous = await prisma.whatsAppConnection.findUnique({ where: { id: connectionId }, select: { status: true } });
+  if (previous?.status === "CONNECTED" && status.state !== "CONNECTED") alertIfStillDisconnected(connectionId);
   await prisma.whatsAppConnection.update({
     where: { id: connectionId },
     data: {

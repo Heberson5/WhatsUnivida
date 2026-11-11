@@ -27,6 +27,8 @@ import { purgeExpiredTrash } from "./modules/announcements/announcements.service
 import { todayKey } from "./modules/announcements/announcement-days";
 import { syncGeneralMembers } from "./modules/internal-chat/internal-chat.service";
 import { purgeOldLoginAttempts } from "./lib/login-guard";
+import { notifyOwner } from "./modules/owner-alerts/owner-alerts.service";
+import { DEFAULT_RELEASES } from "./modules/release-notes/default-releases";
 
 const AGENT_TOOLS_SWEEP_INTERVAL_MS = 20_000;
 
@@ -209,6 +211,9 @@ async function main() {
 
   httpServer.listen(env.PORT, () => {
     logger.info(`API listening on port ${env.PORT} (env=${env.NODE_ENV}, whatsapp=${env.WHATSAPP_PROVIDER})`);
+    if (env.NODE_ENV === "production") {
+      void notifyOwner("SYSTEM_STARTED", "Sistema reiniciado", [`O sistema voltou a ficar no ar em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Cuiaba" })} (horário de Cuiabá), na versão ${DEFAULT_RELEASES[0]?.version ?? "?"}.`]);
+    }
   });
 
   const shutdown = async (signal: string) => {

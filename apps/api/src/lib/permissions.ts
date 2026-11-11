@@ -81,3 +81,18 @@ export async function savePermissionPatch(entries: PermissionPatchEntry[]): Prom
     )
   );
 }
+
+/**
+ * Configurações › Permissões as a Gestor sees it — see PROMPT: "as permissões de administrador não aparecem para o
+ * gestor na guia de permissões, também não deve aparecer as permissões que são exclusivas para o administrador".
+ * Only the Atendente's column, and only the permissions a Gestor could give: the ones offered to an Atendente that the
+ * Gestor's own profile has right now. Nothing about the Gestor's own profile or the Administrador's is in the answer —
+ * a Gestor who could edit their own column could give themselves anything.
+ */
+export async function getAgentPermissionsForManager(): Promise<{ definitions: typeof PERMISSION_DEFINITIONS; matrix: { AGENT: Partial<PermissionMap> } }> {
+  const matrix = await getPermissionMatrix();
+  const definitions = PERMISSION_DEFINITIONS.filter((d) => d.editableRoles.includes("AGENT") && matrix.MANAGER[d.key]);
+  const agent: Partial<PermissionMap> = {};
+  for (const def of definitions) agent[def.key] = matrix.AGENT[def.key];
+  return { definitions, matrix: { AGENT: agent } };
+}

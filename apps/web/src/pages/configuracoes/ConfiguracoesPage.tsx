@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Bot, Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, Search, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
+import { BellRing, Bot, Clock3, Columns3, DatabaseBackup, FileDown, KeyRound, Mail, MailPlus, MessageSquareText, Palette, Phone, Search, ShieldCheck, CalendarDays, Sparkles, type LucideIcon } from "lucide-react";
 import { PERMISSION, type Permission } from "@whatsatendende/types";
 import { BrandingPanel } from "./BrandingPanel";
 import { AppInstallPanel } from "./AppInstallPanel";
@@ -18,9 +18,10 @@ import { PermissionsPanel } from "./PermissionsPanel";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 import { VisoesColunasPanel } from "./VisoesColunasPanel";
 import { BackupPanel } from "./BackupPanel";
+import { OwnerAlertsPanel } from "./OwnerAlertsPanel";
 import { useAuthStore } from "../../store/auth-store";
 
-type Tab = "assistente" | "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup";
+type Tab = "assistente" | "branding" | "exportacoes" | "email" | "email-templates" | "sms" | "feriados" | "fila" | "telefone" | "seguranca" | "permissoes" | "notas-de-versao" | "visoes" | "backup" | "avisos-admin";
 
 // Grouped by subject in the left-hand section menu.
 // `keywords`: what someone might type in "Buscar configuração…" without knowing the section's name.
@@ -37,6 +38,7 @@ const TABS: { key: Tab; label: string; group: string; icon: LucideIcon; keywords
   { key: "sms", label: "SMS", group: "Canais", icon: MessageSquareText, keywords: "mensagem texto celular provedor" },
   { key: "seguranca", label: "Segurança", group: "Segurança", icon: ShieldCheck, keywords: "sessão inatividade logoff senha login tentativas" },
   { key: "permissoes", label: "Permissões", group: "Segurança", icon: KeyRound, keywords: "acesso perfil gestor atendente liberar bloquear" },
+  { key: "avisos-admin", label: "Avisos do administrador", group: "Segurança", icon: BellRing, keywords: "alerta notificação dono plataforma email sms queda conexão invasão" },
   { key: "notas-de-versao", label: "Notas de versão", group: "Sistema", icon: Sparkles, keywords: "novidades versão atualização" },
   { key: "backup", label: "Backup", group: "Sistema", icon: DatabaseBackup, keywords: "cópia restaurar migrar servidor exportar dados" },
 ];
@@ -87,7 +89,9 @@ export default function ConfiguracoesPage() {
   // tabs — this is a UI-only restriction, not a backend one.)
   const visibleTabs = TABS.filter((t) => {
     // Notas de versão is edited by administrators only (enforced by the API too — release-notes.routes.ts).
-    if (t.key === "permissoes" || t.key === "seguranca" || t.key === "notas-de-versao" || t.key === "backup" || t.key === "assistente") return role === "ADMIN";
+    // A Gestor with "Editar as permissões do Atendente" sees Permissões too — only the Atendente's column (the API sends nothing else).
+    if (t.key === "permissoes") return role === "ADMIN" || (role === "MANAGER" && Boolean(permissions?.[PERMISSION.CONFIGURACOES_PERMISSOES_ATENDENTE_EDITAR]));
+    if (t.key === "seguranca" || t.key === "notas-de-versao" || t.key === "backup" || t.key === "assistente" || t.key === "avisos-admin") return role === "ADMIN";
     const permission = TAB_PERMISSION[t.key];
     return !permission || permissions?.[permission];
   });
@@ -165,9 +169,10 @@ export default function ConfiguracoesPage() {
         {activeTab === "telefone" && <NumerosTelefonePanel />}
         {activeTab === "visoes" && <VisoesColunasPanel />}
         {activeTab === "seguranca" && role === "ADMIN" && <SecuritySettingsPanel />}
-        {activeTab === "permissoes" && role === "ADMIN" && <PermissionsPanel />}
+        {activeTab === "permissoes" && visibleTabs.some((t) => t.key === "permissoes") && <PermissionsPanel />}
         {activeTab === "notas-de-versao" && role === "ADMIN" && <NotasDeVersaoAdminPanel />}
         {activeTab === "backup" && role === "ADMIN" && <BackupPanel />}
+        {activeTab === "avisos-admin" && role === "ADMIN" && <OwnerAlertsPanel />}
       </div>
     </div>
   );

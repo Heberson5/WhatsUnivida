@@ -11,6 +11,31 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.39.0",
+    date: "11 nov 2026",
+    name: "Permissões do Atendente pelo Gestor",
+    summary: "O Gestor passa a poder ajustar as permissões do perfil Atendente, vendo apenas o que o seu próprio perfil tem.",
+    notes: [
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Gestor edita as permissões do Atendente",
+        text: "Com a permissão “Editar as permissões do Atendente”, o Gestor abre Configurações › Permissões e marca ou desmarca o que o perfil Atendente pode fazer. Ele vê somente a coluna do Atendente e somente as permissões que o próprio perfil Gestor tem: as permissões do Gestor e as exclusivas do Administrador não aparecem, e ele não consegue dar ao Atendente algo que ele mesmo não tem.",
+        where: "Configurações › Permissões",
+        requires: [PERMISSION.CONFIGURACOES_PERMISSOES_ATENDENTE_EDITAR],
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Avisos do administrador",
+        text: "Uma configuração exclusiva do administrador, com servidor de e-mail e provedor de SMS próprios, separados dos da empresa. Escolha quando ser avisado: login bloqueado por senhas erradas, conexão do WhatsApp fora do ar por mais de 2 minutos, falha ao enviar mensagens, novo usuário criado e sistema reiniciado. Há um botão de teste para cada canal, e a tela mostra quando um aviso não pôde ser entregue.",
+        where: "Configurações › Avisos do administrador",
+        // Only the Administrador ever sees this tab — nobody else reads about it either.
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     version: "2.38.0",
     date: "11 nov 2026",
     name: "Cliente que responde após o encerramento e login mais protegido",

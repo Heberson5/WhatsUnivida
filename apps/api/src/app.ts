@@ -30,6 +30,7 @@ import { reportSchedulesRouter } from "./modules/report-schedules/report-schedul
 import { smsRouter } from "./modules/sms/sms.routes";
 import { aiAssistantRouter, aiFeaturesRouter } from "./modules/ai-assistant/ai-assistant.routes";
 import { backupRouter } from "./modules/backup/backup.routes";
+import { ownerAlertsRouter } from "./modules/owner-alerts/owner-alerts.routes";
 import { autoMessageTemplatesRouter } from "./modules/auto-message-templates/auto-message-templates.routes";
 import { satisfactionRouter } from "./modules/satisfaction/satisfaction.routes";
 import { workSchedulesRouter } from "./modules/work-schedules/work-schedules.routes";
@@ -145,6 +146,7 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/reports", reportsRouter);
   app.use("/api/settings/backup", backupRouter);
+  app.use("/api/settings/owner-alerts", ownerAlertsRouter);
   app.use("/api/settings/sms", smsRouter);
   app.use("/api/settings/ai-assistant", aiAssistantRouter);
   app.use("/api/ai-features", aiFeaturesRouter);

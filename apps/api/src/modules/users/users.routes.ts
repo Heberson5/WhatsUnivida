@@ -13,6 +13,7 @@ import * as usersService from "./users.service";
 import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { updateOwnPhoto as setUserPhoto } from "../profile/profile.service";
 import { activeLoginLocks, unlockLogin } from "../../lib/login-guard";
+import { notifyOwner } from "../owner-alerts/owner-alerts.service";
 
 export const usersRouter = Router();
 
@@ -108,6 +109,8 @@ usersRouter.post(
     await assertNoAdminEscalation(req, undefined, input.role);
     const user = await usersService.createUser(input);
     await writeAudit({ userId: req.auth!.userId, action: "USER_CREATED", entity: "User", entityId: user.id, ipAddress: req.ip ?? null, metadata: { email: user.email, role: user.role } });
+    const roleLabel = { ADMIN: "Administrador", MANAGER: "Gestor", AGENT: "Atendente" }[user.role];
+    void notifyOwner("USER_CREATED", "Novo usuário criado", [`${user.fullName} (${user.email}), perfil ${roleLabel}, criado por ${req.auth!.displayName}.`]);
     res.status(201).json(toUserDTO(user));
   })
 );

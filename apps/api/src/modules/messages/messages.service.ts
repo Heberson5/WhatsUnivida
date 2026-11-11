@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma";
+import { notifyOwner } from "../owner-alerts/owner-alerts.service";
 import { Errors } from "../../lib/http-error";
 import type { MessageType } from "@prisma/client";
 
@@ -264,6 +265,9 @@ export async function markMessageSent(
 }
 
 export async function markMessageFailed(messageId: string) {
+  void notifyOwner("SEND_FAILED", "Falha ao enviar mensagens", ["Uma mensagem para um cliente não pôde ser enviada. Confira as conexões em Conexões e as conversas com erro de envio."], {
+    throttleMs: 30 * 60_000,
+  });
   return prisma.message.update({ where: { id: messageId }, data: { status: "FAILED" }, include: messageInclude });
 }
 

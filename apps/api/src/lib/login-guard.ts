@@ -6,6 +6,7 @@ import { composeCustomMail, sendMail } from "./mail";
 import { createNotification } from "../modules/notifications/notifications.service";
 import { toNotificationDTO } from "../modules/notifications/notifications.mapper";
 import { realtimeEvents } from "../realtime/realtime";
+import { notifyOwner } from "../modules/owner-alerts/owner-alerts.service";
 
 /**
  * Protection against someone trying many users and passwords — see PROMPT: "precisa ter segurança para tentativa de
@@ -120,6 +121,8 @@ async function announceLock(input: { email: string; ip: string | null; user: { i
     const notification = await createNotification({ userId: admin.id, type: "SECURITY", title, body, entityType: user ? "User" : undefined, entityId: user?.id });
     realtimeEvents.notificationCreated(admin.id, toNotificationDTO(notification));
   }
+
+  void notifyOwner("LOGIN_LOCKED", "Login bloqueado por senhas erradas", [body], { throttleKey: email, throttleMs: 10 * 60_000 });
 
   if (user) {
     const mail = await composeCustomMail(
