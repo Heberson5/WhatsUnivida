@@ -5,6 +5,7 @@ import { Camera, Trash2, Volume2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { UserDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
+import { TwoFactorSection } from "../../components/security/TwoFactorSection";
 import { useAuthStore } from "../../store/auth-store";
 import { playAlertSound } from "../../lib/alert-sounds";
 
@@ -160,6 +161,15 @@ export default function MeuPerfilPage() {
         </section>
 
         <SoundsSection user={user} onSaved={applyUser} />
+
+        <section className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
+          <h2 className="mb-1 text-base font-semibold">Verificação em duas etapas</h2>
+          <TwoFactorSection
+            enabled={Boolean(user.twoFactorEnabled)}
+            onEnabled={() => applyUser({ ...user, twoFactorEnabled: true })}
+            onDisabled={() => applyUser({ ...user, twoFactorEnabled: false })}
+          />
+        </section>
 
         <form onSubmit={handlePasswordSubmit} className="shadow-soft space-y-3 rounded-card border border-border bg-surface p-6">
           <h2 className="mb-1 text-base font-semibold">Alterar senha</h2>

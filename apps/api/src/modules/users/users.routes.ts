@@ -14,6 +14,7 @@ import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { updateOwnPhoto as setUserPhoto } from "../profile/profile.service";
 import { activeLoginLocks, unlockLogin } from "../../lib/login-guard";
 import { notifyOwner } from "../owner-alerts/owner-alerts.service";
+import { resetTwoFactor } from "../auth/two-factor.service";
 
 export const usersRouter = Router();
 
@@ -208,6 +209,20 @@ usersRouter.post(
     await usersService.forceLogoutUser(req.params.id);
     realtimeEvents.userForceLoggedOut(req.params.id);
     await writeAudit({ userId: req.auth!.userId, action: "USER_FORCE_LOGGED_OUT", entity: "User", entityId: req.params.id, ipAddress: req.ip ?? null });
+    res.status(204).end();
+  })
+);
+
+// For someone who lost the phone and the recovery codes: the verificação em duas etapas is removed and the person
+// logs in with the password alone (and switches it on again in Meu Perfil).
+usersRouter.post(
+  "/:id/reset-two-factor",
+  requirePermission(PERMISSION.USUARIOS_EDITAR),
+  asyncHandler(async (req, res) => {
+    await assertNoAdminEscalation(req, req.params.id);
+    await usersService.getUser(req.params.id);
+    const wasEnabled = await resetTwoFactor(req.params.id);
+    await writeAudit({ userId: req.auth!.userId, action: "USER_TWO_FACTOR_RESET", entity: "User", entityId: req.params.id, ipAddress: req.ip ?? null, metadata: { wasEnabled } });
     res.status(204).end();
   })
 );

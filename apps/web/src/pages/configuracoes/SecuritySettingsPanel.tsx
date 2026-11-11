@@ -6,6 +6,7 @@ import { api, getApiErrorMessage } from "../../lib/api";
 import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
 
 interface BusinessSettings {
+  requireAdminTwoFactor?: boolean;
   inactivityTimeoutMinutes?: number;
 }
 
@@ -81,7 +82,52 @@ export function SecuritySettingsPanel() {
         />
       )}
 
+      <AdminTwoFactorSection required={data?.requireAdminTwoFactor === true} />
       <MaintenanceModeSection />
+    </div>
+  );
+}
+
+/**
+ * Requires every Administrador to use the verificação em duas etapas. Only an Administrador who already has it on
+ * can switch this on (the API refuses otherwise) — so the rule can't lock every administrator out at once.
+ */
+function AdminTwoFactorSection({ required }: { required: boolean }) {
+  const queryClient = useQueryClient();
+  const toggleMutation = useMutation({
+    mutationFn: (value: boolean) => api.patch("/settings/business", { requireAdminTwoFactor: value }),
+    onSuccess: (_res, value) => {
+      queryClient.invalidateQueries({ queryKey: ["business-settings"] });
+      toast.success(value ? "Verificação em duas etapas obrigatória para administradores." : "Verificação em duas etapas voltou a ser opcional.");
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
+
+  return (
+    <div className="border-t border-border pt-6">
+      <h2 className="text-base font-semibold">Verificação em duas etapas</h2>
+      <p className="mt-1 text-sm text-muted">
+        Cada pessoa pode ativar a sua em Meu Perfil: além da senha, o login pede um código do aplicativo autenticador no celular. Aqui você
+        torna isso obrigatório para o perfil Administrador. Ative primeiro na sua própria conta.
+      </p>
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-card border border-border p-4">
+        <div>
+          <p className="text-sm font-medium">{required ? "Obrigatória para administradores" : "Opcional para todos"}</p>
+          <p className="text-xs text-muted">
+            {required ? "Um administrador sem ela só consegue entrar para ativá-la." : "Quem quiser ativa em Meu Perfil › Verificação em duas etapas."}
+          </p>
+        </div>
+        <button
+          onClick={() => toggleMutation.mutate(!required)}
+          disabled={toggleMutation.isPending}
+          role="switch"
+          aria-checked={required}
+          aria-label="Exigir verificação em duas etapas dos administradores"
+          className={`focus-ring relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-60 ${required ? "bg-primary" : "bg-border"}`}
+        >
+          <span className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${required ? "translate-x-5" : "translate-x-0"}`} />
+        </button>
+      </div>
     </div>
   );
 }

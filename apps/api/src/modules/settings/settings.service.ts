@@ -235,6 +235,9 @@ const DEFAULT_BUSINESS_SETTINGS = {
   // Configurações › Fila: the customer writes within this many minutes of a person closing the conversation (or of the
   // closing message / the survey) — it goes back to the same attendant instead of opening a new one in the queue.
   reopenAfterCloseMinutes: 5,
+  // Configurações › Segurança: an Administrador has to switch the verificação em duas etapas on before using the
+  // system. Off until an Administrador who already has it switches this on (two-factor.service.ts).
+  requireAdminTwoFactor: false,
 };
 
 export async function getNoReturnSettings(): Promise<NoReturnSettingsDTO> {

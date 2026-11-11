@@ -63,6 +63,13 @@ model User {
   // The password was chosen by someone else (an administrator created the account, set or reset the password): the
   // person has to choose their own before using the system — see middleware/auth.ts and auth.service.ts.
   mustChangePassword Boolean      @default(false)
+  // Verificação em duas etapas (modules/auth/two-factor.service.ts): the authenticator's secret (encrypted, lib/crypto),
+  // when it was switched on (null = off, even with a secret waiting to be confirmed), the last 30-second step whose
+  // code was accepted (a code is never accepted twice) and the recovery codes still unused (sha256 of each).
+  totpSecret         String?
+  totpEnabledAt      DateTime?
+  totpLastStep       Int?
+  totpRecoveryCodes  String[]     @default([])
 
   // Where this user works — drives which STATE/MUNICIPAL holidays block
   // their access automatically (a NATIONAL holiday always applies

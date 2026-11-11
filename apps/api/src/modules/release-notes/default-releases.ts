@@ -11,6 +11,37 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.40.0",
+    date: "11 nov 2026",
+    name: "Verificação em duas etapas",
+    summary: "Cada pessoa pode proteger a própria conta com um código gerado no celular, pedido no login além da senha. Mesmo que a senha seja descoberta, ninguém entra sem o celular.",
+    notes: [
+      {
+        type: "novo",
+        area: "geral",
+        title: "Verificação em duas etapas no login",
+        text: "Depois de ativada, o login pede a senha e um código de 6 números gerado por um aplicativo autenticador no celular (Google Authenticator, Microsoft Authenticator, Authy e outros). Ao ativar, o sistema mostra 10 códigos de recuperação para guardar: se o celular for perdido, cada um entra no lugar do código do aplicativo, uma única vez. Códigos errados contam para o bloqueio do login, como senhas erradas.",
+        steps: ["Abra Meu Perfil e clique em “Ativar verificação em duas etapas”.", "Leia o QR Code com o aplicativo autenticador do celular.", "Digite o código que o aplicativo mostrar e guarde os códigos de recuperação."],
+        where: "Meu Perfil › Verificação em duas etapas",
+      },
+      {
+        type: "novo",
+        area: "usuarios",
+        title: "Remover a verificação em duas etapas de um usuário",
+        text: "Para quem perdeu o celular e os códigos de recuperação: quem gerencia usuários remove a verificação daquela pessoa, que volta a entrar só com a senha e pode ativar de novo em Meu Perfil.",
+        where: "Usuários › Mais ações › Remover verificação em duas etapas",
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Verificação em duas etapas obrigatória para administradores",
+        text: "O administrador pode exigir a verificação em duas etapas de todos os administradores. Só quem já ativou na própria conta consegue ligar a exigência; a partir daí, um administrador sem ela só consegue entrar para ativá-la.",
+        where: "Configurações › Segurança › Verificação em duas etapas",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     version: "2.39.0",
     date: "11 nov 2026",
     name: "Permissões do Atendente pelo Gestor",

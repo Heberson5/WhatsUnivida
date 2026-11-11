@@ -24,6 +24,9 @@ export interface AccessTokenPayload {
   // "Must change password": the password was chosen by someone else (see User.mustChangePassword). A token carrying
   // it only reaches the routes needed to choose a new one — see middleware/auth.ts.
   mcp?: true;
+  // "Two-factor setup": an Administrador who has to switch the verificação em duas etapas on first (Configurações ›
+  // Segurança). Like mcp, the token only reaches what is needed for that.
+  tfa?: true;
 }
 
 // Explicit algorithm allowlist on both sign and verify: without this,

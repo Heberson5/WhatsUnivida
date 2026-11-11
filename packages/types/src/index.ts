@@ -111,6 +111,10 @@ export interface UserDTO {
   id: string;
   /** The password was chosen by someone else (created/reset by an administrator): the person must choose their own before anything else. */
   mustChangePassword?: boolean;
+  /** Verificação em duas etapas (authenticator app) is on for this account. */
+  twoFactorEnabled?: boolean;
+  /** Only on the person's own session data: an Administrador who has to switch it on before anything else. */
+  mustSetUpTwoFactor?: boolean;
   /** Login locked by too many wrong passwords until this moment (only in the Usuários list); null/absent when not locked. */
   loginLockedUntil?: string | null;
   fullName: string;

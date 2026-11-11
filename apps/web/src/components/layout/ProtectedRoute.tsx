@@ -2,6 +2,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import type { Permission } from "@whatsatendende/types";
 import { useAuthStore } from "../../store/auth-store";
 import ForcePasswordChangePage from "../../pages/login/ForcePasswordChangePage";
+import ForceTwoFactorSetupPage from "../../pages/login/ForceTwoFactorSetupPage";
 
 export function ProtectedRoute() {
   const { user, hydrated } = useAuthStore();
@@ -9,6 +10,8 @@ export function ProtectedRoute() {
   if (!user) return <Navigate to="/login" replace />;
   // The password was chosen by someone else: nothing of the system opens until the person chooses their own.
   if (user.mustChangePassword) return <ForcePasswordChangePage />;
+  // An Administrador required to use the verificação em duas etapas who hasn't switched it on yet.
+  if (user.mustSetUpTwoFactor) return <ForceTwoFactorSetupPage />;
   return <Outlet />;
 }
 

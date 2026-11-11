@@ -28,6 +28,13 @@ function passwordChangePending(payload: { mcp?: true }, req: Request): boolean {
   return payload.mcp === true && !ALLOWED_BEFORE_PASSWORD_CHANGE.some((prefix) => req.originalUrl.startsWith(prefix));
 }
 
+// Same idea for an Administrador who has to switch the verificação em duas etapas on first.
+const ALLOWED_BEFORE_TWO_FACTOR = ["/api/auth/", "/api/profile/two-factor", "/api/profile/password"];
+
+function twoFactorSetupPending(payload: { tfa?: true }, req: Request): boolean {
+  return payload.tfa === true && !ALLOWED_BEFORE_TWO_FACTOR.some((prefix) => req.originalUrl.startsWith(prefix));
+}
+
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return next(Errors.unauthorized());
@@ -42,6 +49,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       return next(Errors.unauthorized("Sessao encerrada — login realizado em outro dispositivo"));
     }
     if (passwordChangePending(payload, req)) return next(Errors.passwordChangeRequired());
+    if (twoFactorSetupPending(payload, req)) return next(Errors.twoFactorSetupRequired());
     req.auth = { userId: payload.sub, role: payload.role, displayName: payload.displayName, sessionId: payload.sid };
     next();
   } catch {
@@ -72,6 +80,7 @@ export async function requireAuthFromHeaderOrQuery(req: Request, _res: Response,
       return next(Errors.unauthorized("Sessao encerrada — login realizado em outro dispositivo"));
     }
     if (passwordChangePending(payload, req)) return next(Errors.passwordChangeRequired());
+    if (twoFactorSetupPending(payload, req)) return next(Errors.twoFactorSetupRequired());
     req.auth = { userId: payload.sub, role: payload.role, displayName: payload.displayName };
     next();
   } catch {

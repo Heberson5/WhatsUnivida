@@ -7,6 +7,7 @@ import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { toUserDTO } from "../users/users.mapper";
 import { realtimeEvents } from "../../realtime/realtime";
 import * as service from "./profile.service";
+import * as twoFactor from "../auth/two-factor.service";
 
 export const profileRouter = Router();
 
@@ -107,5 +108,36 @@ profileRouter.post(
     realtimeEvents.presenceChanged(req.auth!.userId, "ONLINE");
     await writeAudit({ userId: req.auth!.userId, action: "PROFILE_RESUMED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null });
     res.json(toUserDTO(user));
+  })
+);
+
+// --- Verificação em duas etapas (modules/auth/two-factor.service.ts) ---
+
+profileRouter.post(
+  "/two-factor/setup",
+  asyncHandler(async (req, res) => {
+    res.json(await twoFactor.beginTwoFactorSetup(req.auth!.userId));
+  })
+);
+
+const codeSchema = z.object({ code: z.string().trim().min(6).max(20) });
+
+profileRouter.post(
+  "/two-factor/confirm",
+  asyncHandler(async (req, res) => {
+    const { code } = codeSchema.parse(req.body);
+    const result = await twoFactor.confirmTwoFactor(req.auth!.userId, code);
+    await writeAudit({ userId: req.auth!.userId, action: "TWO_FACTOR_ENABLED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null });
+    res.json(result);
+  })
+);
+
+profileRouter.post(
+  "/two-factor/disable",
+  asyncHandler(async (req, res) => {
+    const { password, code } = z.object({ password: z.string().min(1), code: z.string().trim().min(6).max(20) }).parse(req.body);
+    await twoFactor.disableOwnTwoFactor(req.auth!.userId, password, code);
+    await writeAudit({ userId: req.auth!.userId, action: "TWO_FACTOR_DISABLED", entity: "User", entityId: req.auth!.userId, ipAddress: req.ip ?? null });
+    res.status(204).end();
   })
 );

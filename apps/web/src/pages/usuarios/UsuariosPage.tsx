@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { KeyRound, LockOpen, LogOut, Pencil, Plus, Search, ShieldAlert, Trash2, UserCheck, UserX } from "lucide-react";
+import { KeyRound, LockOpen, LogOut, Pencil, Plus, Search, ShieldAlert, ShieldOff, Trash2, UserCheck, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { COLUMN_SCREENS, PERMISSION, type UserDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
@@ -126,6 +126,15 @@ export default function UsuariosPage() {
     mutationFn: (id: string) => api.post<{ temporaryPassword: string }>(`/users/${id}/reset-password`),
     onSuccess: (res) => {
       toast.success(`Senha temporária gerada: ${res.data.temporaryPassword}`, { duration: 15000 });
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
+
+  const resetTwoFactorMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/users/${id}/reset-two-factor`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Verificação em duas etapas removida. O usuário entra só com a senha e pode ativar de novo em Meu Perfil.");
     },
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
@@ -306,6 +315,9 @@ export default function UsuariosPage() {
                           : []),
                         ...(canEditar && u.loginLockedUntil ? [{ label: "Desbloquear login", icon: LockOpen, onSelect: () => unlockLoginMutation.mutate(u.id) }] : []),
                         ...(canEditar ? [{ label: "Redefinir senha", icon: KeyRound, onSelect: () => resetPasswordMutation.mutate(u.id) }] : []),
+                        ...(canEditar && u.twoFactorEnabled && u.id !== currentUserId
+                          ? [{ label: "Remover verificação em duas etapas", icon: ShieldOff, onSelect: () => resetTwoFactorMutation.mutate(u.id) }]
+                          : []),
                         ...(currentUserRole === "ADMIN" && u.id !== currentUserId ? [{ label: "Excluir usuário", icon: Trash2, danger: true, onSelect: () => setDeletingUser(u) }] : []),
                       ]}
                     />

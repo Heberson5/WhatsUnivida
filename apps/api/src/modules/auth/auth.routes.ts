@@ -7,6 +7,7 @@ import { env } from "../../config/env";
 import { requireAuth } from "../../middleware/auth";
 import { toUserDTO } from "../users/users.mapper";
 import * as authService from "./auth.service";
+import { mustSetUpTwoFactor } from "./two-factor.service";
 import { refreshCookieOptions } from "./auth.service";
 import { prisma } from "../../lib/prisma";
 import { getPermissionsForRole } from "../../lib/permissions";
@@ -15,6 +16,11 @@ import { findApplicableHoliday } from "../holidays/holidays.service";
 import type { AccessSchedule } from "@whatsatendende/types";
 
 export const authRouter = Router();
+
+/** The person's own data, with whether they have to switch the verificação em duas etapas on before anything else. */
+async function withTwoFactorGate(user: Parameters<typeof toUserDTO>[0]) {
+  return { ...toUserDTO(user), mustSetUpTwoFactor: await mustSetUpTwoFactor(user) };
+}
 
 // Skipped only under NODE_ENV=test: every request in a test run shares the
 // same source IP, and a single test file can legitimately log in well past
@@ -35,16 +41,18 @@ const loginSchema = z.object({
   // for why this (not the server's own clock) decides "what time is it for
   // this person right now" when checking their access window/holiday.
   tzOffsetMinutes: z.coerce.number().int().optional().default(0),
+  // The second step, when the account has the verificação em duas etapas on: the app's 6 digits or a recovery code.
+  totpCode: z.string().max(20).optional(),
 });
 
 authRouter.post(
   "/login",
   loginLimiter,
   asyncHandler(async (req, res) => {
-    const { email, password, tzOffsetMinutes } = loginSchema.parse(req.body);
-    const { accessToken, refreshToken, user } = await authService.login(email, password, req.ip ?? null, tzOffsetMinutes);
+    const { email, password, tzOffsetMinutes, totpCode } = loginSchema.parse(req.body);
+    const { accessToken, refreshToken, user } = await authService.login(email, password, req.ip ?? null, tzOffsetMinutes, totpCode);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions());
-    res.json({ accessToken, user: toUserDTO(user), permissions: await getPermissionsForRole(user.role) });
+    res.json({ accessToken, user: await withTwoFactorGate(user), permissions: await getPermissionsForRole(user.role) });
   })
 );
 
@@ -58,7 +66,7 @@ authRouter.post(
     const { tzOffsetMinutes } = refreshQuerySchema.parse(req.query);
     const { accessToken, refreshToken, user } = await authService.refresh(token, tzOffsetMinutes, req.ip ?? null);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions());
-    res.json({ accessToken, user: toUserDTO(user), permissions: await getPermissionsForRole(user.role) });
+    res.json({ accessToken, user: await withTwoFactorGate(user), permissions: await getPermissionsForRole(user.role) });
   })
 );
 
@@ -89,7 +97,7 @@ authRouter.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId }, include: { whatsappConnection: true } });
-    res.json({ ...toUserDTO(user), permissions: await getPermissionsForRole(user.role) });
+    res.json({ ...(await withTwoFactorGate(user)), permissions: await getPermissionsForRole(user.role) });
   })
 );
 

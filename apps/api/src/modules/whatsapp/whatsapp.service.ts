@@ -1039,9 +1039,15 @@ function alertIfStillDisconnected(connectionId: string): void {
   }, DISCONNECT_ALERT_AFTER_MS).unref();
 }
 
+// The last state seen for each connection, kept in memory and read without waiting on anything: status events arrive
+// one right after the other ("conectando", then "conectado"), and a database read here before the write below would
+// let two of them cross — the older state landing last.
+const lastKnownState = new Map<string, string>();
+
 async function persistConnectionStatus(connectionId: string, status: WhatsAppStatusSnapshot, linkedNumber?: string) {
-  const previous = await prisma.whatsAppConnection.findUnique({ where: { id: connectionId }, select: { status: true } });
-  if (previous?.status === "CONNECTED" && status.state !== "CONNECTED") alertIfStillDisconnected(connectionId);
+  const previousState = lastKnownState.get(connectionId);
+  lastKnownState.set(connectionId, status.state);
+  if (previousState === "CONNECTED" && status.state !== "CONNECTED") alertIfStillDisconnected(connectionId);
   await prisma.whatsAppConnection.update({
     where: { id: connectionId },
     data: {

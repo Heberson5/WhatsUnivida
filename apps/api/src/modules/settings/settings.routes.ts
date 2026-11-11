@@ -12,6 +12,8 @@ import { requireAuth, requireRole } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
 import { PERMISSION } from "@whatsatendende/types";
 import { writeAudit } from "../../lib/audit";
+import { prisma } from "../../lib/prisma";
+import { Errors } from "../../lib/http-error";
 import { sendMail, sendTemplatedMail, previewTemplatedMail } from "../../lib/mail";
 import { env } from "../../config/env";
 import * as service from "./settings.service";
@@ -368,6 +370,7 @@ const businessSettingsSchema = z
       .optional(),
     greetingMessage: z.string().max(1000).nullable().optional(),
     awayMessage: z.string().max(1000).nullable().optional(),
+    requireAdminTwoFactor: z.boolean().optional(),
   })
   // Rejects unknown keys — this is an admin-only endpoint, but without
   // .strict() it would still happily persist arbitrary attacker-shaped JSON
@@ -391,6 +394,15 @@ settingsRouter.patch(
   requirePermission(PERMISSION.CONFIGURACOES_GERENCIAR),
   asyncHandler(async (req, res) => {
     const patch = businessSettingsSchema.parse(req.body ?? {});
+    if (patch.requireAdminTwoFactor !== undefined) {
+      // A rule about the Administrador's own login: only an Administrador changes it — and only one who already has
+      // the verificação em duas etapas on can demand it, or the rule could lock every administrator out at once.
+      if (req.auth!.role !== "ADMIN") throw Errors.forbidden();
+      if (patch.requireAdminTwoFactor) {
+        const self = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId }, select: { totpEnabledAt: true } });
+        if (!self.totpEnabledAt) throw Errors.badRequest("Ative primeiro a verificação em duas etapas na sua própria conta, em Meu Perfil");
+      }
+    }
     const settings = await service.updateBusinessSettings(patch);
     await writeAudit({ userId: req.auth!.userId, action: "SETTINGS_BUSINESS_UPDATED", entity: "SystemSetting", entityId: "business", ipAddress: req.ip ?? null, metadata: patch });
     res.json(settings);

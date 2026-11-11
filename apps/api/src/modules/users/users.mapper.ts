@@ -6,6 +6,7 @@ type UserWithConnection = User & { whatsappConnection: WhatsAppConnection | null
 export function toUserDTO(user: UserWithConnection, loginLockedUntil: Date | null = null): UserDTO {
   return {
     mustChangePassword: user.mustChangePassword,
+    twoFactorEnabled: user.totpEnabledAt !== null,
     loginLockedUntil: loginLockedUntil ? loginLockedUntil.toISOString() : null,
     id: user.id,
     fullName: user.fullName,

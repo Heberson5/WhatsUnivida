@@ -59,6 +59,9 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Verificação em duas etapas: the server answered that the password is right and the app's code is missing.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
   const [forgotOpen, setForgotOpen] = useState(false);
   // See PROMPT: "isso é somente para o login de atendentes e gerente...
   // somente o administrador" pode acessar durante manutenção. The screen
@@ -93,11 +96,19 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post("/auth/login", { email, password, tzOffsetMinutes: new Date().getTimezoneOffset() });
+      const res = await api.post("/auth/login", { email, password, tzOffsetMinutes: new Date().getTimezoneOffset(), ...(needsCode && totpCode.trim() ? { totpCode: totpCode.trim() } : {}) });
       setSession(res.data.accessToken, res.data.user, res.data.permissions);
       if (remember) localStorage.setItem("lastEmail", email);
       navigate("/");
     } catch (err) {
+      const code = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      if (code === "TOTP_REQUIRED") {
+        // Not an error: the second step. The field shows up and the person types the app's code.
+        setNeedsCode(true);
+        setTotpCode("");
+        return;
+      }
+      if (code !== "TOTP_INVALID") setNeedsCode(false);
       setError(getApiErrorMessage(err, "Nao foi possivel entrar"));
     } finally {
       setLoading(false);
@@ -231,6 +242,30 @@ export default function LoginPage() {
                   </p>
                 )}
               </div>
+
+              {needsCode && (
+                <div>
+                  <label htmlFor="totpCode" className="mb-1.5 block text-sm font-medium">
+                    Código de verificação
+                  </label>
+                  <input
+                    id="totpCode"
+                    autoFocus
+                    required
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={12}
+                    value={totpCode}
+                    onChange={(e) => {
+                      setTotpCode(e.target.value);
+                      if (error) setError(null);
+                    }}
+                    className="focus-ring w-full rounded-card border border-border bg-[var(--color-surface-alt)] px-3.5 py-2.5 font-mono text-sm tracking-widest focus:bg-surface"
+                    placeholder="000000"
+                  />
+                  <p className="mt-1.5 text-xs text-muted">Digite o código de 6 números do seu aplicativo autenticador, ou um código de recuperação.</p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between text-sm">
                 <label className="flex items-center gap-2">

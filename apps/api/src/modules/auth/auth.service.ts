@@ -15,6 +15,7 @@ import { queueMayMove } from "../../lib/presence-status";
 import type { AccessSchedule } from "@whatsatendende/types";
 import { assertLoginAllowed, recordLoginFailure, recordLoginSuccess } from "../../lib/login-guard";
 import { assertPasswordAllowed } from "../../lib/password-policy";
+import { mustSetUpTwoFactor, verifyTwoFactorCode } from "./two-factor.service";
 
 const REFRESH_TOKEN_DAYS = 7;
 
@@ -78,7 +79,12 @@ async function assertWithinAccessWindow(
   }
 }
 
-export async function login(email: string, password: string, ip: string | null, tzOffsetMinutes = 0) {
+/** What goes into an access token beyond who the person is: the "do this first" marks read by middleware/auth.ts. */
+async function accessGates(user: { role: string; mustChangePassword: boolean; totpEnabledAt: Date | null }) {
+  return { ...(user.mustChangePassword && { mcp: true as const }), ...((await mustSetUpTwoFactor(user)) && { tfa: true as const }) };
+}
+
+export async function login(email: string, password: string, ip: string | null, tzOffsetMinutes = 0, totpCode?: string) {
   // An e-mail repeats only across inactive users: the active one logs in; with none, the latest inactive gets "Usuario inativo".
   const include = { whatsappConnection: true, pauseReason: true } as const;
   const user =
@@ -110,6 +116,17 @@ export async function login(email: string, password: string, ip: string | null, 
   if (user.status === "INACTIVE") {
     await writeAudit({ userId: user.id, action: "LOGIN_BLOCKED_INACTIVE", entity: "User", entityId: user.id, ipAddress: ip });
     throw Errors.forbidden("Usuario inativo. Contate um administrador.");
+  }
+
+  // Verificação em duas etapas: the password alone is not a login. Asking for the code is not a failure; a wrong code
+  // is — it counts toward the same lock as a wrong password, so the six digits can't be guessed by trying.
+  if (user.totpEnabledAt) {
+    if (!totpCode?.trim()) throw Errors.twoFactorRequired();
+    if (!(await verifyTwoFactorCode(user, totpCode))) {
+      await writeAudit({ userId: user.id, action: "LOGIN_FAILED_TWO_FACTOR", entity: "User", entityId: user.id, ipAddress: ip });
+      await recordLoginFailure(email, ip, { id: user.id, email: user.email, displayName: user.displayName });
+      throw Errors.twoFactorInvalid();
+    }
   }
   await recordLoginSuccess(email, ip);
 
@@ -158,7 +175,7 @@ export async function login(email: string, password: string, ip: string | null, 
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
     },
   });
-  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: refreshTokenRow.id, ...(user.mustChangePassword && { mcp: true as const }) });
+  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: refreshTokenRow.id, ...(await accessGates(user)) });
 
   if (revoked.count > 0) {
     realtimeEvents.userForceLoggedOut(user.id, "NEW_LOGIN");
@@ -265,7 +282,7 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
     },
   });
 
-  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: newRefreshTokenRow.id, ...(user.mustChangePassword && { mcp: true as const }) });
+  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: newRefreshTokenRow.id, ...(await accessGates(user)) });
   return { accessToken, refreshToken: newRefreshToken, user };
 }
 
