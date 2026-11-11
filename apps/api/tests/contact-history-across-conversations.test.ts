@@ -37,10 +37,12 @@ describe("chat history merges across a contact's past (closed) conversations, li
         whatsappConnectionId: connectionId,
         status: "CLOSED",
         assignedAgentId: agent.id,
-        enteredQueueAt: new Date(Date.now() - 60_000),
-        acceptedAt: new Date(Date.now() - 55_000),
-        closedAt: new Date(Date.now() - 30_000),
-        lastMessageAt: new Date(Date.now() - 40_000),
+        enteredQueueAt: new Date(Date.now() - 14 * 60_000),
+        acceptedAt: new Date(Date.now() - 13 * 60_000),
+        // Closed well before the customer writes again — within Configurações' minutes of the close, the same
+        // conversation would go back to its attendant instead (tests/reopen-after-close.test.ts).
+        closedAt: new Date(Date.now() - 10 * 60_000),
+        lastMessageAt: new Date(Date.now() - 11 * 60_000),
       },
     });
     const oldInbound = await prisma.message.create({
@@ -50,7 +52,7 @@ describe("chat history merges across a contact's past (closed) conversations, li
         type: "TEXT",
         status: "DELIVERED",
         body: "Preciso de ajuda com meu pedido",
-        createdAt: new Date(Date.now() - 50_000),
+        createdAt: new Date(Date.now() - 12 * 60_000),
       },
     });
     const oldOutbound = await prisma.message.create({
@@ -61,12 +63,12 @@ describe("chat history merges across a contact's past (closed) conversations, li
         status: "SENT",
         senderAgentId: agent.id,
         body: "Resolvido, qualquer coisa é só chamar",
-        createdAt: new Date(Date.now() - 40_000),
+        createdAt: new Date(Date.now() - 11 * 60_000),
       },
     });
 
-    // The contact writes again — closed conversations are never reopened,
-    // this intentionally opens a brand-new one (its own queue card/metrics).
+    // The contact writes again, long after the close — this intentionally opens a brand-new conversation (its own
+    // queue card/metrics) rather than reopening the old one.
     const { conversation: newConversation, isNewConversation } = await conversationsService.findOrOpenConversationForInboundMessage(
       connectionId,
       contact.id

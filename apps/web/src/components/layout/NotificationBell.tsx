@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Bell, BellOff, Check, MessageSquare, ArrowRightLeft, Users } from "lucide-react";
+import { Bell, BellOff, Check, MessageSquare, ArrowRightLeft, Users, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -14,7 +14,7 @@ export interface NotificationsResponse {
   unreadCount: number;
 }
 
-const TYPE_ICON: Record<string, typeof MessageSquare> = { MESSAGE: MessageSquare, TRANSFER: ArrowRightLeft, GROUP_MESSAGE: Users };
+const TYPE_ICON: Record<string, typeof MessageSquare> = { MESSAGE: MessageSquare, TRANSFER: ArrowRightLeft, GROUP_MESSAGE: Users, SECURITY: ShieldAlert };
 
 /** Where clicking a notification goes — see PROMPT: "ao clicar em cima de alguma, será direcionado para o local". Only Conversation-linked ones exist today (new message, transfer received) — both always land the agent's own "Ativos". */
 function entityPath(notification: NotificationDTO): string | null {
@@ -24,6 +24,8 @@ function entityPath(notification: NotificationDTO): string | null {
   if (notification.entityType === "ReportSchedule") return "/configuracoes?secao=email-templates&agendamento=1";
   if (notification.entityType === "SatisfactionSurvey") return "/relatorios?aba=satisfacao";
   if (notification.entityType === "AiAssistant") return "/configuracoes?secao=assistente";
+  // A login locked by wrong passwords: Usuários shows it, with "Desbloquear login".
+  if (notification.entityType === "User") return "/usuarios";
   return null;
 }
 

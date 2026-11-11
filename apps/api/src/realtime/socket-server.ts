@@ -30,6 +30,8 @@ export function createSocketServer(httpServer: HttpServer): SocketIOServer {
       if (!(await isSessionActive(payload.sid))) {
         return next(new Error("unauthorized"));
       }
+      // Nothing live for someone who still has to choose their own password (see middleware/auth.ts).
+      if (payload.mcp) return next(new Error("unauthorized"));
       socket.data.auth = { userId: payload.sub, role: payload.role, displayName: payload.displayName };
       next();
     } catch {

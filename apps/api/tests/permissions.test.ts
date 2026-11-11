@@ -119,7 +119,7 @@ describe("granular per-role permissions", () => {
     const createAgent = await request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${managerToken}`)
-      .send({ fullName: "Novo Atendente", displayName: "Novo", email: "novoagente@test.dev", password: "Test@1234", confirmPassword: "Test@1234", role: "AGENT" });
+      .send({ fullName: "Novo Atendente", displayName: "Novo", email: "novoagente@test.dev", password: "Girassol#4821", confirmPassword: "Girassol#4821", role: "AGENT" });
     expect(createAgent.status).toBe(400); // AGENT requires whatsappConnectionId — proves the route was reached and normal validation still runs
     expect(createAgent.body.message).not.toMatch(/administrador/i);
 
@@ -127,7 +127,7 @@ describe("granular per-role permissions", () => {
     const createAdmin = await request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${managerToken}`)
-      .send({ fullName: "Admin Forjado", displayName: "Forjado", email: "forjado@test.dev", password: "Test@1234", confirmPassword: "Test@1234", role: "ADMIN" });
+      .send({ fullName: "Admin Forjado", displayName: "Forjado", email: "forjado@test.dev", password: "Girassol#4821", confirmPassword: "Girassol#4821", role: "ADMIN" });
     expect(createAdmin.status).toBe(403);
 
     // Cannot touch an existing ADMIN account.

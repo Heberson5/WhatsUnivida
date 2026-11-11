@@ -116,7 +116,7 @@ describe("e-mail de modelos automáticos (redefinição de senha, boas-vindas, c
       fullName: "Ana Paula",
       displayName: "Ana",
       email: "ana@test.dev",
-      password: "Test@1234",
+      password: "Girassol#4821",
       role: "AGENT",
       whatsappConnectionId: (await prisma.whatsAppConnection.create({ data: { name: "Suporte" } })).id,
     });
@@ -141,7 +141,7 @@ describe("e-mail de modelos automáticos (redefinição de senha, boas-vindas, c
       fullName: "Bruno",
       displayName: "Bruno",
       email: "bruno@test.dev",
-      password: "Test@1234",
+      password: "Girassol#4821",
       role: "MANAGER",
     });
 
@@ -154,7 +154,7 @@ describe("e-mail de modelos automáticos (redefinição de senha, boas-vindas, c
       fullName: "Carla",
       displayName: "Carla",
       email: "carla@test.dev",
-      password: "Test@1234",
+      password: "Girassol#4821",
       role: "MANAGER",
     });
     sendMailMock.mockClear(); // drop the welcome e-mail from creation
@@ -227,7 +227,7 @@ describe("e-mail de modelos automáticos (redefinição de senha, boas-vindas, c
       fullName: "Eva",
       displayName: "Eva",
       email: "eva@test.dev",
-      password: "Test@1234",
+      password: "Girassol#4821",
       role: "MANAGER",
     });
 

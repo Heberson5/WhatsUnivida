@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { prisma } from "../../lib/prisma";
 import { Errors } from "../../lib/http-error";
+import { assertPasswordAllowed } from "../../lib/password-policy";
 import { sendTemplatedMail } from "../../lib/mail";
 import { env } from "../../config/env";
 import { queueMayMove } from "../../lib/presence-status";
@@ -86,6 +87,7 @@ export async function createUser(input: {
   validateAccessSchedule(input.accessSchedule);
 
   const whatsappConnectionId = await resolveConnectionAssignment(input.role, input.whatsappConnectionId);
+  assertPasswordAllowed(input.password, input);
   const passwordHash = await bcrypt.hash(input.password, 12);
   const user = await prisma.user.create({
     data: {
@@ -93,6 +95,8 @@ export async function createUser(input: {
       displayName: input.displayName,
       email: input.email.toLowerCase(),
       passwordHash,
+      // Whoever created the account knows this password: the person chooses their own on the first access.
+      mustChangePassword: true,
       role: input.role,
       whatsappConnectionId,
       workState: input.workState ?? null,
@@ -125,7 +129,9 @@ export async function updateUser(
     workState: string | null;
     workCity: string | null;
     accessSchedule: AccessSchedule | null;
-  }>
+  }>,
+  // Who is making the change — a password set by someone else has to be changed by its owner on the next access.
+  changedById?: string
 ) {
   const current = await getUser(id);
   const nextRole = input.role ?? current.role;
@@ -136,6 +142,9 @@ export async function updateUser(
     "role" in input || "whatsappConnectionId" in input
       ? await resolveConnectionAssignment(nextRole, input.whatsappConnectionId ?? current.whatsappConnectionId)
       : undefined;
+  if (input.password) {
+    assertPasswordAllowed(input.password, { email: input.email ?? current.email, fullName: input.fullName ?? current.fullName, displayName: input.displayName ?? current.displayName });
+  }
   const passwordHash = input.password ? await bcrypt.hash(input.password, 12) : undefined;
   const nextWorkState = "workState" in input ? input.workState : current.workState;
   const nextWorkCity = "workCity" in input ? input.workCity : current.workCity;
@@ -152,6 +161,7 @@ export async function updateUser(
       email: input.email ? input.email.toLowerCase() : undefined,
       whatsappConnectionId,
       passwordHash,
+      ...(passwordHash && { mustChangePassword: changedById !== id }),
       workState: "workState" in input ? nextWorkState : undefined,
       workCity: "workCity" in input ? nextWorkCity : undefined,
       accessSchedule: "accessSchedule" in input
@@ -254,7 +264,7 @@ export async function resetUserPassword(id: string): Promise<{ temporaryPassword
   const temporaryPassword = crypto.randomBytes(6).toString("base64url");
   const passwordHash = await bcrypt.hash(temporaryPassword, 12);
   await prisma.$transaction([
-    prisma.user.update({ where: { id }, data: { passwordHash } }),
+    prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true } }),
     prisma.refreshToken.updateMany({ where: { userId: id }, data: { revokedAt: new Date() } }),
   ]);
   return { temporaryPassword };

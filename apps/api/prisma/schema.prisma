@@ -60,6 +60,9 @@ model User {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   lastAccessAt      DateTime?
+  // The password was chosen by someone else (an administrator created the account, set or reset the password): the
+  // person has to choose their own before using the system — see middleware/auth.ts and auth.service.ts.
+  mustChangePassword Boolean      @default(false)
 
   // Where this user works — drives which STATE/MUNICIPAL holidays block
   // their access automatically (a NATIONAL holiday always applies
@@ -2353,4 +2356,35 @@ model ClientDataCorrection {
 
   @@index([contactId, resolvedAt])
   @@index([cpfKey, resolvedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Login protection (lib/login-guard.ts)
+// ---------------------------------------------------------------------------
+
+// Every login attempt, by the e-mail typed (an account may not even exist for it — an unknown e-mail is counted and
+// locked exactly like a real one, so the answer never tells which e-mails have an account). Kept in the database so
+// the count survives a restart or an update; old rows are deleted by the daily sweep.
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  seq       Int      @unique @default(autoincrement())
+  email     String
+  ipAddress String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+// An e-mail locked after too many wrong passwords. `level` grows with each lock in a row (15 min, 1 h, 24 h).
+// IPs the person already logged in from are not affected — only the ones never seen for that e-mail.
+model LoginLock {
+  id          String   @id @default(uuid())
+  seq         Int      @unique @default(autoincrement())
+  email       String   @unique
+  level       Int      @default(1)
+  lockedUntil DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

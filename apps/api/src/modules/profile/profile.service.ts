@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../lib/prisma";
+import { assertPasswordAllowed } from "../../lib/password-policy";
 import { Errors } from "../../lib/http-error";
 import { sendTemplatedMail } from "../../lib/mail";
 import { recordPresenceTransition } from "../../lib/presence-status";
@@ -59,9 +60,11 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
   const valid = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!valid) throw Errors.unauthorized("Senha atual incorreta");
 
+  if (await bcrypt.compare(newPassword, user.passwordHash)) throw Errors.badRequest("A nova senha precisa ser diferente da atual");
+  assertPasswordAllowed(newPassword, user);
   const passwordHash = await bcrypt.hash(newPassword, 12);
   await prisma.$transaction([
-    prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+    prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } }),
     // Every refresh token is revoked, including this browser's own — the
     // current tab keeps working until its short-lived access token expires,
     // then re-authenticates with the new password like any other session.

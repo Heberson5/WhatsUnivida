@@ -3,8 +3,10 @@ import type { AccessSchedule, UserDTO } from "@whatsatendende/types";
 
 type UserWithConnection = User & { whatsappConnection: WhatsAppConnection | null; pauseReason?: PauseReason | null; deactivatedBy?: { displayName: string } | null };
 
-export function toUserDTO(user: UserWithConnection): UserDTO {
+export function toUserDTO(user: UserWithConnection, loginLockedUntil: Date | null = null): UserDTO {
   return {
+    mustChangePassword: user.mustChangePassword,
+    loginLockedUntil: loginLockedUntil ? loginLockedUntil.toISOString() : null,
     id: user.id,
     fullName: user.fullName,
     displayName: user.displayName,

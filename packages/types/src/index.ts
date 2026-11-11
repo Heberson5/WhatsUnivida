@@ -109,6 +109,10 @@ export interface UserEmailUseDTO {
 
 export interface UserDTO {
   id: string;
+  /** The password was chosen by someone else (created/reset by an administrator): the person must choose their own before anything else. */
+  mustChangePassword?: boolean;
+  /** Login locked by too many wrong passwords until this moment (only in the Usuários list); null/absent when not locked. */
+  loginLockedUntil?: string | null;
   fullName: string;
   displayName: string;
   email: string;

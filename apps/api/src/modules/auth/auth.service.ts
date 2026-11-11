@@ -13,6 +13,8 @@ import { env } from "../../config/env";
 import { realtimeEvents } from "../../realtime/realtime";
 import { queueMayMove } from "../../lib/presence-status";
 import type { AccessSchedule } from "@whatsatendende/types";
+import { assertLoginAllowed, recordLoginFailure, recordLoginSuccess } from "../../lib/login-guard";
+import { assertPasswordAllowed } from "../../lib/password-policy";
 
 const REFRESH_TOKEN_DAYS = 7;
 
@@ -82,24 +84,34 @@ export async function login(email: string, password: string, ip: string | null, 
   const user =
     (await prisma.user.findFirst({ where: { email: email.toLowerCase(), status: "ACTIVE" }, include })) ??
     (await prisma.user.findFirst({ where: { email: email.toLowerCase() }, include, orderBy: { createdAt: "desc" } }));
+  // A blocked IP or a locked e-mail is refused before the password is looked at — with the same answer whether or
+  // not the e-mail has an account (lib/login-guard.ts).
+  await assertLoginAllowed(email, ip);
+
   if (!user) {
     // Do the same bcrypt work a real lookup would, so a non-existent e-mail
     // doesn't respond measurably faster than a wrong password for a real
     // one — otherwise response time alone lets an attacker enumerate valid accounts.
     await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+    await recordLoginFailure(email, ip, null);
     throw Errors.unauthorized("E-mail ou senha invalidos");
-  }
-
-  if (user.status === "INACTIVE") {
-    await writeAudit({ userId: user.id, action: "LOGIN_BLOCKED_INACTIVE", entity: "User", entityId: user.id, ipAddress: ip });
-    throw Errors.forbidden("Usuario inativo. Contate um administrador.");
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     await writeAudit({ userId: user.id, action: "LOGIN_FAILED", entity: "User", entityId: user.id, ipAddress: ip });
+    // An inactive account is not told about its own lock (the e-mail would say the account exists and is in use).
+    await recordLoginFailure(email, ip, user.status === "ACTIVE" ? { id: user.id, email: user.email, displayName: user.displayName } : null);
     throw Errors.unauthorized("E-mail ou senha invalidos");
   }
+
+  // Only after the password is confirmed: said before it, "usuário inativo" told anyone which e-mails have an
+  // account without knowing any password.
+  if (user.status === "INACTIVE") {
+    await writeAudit({ userId: user.id, action: "LOGIN_BLOCKED_INACTIVE", entity: "User", entityId: user.id, ipAddress: ip });
+    throw Errors.forbidden("Usuario inativo. Contate um administrador.");
+  }
+  await recordLoginSuccess(email, ip);
 
   // See PROMPT: "quem pode acessar quando está em manutenção é somente o
   // administrador" — ADMIN always bypasses; every other role is blocked
@@ -146,7 +158,7 @@ export async function login(email: string, password: string, ip: string | null, 
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
     },
   });
-  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: refreshTokenRow.id });
+  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: refreshTokenRow.id, ...(user.mustChangePassword && { mcp: true as const }) });
 
   if (revoked.count > 0) {
     realtimeEvents.userForceLoggedOut(user.id, "NEW_LOGIN");
@@ -253,7 +265,7 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
     },
   });
 
-  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: newRefreshTokenRow.id });
+  const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: newRefreshTokenRow.id, ...(user.mustChangePassword && { mcp: true as const }) });
   return { accessToken, refreshToken: newRefreshToken, user };
 }
 
@@ -308,9 +320,12 @@ export async function resetPassword(token: string, newPassword: string) {
     throw Errors.badRequest("Link de redefinicao invalido ou expirado");
   }
 
+  const owner = await prisma.user.findUniqueOrThrow({ where: { id: record.userId }, select: { email: true, fullName: true, displayName: true } });
+  assertPasswordAllowed(newPassword, owner);
   const passwordHash = await bcrypt.hash(newPassword, 12);
   const [user] = await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+    // Chosen by the person, through the link sent to their own e-mail.
+    prisma.user.update({ where: { id: record.userId }, data: { passwordHash, mustChangePassword: false } }),
     prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
     prisma.refreshToken.updateMany({ where: { userId: record.userId }, data: { revokedAt: new Date() } }),
   ]);

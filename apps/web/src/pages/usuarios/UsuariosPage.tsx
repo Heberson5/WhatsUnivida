@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { KeyRound, LogOut, Pencil, Plus, Search, Trash2, UserCheck, UserX } from "lucide-react";
+import { KeyRound, LockOpen, LogOut, Pencil, Plus, Search, ShieldAlert, Trash2, UserCheck, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { COLUMN_SCREENS, PERMISSION, type UserDTO } from "@whatsatendende/types";
 import { api, getApiErrorMessage } from "../../lib/api";
@@ -126,6 +126,15 @@ export default function UsuariosPage() {
     mutationFn: (id: string) => api.post<{ temporaryPassword: string }>(`/users/${id}/reset-password`),
     onSuccess: (res) => {
       toast.success(`Senha temporária gerada: ${res.data.temporaryPassword}`, { duration: 15000 });
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err)),
+  });
+
+  const unlockLoginMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/users/${id}/unlock-login`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Login desbloqueado.");
     },
     onError: (err) => toast.error(getApiErrorMessage(err)),
   });
@@ -260,6 +269,14 @@ export default function UsuariosPage() {
                 <td className="sticky right-0 bg-surface px-3 py-2.5 shadow-[-10px_0_12px_-10px_rgba(15,23,42,0.25)] group-hover:bg-surface-alt">
                   {/* Fixed to the right edge: the actions never end up cut off by a narrow screen, and each has its name. */}
                   <div className="flex items-center justify-end gap-1.5">
+                    {u.loginLockedUntil && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-semibold text-danger"
+                        title={`Muitas senhas erradas. Bloqueado para locais desconhecidos até ${format(new Date(u.loginLockedUntil), "dd/MM HH:mm")}`}
+                      >
+                        <ShieldAlert className="h-3 w-3" /> Login bloqueado
+                      </span>
+                    )}
                     {canEditar && (
                       <button onClick={() => setModalUser(u)} className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-surface-alt">
                         <Pencil className="h-3.5 w-3.5" /> Editar
@@ -287,6 +304,7 @@ export default function UsuariosPage() {
                               },
                             ]
                           : []),
+                        ...(canEditar && u.loginLockedUntil ? [{ label: "Desbloquear login", icon: LockOpen, onSelect: () => unlockLoginMutation.mutate(u.id) }] : []),
                         ...(canEditar ? [{ label: "Redefinir senha", icon: KeyRound, onSelect: () => resetPasswordMutation.mutate(u.id) }] : []),
                         ...(currentUserRole === "ADMIN" && u.id !== currentUserId ? [{ label: "Excluir usuário", icon: Trash2, danger: true, onSelect: () => setDeletingUser(u) }] : []),
                       ]}

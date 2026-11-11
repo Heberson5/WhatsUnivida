@@ -12,6 +12,7 @@ import { toUserDTO } from "./users.mapper";
 import * as usersService from "./users.service";
 import { profilePhotoUpload, saveProfilePhoto } from "../../lib/profile-photo";
 import { updateOwnPhoto as setUserPhoto } from "../profile/profile.service";
+import { activeLoginLocks, unlockLogin } from "../../lib/login-guard";
 
 export const usersRouter = Router();
 
@@ -46,7 +47,9 @@ usersRouter.get(
   requirePermission(PERMISSION.USUARIOS_VISUALIZAR),
   asyncHandler(async (_req, res) => {
     const users = await usersService.listUsers();
-    res.json(users.map(toUserDTO));
+    // Who is locked out right now by wrong passwords (lib/login-guard.ts) — the list shows it, with "Desbloquear login".
+    const locks = await activeLoginLocks(users.map((u) => u.email));
+    res.json(users.map((u) => toUserDTO(u, locks.get(u.email.toLowerCase()) ?? null)));
   })
 );
 
@@ -131,7 +134,7 @@ usersRouter.patch(
       return res.status(400).json({ error: "BAD_REQUEST", message: "As senhas nao coincidem" });
     }
     await assertNoAdminEscalation(req, req.params.id, input.role);
-    const user = await usersService.updateUser(req.params.id, input);
+    const user = await usersService.updateUser(req.params.id, input, req.auth!.userId);
     await writeAudit({
       userId: req.auth!.userId,
       action: "USER_UPDATED",
@@ -202,6 +205,19 @@ usersRouter.post(
     await usersService.forceLogoutUser(req.params.id);
     realtimeEvents.userForceLoggedOut(req.params.id);
     await writeAudit({ userId: req.auth!.userId, action: "USER_FORCE_LOGGED_OUT", entity: "User", entityId: req.params.id, ipAddress: req.ip ?? null });
+    res.status(204).end();
+  })
+);
+
+// Lifts a lock put on this person's login by too many wrong passwords — they can try again right away, from anywhere.
+usersRouter.post(
+  "/:id/unlock-login",
+  requirePermission(PERMISSION.USUARIOS_EDITAR),
+  asyncHandler(async (req, res) => {
+    await assertNoAdminEscalation(req, req.params.id);
+    const user = await usersService.getUser(req.params.id);
+    const wasLocked = await unlockLogin(user.email);
+    await writeAudit({ userId: req.auth!.userId, action: "USER_LOGIN_UNLOCKED", entity: "User", entityId: user.id, ipAddress: req.ip ?? null, metadata: { wasLocked } });
     res.status(204).end();
   })
 );

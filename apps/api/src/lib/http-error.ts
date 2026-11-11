@@ -14,6 +14,8 @@ export const Errors = {
   forbidden: (message = "Acesso negado") => new HttpError(403, "FORBIDDEN", message),
   notFound: (message = "Nao encontrado") => new HttpError(404, "NOT_FOUND", message),
   conflict: (message: string) => new HttpError(409, "CONFLICT", message),
+  // The password was chosen by someone else: nothing else works until the person chooses their own.
+  passwordChangeRequired: () => new HttpError(403, "PASSWORD_CHANGE_REQUIRED", "Defina uma nova senha para continuar"),
   badRequest: (message: string, details?: unknown) => new HttpError(400, "BAD_REQUEST", message, details),
   // Distinct code (not just the 503 status) so the frontend can reliably
   // tell "system in maintenance" apart from any other server error and

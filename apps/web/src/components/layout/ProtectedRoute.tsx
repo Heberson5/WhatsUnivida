@@ -1,11 +1,14 @@
 import { Navigate, Outlet } from "react-router-dom";
 import type { Permission } from "@whatsatendende/types";
 import { useAuthStore } from "../../store/auth-store";
+import ForcePasswordChangePage from "../../pages/login/ForcePasswordChangePage";
 
 export function ProtectedRoute() {
   const { user, hydrated } = useAuthStore();
   if (!hydrated) return null;
   if (!user) return <Navigate to="/login" replace />;
+  // The password was chosen by someone else: nothing of the system opens until the person chooses their own.
+  if (user.mustChangePassword) return <ForcePasswordChangePage />;
   return <Outlet />;
 }
 

@@ -11,6 +11,49 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.38.0",
+    date: "11 nov 2026",
+    name: "Cliente que responde após o encerramento e login mais protegido",
+    summary: "Quando o cliente escreve logo depois de a conversa ser encerrada, ela volta para o mesmo atendente em vez de abrir outra na fila, e a mensagem de encerramento que ainda não saiu deixa de ser enviada. O login ganhou proteção contra tentativas de adivinhar senhas, regras para senhas fracas e a troca obrigatória da senha definida por outra pessoa.",
+    notes: [
+      {
+        type: "novo",
+        area: "atendimento",
+        title: "Cliente respondeu após o encerramento: a conversa volta para o mesmo atendente",
+        text: "Se o cliente escrever enquanto a mensagem de encerramento ainda está a caminho, ou nos minutos seguintes à última mensagem enviada, a mesma conversa é reaberta com o atendente que estava com ela. A mensagem de encerramento e a pesquisa que ainda não saíram deixam de ser enviadas, e a conversa ganha uma nota contando o que aconteceu. Um “obrigado” ou a nota da pesquisa não reabrem a conversa. Se o atendente estiver em pausa, ele recebe a conversa de volta; se estiver offline, o cliente vai direto para a fila. Vale também para o encerramento feito pela Gestão.",
+        where: "Atendimento",
+      },
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Tempo para reabrir com o mesmo atendente",
+        text: "O tempo em que a resposta do cliente ainda reabre a conversa é configurável, de 1 a 60 minutos. O padrão é 5 minutos.",
+        where: "Configurações › Fila › Cliente responde após o encerramento",
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Proteção contra tentativas de adivinhar senhas",
+        text: "Depois de 10 senhas erradas em 15 minutos, o login daquele e-mail fica bloqueado por 15 minutos para locais de onde a pessoa nunca entrou; se as tentativas continuarem, o bloqueio passa para 1 hora e depois 24 horas. Quem está no local de sempre continua entrando normalmente. A contagem fica gravada e não se perde quando o sistema é atualizado. Os administradores recebem um aviso no sino, a Auditoria registra o bloqueio e o dono da conta é avisado por e-mail.",
+        where: "Tela de login",
+      },
+      {
+        type: "novo",
+        area: "usuarios",
+        title: "Desbloquear login",
+        text: "Um usuário com o login bloqueado por senhas erradas aparece marcado na lista, e o menu de ações dele tem a opção de desbloquear na hora.",
+        where: "Usuários › Mais ações › Desbloquear login",
+      },
+      {
+        type: "melhoria",
+        area: "usuarios",
+        title: "Senhas mais seguras e troca no primeiro acesso",
+        text: "Toda senha nova precisa ter pelo menos 8 caracteres, com letra e número, e não pode ser uma senha muito comum, uma sequência ou o próprio nome ou e-mail da pessoa. Quando um administrador cria um usuário, define ou redefine a senha de alguém, a pessoa precisa escolher a sua própria senha no primeiro acesso, antes de usar o sistema. As senhas que já estão em uso continuam valendo.",
+        where: "Usuários, Meu Perfil e redefinição de senha",
+      },
+    ],
+  },
+  {
     version: "2.37.7",
     date: "11 nov 2026",
     name: "Mais pessoas usando ao mesmo tempo",

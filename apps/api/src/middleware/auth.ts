@@ -20,6 +20,14 @@ declare global {
   }
 }
 
+// With a password somebody else chose, the only things the person can do are: choose their own, see who they are,
+// keep the session alive and sign out.
+const ALLOWED_BEFORE_PASSWORD_CHANGE = ["/api/auth/", "/api/profile/password"];
+
+function passwordChangePending(payload: { mcp?: true }, req: Request): boolean {
+  return payload.mcp === true && !ALLOWED_BEFORE_PASSWORD_CHANGE.some((prefix) => req.originalUrl.startsWith(prefix));
+}
+
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return next(Errors.unauthorized());
@@ -33,6 +41,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     if (!(await isSessionActive(payload.sid))) {
       return next(Errors.unauthorized("Sessao encerrada — login realizado em outro dispositivo"));
     }
+    if (passwordChangePending(payload, req)) return next(Errors.passwordChangeRequired());
     req.auth = { userId: payload.sub, role: payload.role, displayName: payload.displayName, sessionId: payload.sid };
     next();
   } catch {
@@ -62,6 +71,7 @@ export async function requireAuthFromHeaderOrQuery(req: Request, _res: Response,
     if (!(await isSessionActive(payload.sid))) {
       return next(Errors.unauthorized("Sessao encerrada — login realizado em outro dispositivo"));
     }
+    if (passwordChangePending(payload, req)) return next(Errors.passwordChangeRequired());
     req.auth = { userId: payload.sub, role: payload.role, displayName: payload.displayName };
     next();
   } catch {

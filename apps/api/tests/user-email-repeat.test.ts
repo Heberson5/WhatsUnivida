@@ -24,7 +24,7 @@ describe("Usuários: e-mail repetido e desativação", () => {
     request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ fullName: name, displayName: name, email, password: "Senha@1234", confirmPassword: "Senha@1234", role: "MANAGER" });
+      .send({ fullName: name, displayName: name, email, password: "Girassol#4821", confirmPassword: "Girassol#4821", role: "MANAGER" });
 
   it("recusa o e-mail de um usuário ativo e diz quem o usa", async () => {
     await createTestUser({ email: "ana@test.dev", role: "AGENT", displayName: "Ana Souza" });
@@ -44,7 +44,7 @@ describe("Usuários: e-mail repetido e desativação", () => {
     expect(use.body).toMatchObject({ active: null, inactive: [{ name: "Ana Antiga" }] });
 
     expect((await create("ana@test.dev", "Ana Nova")).status).toBe(201);
-    const login = await request(app).post("/api/auth/login").send({ email: "ana@test.dev", password: "Senha@1234" });
+    const login = await request(app).post("/api/auth/login").send({ email: "ana@test.dev", password: "Girassol#4821" });
     expect(login.status).toBe(200);
     expect(login.body.user.fullName).toBe("Ana Nova");
 

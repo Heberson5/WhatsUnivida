@@ -350,7 +350,7 @@ describe("Chat interno", () => {
       const member = await prisma.chatMember.findUnique({ where: { roomId_userId: { roomId: general.id, userId } } });
       return Boolean(member && !member.leftAt);
     };
-    const created = await usersService.createUser({ fullName: "Novo Usuário", displayName: "Novo", email: "novo-chat@test.dev", password: TEST_PASSWORD, role: "ADMIN" });
+    const created = await usersService.createUser({ fullName: "Novo Usuário", displayName: "Novo", email: "novo-chat@test.dev", password: "Girassol#4821", role: "ADMIN" });
     expect(await isIn(created.id)).toBe(true);
     await usersService.setUserStatus(created.id, "INACTIVE", id.admin);
     expect(await isIn(created.id)).toBe(false);

@@ -21,6 +21,9 @@ export interface AccessTokenPayload {
   // session's API/socket access immediately, not just its ability to
   // refresh.
   sid: string;
+  // "Must change password": the password was chosen by someone else (see User.mustChangePassword). A token carrying
+  // it only reaches the routes needed to choose a new one — see middleware/auth.ts.
+  mcp?: true;
 }
 
 // Explicit algorithm allowlist on both sign and verify: without this,

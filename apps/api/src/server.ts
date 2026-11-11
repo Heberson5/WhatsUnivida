@@ -26,6 +26,7 @@ import { processDueSchedules, refreshNextRuns } from "./modules/report-schedules
 import { purgeExpiredTrash } from "./modules/announcements/announcements.service";
 import { todayKey } from "./modules/announcements/announcement-days";
 import { syncGeneralMembers } from "./modules/internal-chat/internal-chat.service";
+import { purgeOldLoginAttempts } from "./lib/login-guard";
 
 const AGENT_TOOLS_SWEEP_INTERVAL_MS = 20_000;
 
@@ -198,6 +199,13 @@ async function main() {
   reportScheduleTimer.unref();
   purgeExpiredTrash().catch((err) => logger.error({ err }, "failed to empty the Pop Up trash"));
   refreshNextRuns().catch((err) => logger.error({ err }, "failed to refresh the scheduled presentations"));
+
+  // Login attempts too old to matter (lib/login-guard.ts) — at boot and once a day.
+  const loginAttemptsTimer = setInterval(() => {
+    purgeOldLoginAttempts().catch((err) => logger.error({ err }, "failed to purge old login attempts"));
+  }, 24 * 60 * 60 * 1000);
+  loginAttemptsTimer.unref();
+  purgeOldLoginAttempts().catch((err) => logger.error({ err }, "failed to purge old login attempts"));
 
   httpServer.listen(env.PORT, () => {
     logger.info(`API listening on port ${env.PORT} (env=${env.NODE_ENV}, whatsapp=${env.WHATSAPP_PROVIDER})`);
