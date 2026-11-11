@@ -448,6 +448,7 @@ const queueSettingsSchema = z
     queueDangerMinutes: z.number().int().min(1).max(240).optional(),
     typingToCustomer: z.boolean().optional(),
     typingFromCustomer: z.boolean().optional(),
+    reopenAfterCloseMinutes: z.number().int().min(1).max(60).optional(),
   })
   .strict()
   .refine((s) => !s.noReplyWarningMinutes || !s.noReplyDangerMinutes || s.noReplyDangerMinutes > s.noReplyWarningMinutes, {

@@ -148,7 +148,7 @@ describe("encerrar com a mensagem de encerramento e a pesquisa de satisfação l
     expect(readsOf(phone).sort()).toEqual((await inboundIdsOf(conversation.id)).sort());
   }, 20000);
 
-  it("sem pesquisa: um obrigado depois do encerramento fica na conversa encerrada; uma pergunta abre na fila", async () => {
+  it("sem pesquisa: um obrigado depois do encerramento fica na conversa encerrada; uma pergunta logo em seguida volta para o mesmo atendente", async () => {
     await prisma.satisfactionSurveyConfig.deleteMany();
     const phone = "5511990007009";
     const conversation = await acceptedConversation(phone);
@@ -165,9 +165,11 @@ describe("encerrar com a mensagem de encerramento e a pesquisa de satisfação l
     expect(await conversationsOf(conversation.contactId)).toBe(1);
 
     provider.simulateIncomingMessage(phone, "Tenho mais uma dúvida sobre o plano");
-    await waitUntilAsync(async () => (await conversationsOf(conversation.contactId)) === 2);
-    const queued = await prisma.conversation.findFirstOrThrow({ where: { contactId: conversation.contactId, id: { not: conversation.id } } });
-    expect(queued.status).toBe("NEW");
+    await waitUntilAsync(async () => (await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status === "IN_PROGRESS");
+    const reopened = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(reopened.status).toBe("IN_PROGRESS");
+    expect(reopened.assignedAgentId).not.toBeNull();
+    expect(await conversationsOf(conversation.contactId)).toBe(1); // nothing new in the queue
   }, 20000);
 
   it("o cliente não responde: a mensagem de encerramento sai quando a espera de 30 minutos acaba", async () => {
@@ -201,17 +203,19 @@ describe("encerrar com a mensagem de encerramento e a pesquisa de satisfação l
     expect(sentSince()[1]).toContain("Obrigado, *Joana Cliente*");
   }, 20000);
 
-  it("o cliente quer continuar a conversa: volta para a fila e a mensagem de encerramento nunca é enviada", async () => {
+  it("o cliente quer continuar a conversa: volta para o mesmo atendente e a mensagem de encerramento nunca é enviada", async () => {
     const phone = "5511990007006";
     const { conversation, sentSince } = await closedAndAsked(phone);
 
     provider.simulateIncomingMessage(phone, "Na verdade preciso de ajuda com o boleto");
-    await waitUntilAsync(async () => (await conversationsOf(conversation.contactId)) === 2);
-    const queued = await prisma.conversation.findFirstOrThrow({ where: { contactId: conversation.contactId, id: { not: conversation.id } } });
-    expect(queued.status).toBe("NEW");
-    expect(queued.assignedAgentId).toBeNull();
-    expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("CLOSED");
-    expect((await surveyOf(conversation.id)).closingOutcome).toBe("CANCELED_CUSTOMER_WROTE");
+    await waitUntilAsync(async () => (await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status === "IN_PROGRESS");
+    const reopened = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(reopened.status).toBe("IN_PROGRESS");
+    expect(reopened.assignedAgentId).toBe(conversation.assignedAgentId ?? reopened.assignedAgentId);
+    expect(reopened.closedAt).toBeNull();
+    expect(await conversationsOf(conversation.contactId)).toBe(1); // the same conversation, nothing new in the queue
+    // The survey nobody answered is over, and its closing message with it.
+    expect(await prisma.satisfactionSurvey.findUnique({ where: { conversationId: conversation.id } })).toBeNull();
 
     expect(await processDueClosingMessages(new Date(Date.now() + 31 * 60_000))).toBe(0);
     expect(sentSince().some((text) => text.includes("Foi um prazer atender você"))).toBe(false);
@@ -232,9 +236,10 @@ describe("encerrar com a mensagem de encerramento e a pesquisa de satisfação l
       timestamp: new Date(),
       fromMe: false,
     });
-    await waitUntilAsync(async () => (await conversationsOf(conversation.contactId)) === 2);
-    expect(await conversationsOf(conversation.contactId)).toBe(2);
-    expect((await surveyOf(conversation.id)).score).toBeNull();
+    await waitUntilAsync(async () => (await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status === "IN_PROGRESS");
+    expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).status).toBe("IN_PROGRESS"); // back with the attendant
+    expect(await conversationsOf(conversation.contactId)).toBe(1);
+    expect(await prisma.satisfactionSurvey.findUnique({ where: { conversationId: conversation.id } })).toBeNull(); // no score was recorded
     expect(sentSince()).toEqual([QUESTION]);
   }, 20000);
 

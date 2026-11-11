@@ -548,11 +548,10 @@ function wireProviderEvents(connectionId: string, provider: WhatsAppProvider) {
         return;
       }
 
-      const { conversation, isNewConversation, autoAssignedAgentId, flowId, closedMessage } = await conversationsService.findOrOpenConversationForInboundMessage(
-        connectionId,
-        contact.id,
-        event.body
-      );
+      const opened = await conversationsService.findOrOpenConversationForInboundMessage(connectionId, contact.id, event.body);
+      const { conversation, isNewConversation, autoAssignedAgentId, flowId, closedMessage } = opened;
+      // Written right after a person closed the conversation: it is back with that same attendant (see reopenForCustomer).
+      const reopenedForAgentId = "reopenedForAgentId" in opened ? opened.reopenedForAgentId : null;
 
       const message = await messagesService.createInboundMessage({
         conversationId: conversation.id,
@@ -633,6 +632,7 @@ function wireProviderEvents(connectionId: string, provider: WhatsAppProvider) {
       } else {
         // "@<nome>" from a customer still waiting (queue, Fluxo, or on the phone) just took it to that person — the card leaves the queue.
         if (autoAssignedAgentId) realtimeEvents.conversationAccepted(conversation.id, connectionId, autoAssignedAgentId);
+        if (reopenedForAgentId) realtimeEvents.conversationReopened(conversation.id, connectionId, reopenedForAgentId);
         realtimeEvents.newMessage(conversation.id, conversation.assignedAgentId);
         if (conversation.assignedAgentId) await notifyAssignedAgent(conversation.assignedAgentId);
         // Still in Abandonados: it stays there, the card moves up with the new message.

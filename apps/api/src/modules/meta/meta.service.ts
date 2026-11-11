@@ -99,12 +99,9 @@ async function handleInboundEvent(channel: Channel, pageId: string, event: MetaM
 
   const body = event.message!.text ?? null;
   const contact = await findOrCreateMetaContact(connection.id, channel, event.sender.id, null);
-  const { conversation, isNewConversation, autoAssignedAgentId, closedMessage } = await conversationsService.findOrOpenConversationForInboundMessage(
-    connection.id,
-    contact.id,
-    body,
-    channel
-  );
+  const opened = await conversationsService.findOrOpenConversationForInboundMessage(connection.id, contact.id, body, channel);
+  const { conversation, isNewConversation, autoAssignedAgentId, closedMessage } = opened;
+  const reopenedForAgentId = "reopenedForAgentId" in opened ? opened.reopenedForAgentId : null;
 
   await messagesService.createInboundMessage({
     conversationId: conversation.id,
@@ -126,6 +123,7 @@ async function handleInboundEvent(channel: Channel, pageId: string, event: MetaM
     return;
   }
   if (autoAssignedAgentId) realtimeEvents.conversationAccepted(conversation.id, connection.id, autoAssignedAgentId);
+  if (reopenedForAgentId) realtimeEvents.conversationReopened(conversation.id, connection.id, reopenedForAgentId);
   realtimeEvents.newMessage(conversation.id, conversation.assignedAgentId);
   if (conversation.assignedAgentId) {
     const preview = body ?? "Anexo recebido";

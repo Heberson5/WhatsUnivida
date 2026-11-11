@@ -232,6 +232,9 @@ const DEFAULT_BUSINESS_SETTINGS = {
   // while the attendant writes or records, and the attendant sees the customer's.
   typingToCustomer: true,
   typingFromCustomer: true,
+  // Configurações › Fila: the customer writes within this many minutes of a person closing the conversation (or of the
+  // closing message / the survey) — it goes back to the same attendant instead of opening a new one in the queue.
+  reopenAfterCloseMinutes: 5,
 };
 
 export async function getNoReturnSettings(): Promise<NoReturnSettingsDTO> {

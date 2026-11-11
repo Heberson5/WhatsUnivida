@@ -169,7 +169,7 @@ const surveyConversationSelect = {
   closedAt: true,
   contact: { select: { phone: true, name: true, firstName: true } },
   whatsappConnection: { select: { connectionMode: true } },
-  satisfactionSurvey: { select: { id: true } },
+  satisfactionSurvey: { select: { id: true, sentAt: true } },
 } satisfies Prisma.ConversationSelect;
 type SurveyConversation = Prisma.ConversationGetPayload<{ select: typeof surveyConversationSelect }>;
 
@@ -321,8 +321,16 @@ export async function sendCloseFollowUp(conversationId: string, closingMessage?:
     const conversation = await prisma.conversation.findUnique({ where: { id: conversationId }, select: surveyConversationSelect });
     // Undone (or otherwise reopened) during the "Desfazer" window — nothing goes out.
     if (!conversation || conversation.status !== "CLOSED") return;
-    // Closed, undone and closed again inside the window leaves two timers behind — the first one already did this.
-    if (conversation.satisfactionSurvey) return;
+    if (conversation.satisfactionSurvey) {
+      // Closed, undone and closed again inside the window leaves two timers behind — the first one already did this.
+      if (!conversation.closedAt || conversation.satisfactionSurvey.sentAt >= conversation.closedAt) return;
+      // The survey is from an earlier close of this same conversation (already answered; the customer then wrote and it
+      // was reopened — conversations.service reopenForCustomer): nobody is asked twice, the closing message goes alone.
+      if (closingMessage && !(await hasConversationSince(conversation.contactId, conversation.closedAt))) {
+        await sendHeldClosingMessage(conversation, closingMessage).catch((err) => logger.error({ err, conversationId }, "failed to send held closing message"));
+      }
+      return;
+    }
     // The customer wrote again during the window: that new conversation owns the chat, and neither the question nor a goodbye fits it.
     if (conversation.closedAt && (await hasConversationSince(conversation.contactId, conversation.closedAt))) return;
 

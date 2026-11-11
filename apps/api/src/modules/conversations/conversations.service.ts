@@ -13,6 +13,7 @@ import { writeAudit } from "../../lib/audit";
 import { realtimeEvents } from "../../realtime/realtime";
 import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
+import { getBusinessSettings } from "../settings/settings.service";
 import type { AgentPresence, Channel, Contact, ConversationStatus, Role } from "@prisma/client";
 
 /** Conversation.closeReason of "Encerrar por falta de retorno" (manual or automatic) — counted apart in the reports. */
@@ -655,6 +656,83 @@ function findMentionedAgentByTypo(
   return tied ? null : best;
 }
 
+const REOPENED_BY_CUSTOMER_NOTE = "Cliente respondeu após o encerramento — conversa reaberta";
+
+/**
+ * The customer wrote right after a person closed their conversation — while the closing message was still on its way
+ * (the "Desfazer" window, its 3–10 seconds, the wait for the survey's score) or within Configurações › Fila's
+ * minutes after the last thing the platform sent. See PROMPT: "a conversa não deve ser encerrada, deve voltar para
+ * o mesmo atendente e não envia a mensagem de encerramento e mesmo que já tenha enviado".
+ *
+ * Returns what to do: reopen that same conversation with its attendant (who is logged in — a pause counts), or,
+ * with the attendant offline or inactive, send the customer straight to the queue. Null = the usual path.
+ * Not for a close by falta de retorno (it has its own return rule) nor one by the Assistente Virtual.
+ */
+async function recentCloseByPerson(contactId: string, connectionId: string, channel: Channel, now: Date) {
+  const minutes = Number((await getBusinessSettings()).reopenAfterCloseMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const last = await prisma.conversation.findFirst({
+    where: { contactId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      channel: true,
+      closedAt: true,
+      closeReason: true,
+      closedByUserId: true,
+      whatsappConnectionId: true,
+      metaConnectionId: true,
+      assignedAgent: { select: { id: true, displayName: true, presence: true, status: true, isAssistant: true } },
+      satisfactionSurvey: { select: { id: true, answeredAt: true, closingResolvedAt: true, closingOutcome: true } },
+    },
+  });
+  if (!last || last.status !== "CLOSED" || !last.closedAt || last.closeReason === NO_RETURN_CLOSE_REASON) return null;
+  if (last.channel !== channel || (channel === "WHATSAPP" ? last.whatsappConnectionId : last.metaConnectionId) !== connectionId) return null;
+  const agent = last.assignedAgent;
+  if (!agent || agent.isAssistant) return null;
+  if (last.closedByUserId && last.closedByUserId !== agent.id) {
+    const closer = await prisma.user.findUnique({ where: { id: last.closedByUserId }, select: { isAssistant: true } });
+    if (closer?.isAssistant) return null;
+  }
+
+  // The window counts from the last thing that happened on the close: the close itself, the last message the platform
+  // sent after it (the survey's question, its thanks, the closing message), or the closing message given up this very
+  // moment because the customer wrote (satisfaction.captureSurveyAnswer) — so it is never "too late" while it waited.
+  const lastSent = await prisma.message.findFirst({
+    where: { conversationId: last.id, direction: "OUTBOUND", createdAt: { gt: last.closedAt } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  const survey = last.satisfactionSurvey;
+  const canceledNow = survey?.closingOutcome === "CANCELED_CUSTOMER_WROTE" ? survey.closingResolvedAt : null;
+  const anchor = Math.max(last.closedAt.getTime(), lastSent?.createdAt.getTime() ?? 0, canceledNow?.getTime() ?? 0);
+  if (now.getTime() - anchor > minutes * 60_000) return null;
+
+  const available = agent.status === "ACTIVE" && agent.presence !== "OFFLINE";
+  return { conversationId: last.id, agent: { id: agent.id, displayName: agent.displayName }, available, survey };
+}
+
+/** Takes a closed conversation back to its attendant, as if it had never been closed. Null when it was no longer closed. */
+async function reopenForCustomer(recent: NonNullable<Awaited<ReturnType<typeof recentCloseByPerson>>>) {
+  const closed = await prisma.conversationEvent.findFirst({ where: { conversationId: recent.conversationId, type: "CLOSED" }, orderBy: { createdAt: "desc" } });
+  const previousStatus = (closed?.payload as { previousStatus?: ConversationStatus } | null)?.previousStatus;
+  const status = previousStatus && REOPENABLE_STATUSES.includes(previousStatus) ? previousStatus : "IN_PROGRESS";
+  // One statement, only while still closed: two messages arriving together reopen it once.
+  const reopened = await prisma.conversation.updateMany({
+    where: { id: recent.conversationId, status: "CLOSED" },
+    data: { status, closedAt: null, closedByUserId: null, closeReason: null, assignedAgentReadAt: null },
+  });
+  if (reopened.count === 0) return null;
+  await prisma.$transaction([
+    prisma.conversationEvent.create({ data: { conversationId: recent.conversationId, type: "REOPENED", payload: { byCustomer: true, agentId: recent.agent.id } } }),
+    prisma.conversationNote.create({ data: { conversationId: recent.conversationId, body: REOPENED_BY_CUSTOMER_NOTE } }),
+    // A survey nobody answered is over (it never counts in the NPS), and gone so the next close asks again; an answered one stays.
+    ...(recent.survey && !recent.survey.answeredAt ? [prisma.satisfactionSurvey.deleteMany({ where: { id: recent.survey.id, answeredAt: null } })] : []),
+  ]);
+  return prisma.conversation.findUniqueOrThrow({ where: { id: recent.conversationId } });
+}
+
 export async function findOrOpenConversationForInboundMessage(
   connectionId: string,
   contactId: string,
@@ -706,6 +784,28 @@ export async function findOrOpenConversationForInboundMessage(
     return { conversation, isNewConversation: false, autoAssignedAgentId: mentionedAgent.id as string | null, flowId: null as string | null, closedMessage: null as string | null };
   }
 
+  // The customer answered right after a person closed the conversation: it goes back to that same attendant, still the
+  // same conversation — before the Fluxo, the Assistente Virtual or the queue get to it.
+  const recentClose = await recentCloseByPerson(contactId, connectionId, channel, new Date());
+  if (recentClose?.available) {
+    const reopened = await reopenForCustomer(recentClose);
+    if (reopened) {
+      return {
+        conversation: reopened,
+        isNewConversation: false,
+        autoAssignedAgentId: null as string | null,
+        flowId: null as string | null,
+        closedMessage: null as string | null,
+        reopenedForAgentId: recentClose.agent.id as string | null,
+      };
+    }
+    // Reopened by something else in this same instant (a "Desfazer", the other of two messages): that one takes it.
+    const taken = await findActiveConversationForContact(contactId);
+    if (taken) return { conversation: taken, isNewConversation: false, autoAssignedAgentId: null as string | null, flowId: null as string | null, closedMessage: null as string | null };
+  }
+  // Same case with the attendant offline (or inactive): straight to the queue, with a note — no Fluxo, no Assistente.
+  const returnedToQueue = recentClose && !recentClose.available ? recentClose.agent : null;
+
   // Encerrada por falta de retorno e o cliente voltou: a conversa nova vai direto para o mesmo atendente, se ele está
   // online (senão, fila normal) — com a nota que conta o que aconteceu.
   const lastConversation = await prisma.conversation.findFirst({
@@ -726,7 +826,7 @@ export async function findOrOpenConversationForInboundMessage(
   // An active Fluxo on this connection talks to the customer first (see
   // flow-engine.service.ts) — unless they asked for an online agent by name.
   const connectionFlow =
-    !mentionedAgent && channel === "WHATSAPP"
+    !mentionedAgent && !returnedToQueue && channel === "WHATSAPP"
       ? await prisma.flowConnection.findFirst({
           where: { whatsappConnectionId: connectionId, flow: { active: true } },
           select: { flowId: true, flow: { select: { nodes: { where: { type: "START" }, select: { data: true } } } } },
@@ -737,7 +837,7 @@ export async function findOrOpenConversationForInboundMessage(
   const activeFlow = flowBlock ? null : connectionFlow;
   // Assistente Virtual (Configurações › Assistente Virtual): with no Fluxo on the connection, it talks to the customer
   // first — at any hour; it tells the out-of-hours notice itself when it passes the conversation to the queue.
-  const contactPhone = !mentionedAgent && !activeFlow && channel === "WHATSAPP" ? (await prisma.contact.findUnique({ where: { id: contactId }, select: { phone: true } }))?.phone ?? null : null;
+  const contactPhone = !mentionedAgent && !returnedToQueue && !activeFlow && channel === "WHATSAPP" ? (await prisma.contact.findUnique({ where: { id: contactId }, select: { phone: true } }))?.phone ?? null : null;
   const aiTakes = contactPhone ? await assistantTakes(connectionId, contactId, contactPhone) : false;
   // A flow that tells the hours itself (Início › avisar fora do horário) replaces the schedule's notice.
   const flowTellsHours = Boolean((activeFlow?.flow.nodes[0]?.data as { outOfHoursPrompt?: boolean } | null)?.outOfHoursPrompt);
@@ -790,6 +890,11 @@ export async function findOrOpenConversationForInboundMessage(
 
   if (returnedAfterNoReturn) {
     await prisma.conversationNote.create({ data: { conversationId: conversation.id, body: "Cliente voltou após encerramento por falta de retorno" } });
+  }
+  if (returnedToQueue) {
+    await prisma.conversationNote.create({
+      data: { conversationId: conversation.id, body: `Cliente respondeu após o encerramento — ${returnedToQueue.displayName} não estava online, a conversa veio para a fila` },
+    });
   }
   if (flowBlock) await recordBlocked(conversation.id, "FLOW", flowBlock);
 

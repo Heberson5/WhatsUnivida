@@ -74,6 +74,13 @@ export function useSocketEvents(activeConversationId: string | null) {
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       toast.success("Nova conversa aceita.");
     };
+    // The customer answered right after the close: the conversation is back on this attendant's list.
+    const onReopened = () => {
+      queryClient.invalidateQueries({ queryKey: ["mine"] });
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["my-day"] });
+      toast.info("O cliente respondeu após o encerramento — a conversa voltou para você.");
+    };
     const onRemoved = () => {
       queryClient.invalidateQueries({ queryKey: ["mine"] });
       queryClient.invalidateQueries({ queryKey: ["my-day"] });
@@ -232,6 +239,7 @@ export function useSocketEvents(activeConversationId: string | null) {
     socket.on("queue:reminder", onQueueReminder);
     socket.on("conversation:no-reply-reminder", onNoReplyReminder);
     socket.on("conversation:assigned", onAssigned);
+    socket.on("conversation:reopened", onReopened);
     socket.on("conversation:removed", onRemoved);
     socket.on("conversation:transferred-in", onTransferredIn);
     socket.on("message:new", onMessageNew);
@@ -273,6 +281,7 @@ export function useSocketEvents(activeConversationId: string | null) {
       socket.off("queue:reminder", onQueueReminder);
       socket.off("conversation:no-reply-reminder", onNoReplyReminder);
       socket.off("conversation:assigned", onAssigned);
+      socket.off("conversation:reopened", onReopened);
       socket.off("conversation:removed", onRemoved);
       socket.off("conversation:transferred-in", onTransferredIn);
       socket.off("message:new", onMessageNew);

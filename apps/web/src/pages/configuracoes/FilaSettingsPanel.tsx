@@ -12,6 +12,7 @@ interface BusinessSettings extends Partial<AlertThresholds> {
   queueReminderIntervalMinutes?: number;
   typingToCustomer?: boolean;
   typingFromCustomer?: boolean;
+  reopenAfterCloseMinutes?: number;
 }
 
 interface TypingSettings {
@@ -29,6 +30,7 @@ const ALERT_FIELDS: { key: keyof AlertThresholds; label: string }[] = [
 
 const MIN_MINUTES = 1;
 const MAX_MINUTES = 60; // matches the backend's zod schema
+const DEFAULT_REOPEN_MINUTES = 5;
 
 export function FilaSettingsPanel() {
   const queryClient = useQueryClient();
@@ -42,6 +44,12 @@ export function FilaSettingsPanel() {
   });
 
   const [minutes, setMinutes] = useState(1);
+  const savedReopen = data?.reopenAfterCloseMinutes ?? DEFAULT_REOPEN_MINUTES;
+  const [reopenMinutes, setReopenMinutes] = useState(DEFAULT_REOPEN_MINUTES);
+  useEffect(() => {
+    setReopenMinutes(data?.reopenAfterCloseMinutes ?? DEFAULT_REOPEN_MINUTES);
+  }, [data?.reopenAfterCloseMinutes]);
+  const reopenValid = Number.isInteger(reopenMinutes) && reopenMinutes >= MIN_MINUTES && reopenMinutes <= MAX_MINUTES;
   const savedAlerts = Object.fromEntries(ALERT_FIELDS.map(({ key }) => [key, data?.[key] ?? DEFAULT_ALERT_THRESHOLDS[key]])) as unknown as AlertThresholds;
   const [alerts, setAlerts] = useState<AlertThresholds>(DEFAULT_ALERT_THRESHOLDS);
   const savedTyping: TypingSettings = { typingToCustomer: data?.typingToCustomer !== false, typingFromCustomer: data?.typingFromCustomer !== false };
@@ -59,10 +67,10 @@ export function FilaSettingsPanel() {
     alerts.noReplyDangerMinutes > alerts.noReplyWarningMinutes &&
     alerts.queueDangerMinutes > alerts.queueWarningMinutes;
   const alertsDirty = ALERT_FIELDS.some(({ key }) => alerts[key] !== savedAlerts[key]);
-  const canSave = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES && alertsValid;
+  const canSave = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES && alertsValid && reopenValid;
 
   const saveMutation = useMutation({
-    mutationFn: () => api.patch("/settings/queue", { queueReminderIntervalMinutes: minutes, ...alerts, ...typing }),
+    mutationFn: () => api.patch("/settings/queue", { queueReminderIntervalMinutes: minutes, ...alerts, ...typing, reopenAfterCloseMinutes: reopenMinutes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["business-settings"] });
       toast.success("Configurações da fila salvas.");
@@ -147,6 +155,30 @@ export function FilaSettingsPanel() {
         </div>
       </div>
 
+      <div className="border-t border-border pt-5">
+        <h2 className="text-base font-semibold">Cliente responde após o encerramento</h2>
+        <p className="mt-1 text-sm text-muted">
+          Se o cliente escrever logo depois de a conversa ser encerrada por uma pessoa, ela é reaberta com o mesmo atendente, e a mensagem de
+          encerramento e a pesquisa que ainda não saíram deixam de ser enviadas. Vale enquanto a mensagem de encerramento está a caminho e por
+          este tempo depois da última mensagem enviada. Um “obrigado” ou a nota da pesquisa não reabrem a conversa. Com o atendente offline, o
+          cliente vai direto para a fila.
+        </p>
+        <label className="mt-3 block max-w-xs">
+          <span className="mb-1 block text-sm font-medium">Reabrir com o mesmo atendente por (minutos)</span>
+          <input
+            type="number"
+            min={MIN_MINUTES}
+            max={MAX_MINUTES}
+            step={1}
+            value={reopenMinutes}
+            disabled={!canEditar}
+            onChange={(e) => setReopenMinutes(Number(e.target.value))}
+            className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm disabled:opacity-60"
+          />
+        </label>
+        {!reopenValid && <p className="mt-2 text-xs text-danger">Informe de {MIN_MINUTES} a {MAX_MINUTES} minutos.</p>}
+      </div>
+
       {canEditar && (
         <button
           onClick={() => saveMutation.mutate()}
@@ -160,7 +192,7 @@ export function FilaSettingsPanel() {
       <GoalsPanel />
       {canEditar && data && (
         <UnsavedChangesBar
-          dirty={(data.queueReminderIntervalMinutes !== undefined && minutes !== data.queueReminderIntervalMinutes) || alertsDirty || typingDirty}
+          dirty={(data.queueReminderIntervalMinutes !== undefined && minutes !== data.queueReminderIntervalMinutes) || alertsDirty || typingDirty || reopenMinutes !== savedReopen}
           saving={saveMutation.isPending}
           canSave={canSave}
           onSave={() => saveMutation.mutate()}
@@ -168,6 +200,7 @@ export function FilaSettingsPanel() {
             setMinutes(data.queueReminderIntervalMinutes ?? 1);
             setAlerts(savedAlerts);
             setTyping(savedTyping);
+            setReopenMinutes(savedReopen);
           }}
         />
       )}

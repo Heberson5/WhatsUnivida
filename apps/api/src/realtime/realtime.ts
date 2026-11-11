@@ -125,6 +125,13 @@ export const realtimeEvents = {
   notesChanged: (conversationId: string, userIds: string[]) => {
     for (const userId of userIds) getIO()?.to(ROOMS.user(userId)).emit("conversation:notes", { conversationId });
   },
+  /** The customer answered right after the close: the conversation is back on its attendant's list (and off Gestão's "encerradas"). */
+  conversationReopened: (conversationId: string, connectionId: string, agentId: string) => {
+    getIO()?.to(ROOMS.user(agentId)).emit("conversation:reopened", { conversationId });
+    getIO()?.to(ROOMS.queue(connectionId)).emit("queue:updated");
+    getIO()?.to(ROOMS.oversight()).emit("queue:updated");
+    getIO()?.to(ROOMS.oversight()).emit("oversight:updated");
+  },
   conversationClosed: (conversationId: string, agentId: string) => {
     getIO()?.to(ROOMS.user(agentId)).emit("conversation:removed", { conversationId });
     getIO()?.to(ROOMS.oversight()).emit("oversight:updated");
