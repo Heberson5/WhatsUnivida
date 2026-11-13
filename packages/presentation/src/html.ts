@@ -1,4 +1,4 @@
-import { ANNOUNCEMENT_KIND_LABEL, AUTO_MESSAGE_KIND_LABEL, NPS_SMALL_SAMPLE, type SatisfactionResponseDTO, type SeriesChartKind } from "@whatsatendende/types";
+import { ANNOUNCEMENT_KIND_LABEL, AUTO_MESSAGE_KIND_LABEL, NPS_SMALL_SAMPLE, SAUBERLICH_CREDIT, type SatisfactionResponseDTO, type SeriesChartKind } from "@whatsatendende/types";
 import { darken, lighten } from "./colors";
 import { arrivalsSummary } from "./shared";
 import { compareWithPrevious, describePeriod, formatMinutes, formatNps, formatNumber, npsDelta, npsZone, percentOf, type StatDelta } from "./metrics";
@@ -769,8 +769,8 @@ export function buildDashboardHtml(input: PresentationInput): string {
   const sections = slides
     .map((s, i) =>
       s.kind
-        ? `<section class="slide ${s.kind}" id="s${i + 1}" aria-label="${esc(s.title)}"><div class="inner">${s.body}</div></section>`
-        : `<section class="slide" id="s${i + 1}" aria-label="${esc(s.title)}"><div class="inner"><p class="kicker">${esc(s.section)}</p><h2>${esc(s.title)}</h2>${s.body}</div><footer>${esc(input.companyName)} · Relatório de atendimento · ${esc(periodLine)}<span>${i + 1} / ${slides.length}</span></footer></section>`
+        ? `<section class="slide ${s.kind}" id="s${i + 1}" aria-label="${esc(s.title)}"><div class="inner">${s.body}<p class="credit">${SAUBERLICH_CREDIT}</p></div></section>`
+        : `<section class="slide" id="s${i + 1}" aria-label="${esc(s.title)}"><div class="inner"><p class="kicker">${esc(s.section)}</p><h2>${esc(s.title)}</h2>${s.body}</div><footer>${esc(input.companyName)} · Relatório de atendimento · ${esc(periodLine)} · ${SAUBERLICH_CREDIT}<span>${i + 1} / ${slides.length}</span></footer></section>`
     )
     .join("");
 
@@ -816,7 +816,7 @@ nav{display:flex;align-items:center;gap:6px;flex-shrink:0}nav button,nav select{
 .inner{max-width:1180px;margin:0 auto}
 .kicker{margin:0;color:var(--brand);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:12px}
 h2{margin:2px 0 16px;color:var(--ink);font-size:clamp(22px,3vw,32px);line-height:1.15}h3{margin:0 0 12px;color:var(--ink);font-size:17px}
-footer{max-width:1180px;margin:18px auto 0;display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}footer span{white-space:nowrap}
+.credit{color:#94A3B8;font-size:12px;margin:28px 0 0}footer{max-width:1180px;margin:18px auto 0;display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}footer span{white-space:nowrap}
 .grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}.g12{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}.g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
 @media (max-width:899px){.g12,.g21{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(15,23,42,.06);min-width:0}.card.soft{background:var(--soft);border-color:transparent}

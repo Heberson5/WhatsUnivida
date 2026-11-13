@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ShieldCheck, Wrench } from "lucide-react";
+import { sauberlichCopyright } from "@whatsatendende/types";
 
 /**
  * Full-screen "system in maintenance" experience shown to AGENT/MANAGER on
@@ -80,6 +81,9 @@ export function MaintenanceScreen({ message, onAdminAccess }: { message: string 
           <ShieldCheck className="h-3.5 w-3.5" />
           Acesso administrativo
         </button>
+        <p className="mt-6 text-center text-[11px] text-white/45" data-testid="sauberlich-copyright">
+          {sauberlichCopyright()}
+        </p>
       </div>
     </div>
   );

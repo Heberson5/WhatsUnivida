@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import type { NoReturnSettingsDTO } from "@whatsatendende/types";
+import { SAUBERLICH_CREDIT, type NoReturnSettingsDTO } from "@whatsatendende/types";
 import { prisma } from "../../lib/prisma";
 import { encryptSecret, decryptSecret } from "../../lib/crypto";
 import { realtimeEvents } from "../../realtime/realtime";
@@ -444,7 +444,8 @@ function baseTemplateHtml(titleText: string, bodyHtml: string): string {
           </tr>
           <tr>
             <td style="padding:16px 32px; border-top:1px solid #EEEEEE; font-family:Helvetica,Arial,sans-serif; font-size:12px; color:#9AA1A9; text-align:center;">
-              &copy; {{ano}} {{empresa}}. Todos os direitos reservados.
+              &copy; {{ano}} {{empresa}}. Todos os direitos reservados.<br>
+              <span style="font-size:11px; color:#B4BAC1;">${SAUBERLICH_CREDIT}</span>
             </td>
           </tr>
         </table>

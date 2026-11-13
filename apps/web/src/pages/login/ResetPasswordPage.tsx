@@ -1,3 +1,4 @@
+import { sauberlichCopyright } from "@whatsatendende/types";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -128,6 +129,9 @@ export default function ResetPasswordPage() {
           <Link to="/login" className="focus-ring text-primary hover:underline">
             Voltar ao login
           </Link>
+        </p>
+        <p className="mt-6 text-center text-[11px] text-muted" data-testid="sauberlich-copyright">
+          {sauberlichCopyright()}
         </p>
       </div>
     </div>

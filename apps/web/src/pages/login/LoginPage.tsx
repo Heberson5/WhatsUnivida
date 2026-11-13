@@ -1,3 +1,4 @@
+import { sauberlichCopyright } from "@whatsatendende/types";
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, Moon, Sun } from "lucide-react";
@@ -275,6 +276,9 @@ export default function LoginPage() {
           </span>
           <span aria-hidden>·</span>
           <span>Problemas para entrar? Fale com o administrador</span>
+        </p>
+        <p className="mt-3 text-center text-[11px] text-muted" data-testid="sauberlich-copyright">
+          {sauberlichCopyright()}
         </p>
       </div>
     </div>

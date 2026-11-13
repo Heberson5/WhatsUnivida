@@ -25,7 +25,7 @@ import {
   Megaphone,
   Star,
 } from "lucide-react";
-import { PERMISSION, type ConversationListItemDTO, type GroupsSummaryDTO, type Permission, type WhatsAppConnectionStatus } from "@whatsatendende/types";
+import { PERMISSION, SAUBERLICH_CREDIT, type ConversationListItemDTO, type GroupsSummaryDTO, type Permission, type WhatsAppConnectionStatus } from "@whatsatendende/types";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../store/auth-store";
 import { useBranding } from "../../hooks/useBranding";
@@ -381,17 +381,24 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: { mobileOpen?: bo
           </NavLink>
         </div>
 
-        {!isCollapsed &&
-          branding?.appVersion && (
-            <NavLink
-              to="/notas-de-versao"
-              onClick={onMobileClose}
-              className="focus-ring shrink-0 px-4 pb-2 text-xs text-side-muted hover:text-side-strong"
-              title="Ver as notas de versão"
-            >
-              Versão {branding.appVersion}
-            </NavLink>
-          )}
+        {!isCollapsed && branding?.appVersion && (
+          <NavLink
+            to="/notas-de-versao"
+            onClick={onMobileClose}
+            className="focus-ring shrink-0 px-4 text-xs text-side-muted hover:text-side-strong"
+            title="Ver as notas de versão"
+          >
+            Versão {branding.appVersion}
+          </NavLink>
+        )}
+        {/* The author's mark — on every page, also with the menu collapsed (then just the initials, with the full text on hover). */}
+        <p
+          className={`shrink-0 pb-2 text-[10px] leading-tight text-side-muted ${isCollapsed ? "px-1 pt-1 text-center" : "px-4 pt-0.5"}`}
+          title={SAUBERLICH_CREDIT}
+          data-testid="sauberlich-credit"
+        >
+          {isCollapsed ? "SS" : SAUBERLICH_CREDIT}
+        </p>
       </aside>
       {/* Discreet arrow on the sidebar's top edge — collapses or expands it (desktop only; on mobile the sidebar is an overlay). */}
       <button

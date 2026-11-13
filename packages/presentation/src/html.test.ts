@@ -107,6 +107,13 @@ describe("apresentação em HTML", () => {
     expect(kpis).toContain("+25 vs 2 em sex 30/10 até 14:18");
   });
 
+  it("cada slide leva a marca Desenvolvido por Sauberlich System", () => {
+    const html = buildDashboardHtml(input());
+    const slides = html.match(/<section class="slide[\s\S]*?<\/section>/g) ?? [];
+    expect(slides.length).toBeGreaterThan(5);
+    for (const slide of slides) expect(slide).toContain("Desenvolvido por Sauberlich System");
+  });
+
   it("funciona sem internet: nada no arquivo aponta para fora", () => {
     const html = buildDashboardHtml(input());
     expect(html).not.toMatch(/(src|href)="https?:/);

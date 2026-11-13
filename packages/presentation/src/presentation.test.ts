@@ -101,6 +101,13 @@ const chartWith = (xmlParts: (readonly [string, string])[], label: string) =>
   xmlParts.find(([part, xml]) => /^ppt\/charts\/chart\d+\.xml$/.test(part) && xml.includes(`<c:v>${label}</c:v>`))![1];
 
 describe("apresentação do Dashboard", () => {
+  it("leva a marca Desenvolvido por Sauberlich System em todos os modelos de slide (capa, conteúdo e encerramento)", async () => {
+    const { xmlParts } = await open(input());
+    const layouts = xmlParts.filter(([part]) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(part) && !part.endsWith("slideLayout1.xml"));
+    expect(layouts.length).toBeGreaterThanOrEqual(3);
+    for (const [, xml] of layouts) expect(xml).toContain("Desenvolvido por Sauberlich System");
+  });
+
   it("monta capa, resumo, indicadores, volume, jornada, NPS, equipe, presença, palavras, glossário e encerramento — nessa ordem", async () => {
     const { slides } = await open(input());
     const order = [

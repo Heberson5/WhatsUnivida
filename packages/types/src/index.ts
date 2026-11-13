@@ -4087,3 +4087,14 @@ export interface ClientDataCorrectionDTO {
   resolvedAt: string | null;
   resolvedByName: string | null;
 }
+
+/**
+ * The author's mark — Sauberlich System. Fixed in the code, never in Configurações (Identidade visual changes the
+ * company's name and logo, not this): "Desenvolvido por" on every page of the system, in the e-mails and in the
+ * reports and presentations; the copyright on the login. Not on the boleto nor on documents sent in a conversation.
+ * Tests check it on each of these places — removing it fails the build.
+ */
+export const SAUBERLICH_CREDIT = "Desenvolvido por Sauberlich System";
+export function sauberlichCopyright(year: number = new Date().getFullYear()): string {
+  return `© ${year} Sauberlich System · Todos os direitos reservados`;
+}

@@ -2,6 +2,7 @@ import type PptxGenJS from "pptxgenjs";
 import {
   ANNOUNCEMENT_KIND_LABEL,
   NPS_SMALL_SAMPLE,
+  SAUBERLICH_CREDIT,
   type AnnouncementStatsDTO,
   type DashboardChartKindsDTO,
   type DistributionChartKind,
@@ -375,8 +376,9 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
   };
   const headerLogo = logoBox(1.7, 0.55);
 
-  pptx.defineSlideMaster({ title: MASTER_COVER, background: { color: C.dark } });
-  pptx.defineSlideMaster({ title: MASTER_CLOSING, background: { color: C.dark } });
+  const credit = { text: { text: SAUBERLICH_CREDIT, options: { x: M, y: 6.98, w: CONTENT_W, h: 0.3, fontFace: FONT, fontSize: 9, color: "94A3B8", margin: 0, valign: "middle" as const } } };
+  pptx.defineSlideMaster({ title: MASTER_COVER, background: { color: C.dark }, objects: [credit] });
+  pptx.defineSlideMaster({ title: MASTER_CLOSING, background: { color: C.dark }, objects: [credit] });
   pptx.defineSlideMaster({
     title: MASTER_CONTENT,
     background: { color: PAGE },
@@ -390,7 +392,7 @@ export function buildDashboardPresentation(PptxGen: typeof PptxGenJS, input: Pre
       },
       {
         text: {
-          text: `${input.companyName}  ·  Relatório de atendimento  ·  ${periodLine}`,
+          text: `${input.companyName}  ·  Relatório de atendimento  ·  ${periodLine}  ·  ${SAUBERLICH_CREDIT}`,
           options: { x: M, y: 6.98, w: CONTENT_W - 1, h: 0.3, fontFace: FONT, fontSize: 10, color: FAINT, margin: 0, valign: "middle" },
         },
       },

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { NO_RETURN_CLOSE_REASON } from "../conversations/conversations.service";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
+import { SAUBERLICH_CREDIT } from "@whatsatendende/types";
 import { imageSize } from "image-size";
 import { prisma } from "../../lib/prisma";
 import { conversationSpanMs, firstResponseDiffs, firstResponseMs, SCHEDULE_SELECT, spanDiffs } from "../../lib/conversation-timings";
@@ -193,6 +194,8 @@ export async function toXlsx(rows: Record<string, unknown>[], sheetName: string,
   workbook.creator = branding?.companyName ?? "WhatsAtendende";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(sheetName.slice(0, 31)); // Excel's own sheet-name length limit
+  // The author's mark in the printed page's foot (Excel's own footer — not a row in the data).
+  sheet.headerFooter.oddFooter = `&R&8${SAUBERLICH_CREDIT}`;
   const headerFill = `FF${(branding?.primaryColor ?? "#0097B4").replace("#", "").toUpperCase()}`;
 
   if (rows.length > 0) {
@@ -222,7 +225,12 @@ export async function toXlsx(rows: Record<string, unknown>[], sheetName: string,
 /** PDF export — see PROMPT: "Relatórios poder extrair em PDF". A plain, readable tabular layout — no external headless-browser dependency. */
 export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMinutes = 0, branding?: ReportBranding): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape" });
+    // bufferPages: the author's mark goes on every page's foot once the table is laid out (see creditEveryPage).
+    const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape", bufferPages: true });
+    const finish = () => {
+      creditEveryPage(doc);
+      doc.end();
+    };
     const chunks: Buffer[] = [];
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -255,7 +263,7 @@ export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMi
 
     if (rows.length === 0) {
       doc.fontSize(11).fillColor("#14202b").text("Nenhum dado para o período selecionado.");
-      doc.end();
+      finish();
       return;
     }
 
@@ -319,6 +327,22 @@ export function toPdf(rows: Record<string, unknown>[], title: string, tzOffsetMi
       drawRow(cells, { shaded: idx % 2 === 1 });
     });
 
-    doc.end();
+    finish();
   });
+}
+
+/** "Desenvolvido por Sauberlich System" at the foot of each page, under the bottom margin (so no page is added for it). */
+function creditEveryPage(doc: PDFKit.PDFDocument): void {
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    const bottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.font("Helvetica").fontSize(7).fillColor("#94a3b8").text(SAUBERLICH_CREDIT, doc.page.margins.left, doc.page.height - 22, {
+      width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+      align: "right",
+      lineBreak: false,
+    });
+    doc.page.margins.bottom = bottom;
+  }
 }

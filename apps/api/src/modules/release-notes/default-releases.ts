@@ -11,6 +11,34 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.37.7",
+    date: "13 nov 2026",
+    name: "Desenvolvido por Sauberlich System",
+    summary: "O sistema passa a levar a marca de quem o desenvolveu, a Sauberlich System: no login, no menu de todas as páginas, nos e-mails, nos relatórios em PDF e planilha e na apresentação do Dashboard. O boleto e os documentos enviados nas conversas continuam sem ela.",
+    notes: [
+      {
+        type: "novo",
+        area: "geral",
+        title: "Marca no login e em todas as páginas",
+        text: "A tela de login, a de manutenção e a de nova senha mostram \"© Sauberlich System · Todos os direitos reservados\", com o ano atual. Dentro do sistema, o pé do menu mostra \"Desenvolvido por Sauberlich System\" embaixo da versão, em todas as páginas; com o menu recolhido, aparece \"SS\", com o texto completo ao passar o mouse. A marca não muda com a Identidade visual: o nome e o logo da empresa continuam os seus.",
+        where: "Login e menu lateral",
+        images: [
+          { src: "/notas-de-versao/sauberlich-login.webp", caption: "O direito autoral no pé do login", size: "small" },
+          { src: "/notas-de-versao/sauberlich-menu.webp", caption: "No pé do menu, embaixo da versão", size: "small" },
+        ],
+      },
+      {
+        type: "novo",
+        area: "geral",
+        title: "Marca nos e-mails, relatórios e apresentações",
+        text: "Os e-mails do sistema (redefinição de senha, boas-vindas, conta desativada, senha alterada, agendamento da apresentação e alertas) trazem \"Desenvolvido por Sauberlich System\" no rodapé, embaixo do nome da empresa. Também levam a marca o pé de cada página dos relatórios em PDF, o rodapé de impressão das planilhas e cada slide da apresentação do Dashboard, no PowerPoint e na versão HTML. O boleto e os documentos enviados nas conversas ficam sem a marca.",
+        where: "E-mails, Relatórios e Dashboard › Apresentação",
+        roles: ["ADMIN", "MANAGER"],
+        images: [{ src: "/notas-de-versao/sauberlich-email.webp", caption: "O rodapé de um e-mail do sistema", size: "small" }],
+      },
+    ],
+  },
+  {
     version: "2.37.6",
     date: "8 nov 2026",
     name: "Assistente Virtual: todos os boletos de uma vez",

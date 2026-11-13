@@ -39,6 +39,11 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: /entrar/i })).toBeInTheDocument();
   });
 
+  it("shows the Sauberlich System copyright on the login and on the maintenance screen", async () => {
+    renderLoginPage();
+    expect(await screen.findByText(`© ${new Date().getFullYear()} Sauberlich System · Todos os direitos reservados`)).toBeInTheDocument();
+  });
+
   it("toggles password visibility", async () => {
     renderLoginPage();
     const passwordInput = (await screen.findByLabelText(/^senha$/i)) as HTMLInputElement;
@@ -82,6 +87,7 @@ describe("LoginPage", () => {
 
     expect(await screen.findByText(/Voltamos às 14h\./)).toBeInTheDocument();
     expect(screen.queryByLabelText(/e-mail/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("sauberlich-copyright")).toHaveTextContent("Sauberlich System · Todos os direitos reservados");
   });
 
   it("lets an admin reveal the normal login form from the maintenance screen via 'Acesso administrativo'", async () => {
