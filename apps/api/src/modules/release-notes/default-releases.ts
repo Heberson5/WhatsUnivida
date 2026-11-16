@@ -14,7 +14,7 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
     version: "2.40.2",
     date: "16 nov 2026",
     name: "Erro ao salvar diz o motivo",
-    summary: "Quando um cadastro é recusado ao salvar, a mensagem agora diz o que precisa ser corrigido, em vez de só \"Dados inválidos\". A consulta do banco de dados passa a aceitar até 50.000 caracteres.",
+    summary: "Quando um cadastro é recusado ao salvar, a mensagem agora diz o que precisa ser corrigido, em vez de só \"Dados inválidos\". A consulta do SQL Server passa a aceitar o próprio script do ERP, com tabelas temporárias, e até 50.000 caracteres.",
     notes: [
       {
         type: "correcao",
@@ -36,6 +36,14 @@ export const DEFAULT_RELEASES: ReleaseContent[] = [
         area: "dados",
         title: "Consulta do banco de dados com até 50.000 caracteres",
         text: "O campo Consulta de uma fonte de dados do tipo banco de dados aceitava até 8000 caracteres, pouco para o script de um ERP, cheio de nomes longos de tabelas e colunas. Agora aceita até 50.000. Continua valendo a regra de segurança: a consulta precisa ser um único SELECT (ou WITH … SELECT), que só lê os dados.",
+        where: "Dados › Fontes de dados › Banco de dados",
+        roles: ["ADMIN", "MANAGER"],
+      },
+      {
+        type: "melhoria",
+        area: "dados",
+        title: "Script do ERP direto na consulta do SQL Server",
+        text: "No SQL Server, a consulta pode ser o próprio script do ERP, como o whatsatendente.sql, com DECLARE, SET e tabelas temporárias (#...), que é bem mais leve para o banco do que a mesma coisa escrita como um único SELECT. Ele é conferido ao salvar: só pode criar, alterar e apagar as próprias tabelas temporárias, nunca uma tabela do banco. Além disso, roda dentro de uma transação que é sempre desfeita no fim. A leitura do banco pode levar até 10 minutos e acontece em segundo plano.",
         where: "Dados › Fontes de dados › Banco de dados",
         roles: ["ADMIN", "MANAGER"],
       },

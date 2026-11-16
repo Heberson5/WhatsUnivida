@@ -9,7 +9,7 @@ import { requirePermission } from "../../lib/permissions";
 import { writeAudit } from "../../lib/audit";
 import { Errors } from "../../lib/http-error";
 import { prisma } from "../../lib/prisma";
-import { microsoftAuthorizeUrl, microsoftToken } from "./data-source-fetch";
+import { assertReadOnlyQuery, microsoftAuthorizeUrl, microsoftToken } from "./data-source-fetch";
 import * as service from "./data-sources.service";
 import { createUpload } from "../../lib/upload";
 
@@ -95,6 +95,14 @@ const sourceSchema = z
       need("database", "o banco");
       need("user", "o usuário");
       need("query", "a consulta");
+      // Refused on save, with the reason, instead of only when the source is first read.
+      if (c.query && ["sqlserver", "postgres", "mysql"].includes(String(c.dialect))) {
+        try {
+          assertReadOnlyQuery(String(c.query), c.dialect as "sqlserver" | "postgres" | "mysql");
+        } catch (err) {
+          ctx.addIssue({ code: "custom", message: (err as Error).message, path: ["config", "query"] });
+        }
+      }
     }
   });
 

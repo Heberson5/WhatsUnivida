@@ -17,6 +17,8 @@ const MAX_ROWS = 750_000;
 // Excel stores numbers with 15 significant digits: from 16 digits on, the value in the file is already rounded.
 const EXCEL_SAFE_NUMBER = 1e15;
 const FETCH_TIMEOUT_MS = 60_000;
+// An ERP's script over its whole base takes about a minute; it runs in the background, so it may take longer.
+const DATABASE_TIMEOUT_MS = 10 * 60_000;
 // A 300 MB file over a slow link takes minutes.
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 // The most a .zip/.gz may hold once unpacked — a CSV compresses about 10×.
@@ -370,12 +372,87 @@ export interface DatabaseConfig {
 }
 
 /** Only a single SELECT (or WITH … SELECT) — this integration never writes. */
-export function assertReadOnlyQuery(query: string): void {
+function assertSingleSelect(query: string): void {
   const sql = query.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/;\s*$/, "");
   if (!/^(select|with)\b/i.test(sql) || sql.includes(";")) throw new Error("A consulta precisa ser um único SELECT");
   if (/\b(insert|update|delete|merge|drop|alter|create|truncate|exec|execute|grant|revoke|into)\b/i.test(sql)) {
     throw new Error("A consulta só pode ler dados (SELECT), sem alterar nada");
   }
+}
+
+/**
+ * The script's code alone, lowercase: comments, texts ('...') and names in brackets or quotes become blanks, so a
+ * word inside them ('delete', [dt_update]) is never taken for a command.
+ */
+function sqlServerCode(script: string): string {
+  let out = "";
+  let i = 0;
+  while (i < script.length) {
+    const two = script.slice(i, i + 2);
+    if (two === "--") {
+      const end = script.indexOf("\n", i);
+      i = end < 0 ? script.length : end;
+      out += " ";
+    } else if (two === "/*") {
+      const end = script.indexOf("*/", i + 2);
+      i = end < 0 ? script.length : end + 2;
+      out += " ";
+    } else if (script[i] === "'" || script[i] === "[" || script[i] === '"') {
+      const close = script[i] === "[" ? "]" : script[i];
+      let j = i + 1;
+      while (j < script.length) {
+        if (script[j] === close && script[j + 1] === close) j += 2; // '' or ]] inside
+        else if (script[j] === close) break;
+        else j++;
+      }
+      out += close === "'" ? " 'x' " : " [x] ";
+      i = j + 1;
+    } else {
+      out += script[i].toLowerCase();
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
+ * SQL Server: a reading script, as an ERP's own (DECLARE, SET, temporary tables #... and DROP TABLE #...). It may write
+ * only to its temporary tables and table variables, which vanish with the connection — never to a table of the
+ * database. Besides this check, the script runs inside a transaction that is always rolled back (fetchFromDatabase).
+ */
+function assertSqlServerReadScript(script: string): void {
+  let code = sqlServerCode(script);
+  if (!/\bselect\b/.test(code)) throw new Error("A consulta precisa ter um SELECT");
+  // "SET TRANSACTION ISOLATION LEVEL ..." only chooses how to read; any other transaction command is refused below.
+  code = code.replace(/\bset\s+transaction\s+isolation\s+level\b/g, " ");
+  // Writes allowed only into a temporary table (#...) or a table variable (@...).
+  code = code
+    .replace(/\bdrop\s+table\s+(if\s+exists\s+)?#[\w#]+(\s*,\s*#[\w#]+)*/g, " ")
+    .replace(/\bcreate\s+table\s+(?=#)/g, " ")
+    .replace(/\binsert\s+(into\s+)?(?=[#@])/g, " ")
+    .replace(/\binto\s+(?=[#@])/g, " ")
+    .replace(/\bupdate\s+(?=[#@])/g, " ")
+    .replace(/\bdelete\s+(from\s+)?(?=[#@])/g, " ");
+  const forbidden = code.match(
+    /\b(insert|update|delete|merge|into|drop|alter|create|truncate|exec|execute|sp_\w+|xp_\w+|grant|revoke|deny|commit|rollback|save|transaction|tran|backup|restore|shutdown|kill|dbcc|reconfigure|openrowset|opendatasource|openquery|bulk|use|waitfor)\b/
+  );
+  if (forbidden) {
+    throw new Error(`A consulta só pode ler dados: ${forbidden[0].toUpperCase()} não é permitido. Tabelas temporárias (#...) podem ser criadas, alteradas e apagadas.`);
+  }
+}
+
+/** Whether the query only reads: one SELECT for PostgreSQL and MySQL; a reading script for SQL Server. */
+export function assertReadOnlyQuery(query: string, dialect: DataSourceDialect | "any" = "any"): void {
+  if (dialect === "sqlserver") assertSqlServerReadScript(query);
+  else assertSingleSelect(query);
+}
+
+/** A script's result: its last SELECT with columns (the steps before it fill temporary tables). */
+export function lastResultSet<T extends { columns?: Record<string, unknown> }>(recordsets: T[]): T | null {
+  for (let i = recordsets.length - 1; i >= 0; i--) {
+    if (Object.keys(recordsets[i].columns ?? {}).length > 0) return recordsets[i];
+  }
+  return null;
 }
 
 function stringify(value: unknown): string {
@@ -393,7 +470,7 @@ function rowsToTable(records: Record<string, unknown>[], columnNames: string[]):
 }
 
 export async function fetchFromDatabase(config: DatabaseConfig): Promise<FetchedTable> {
-  assertReadOnlyQuery(config.query);
+  assertReadOnlyQuery(config.query, config.dialect);
   if (config.dialect === "sqlserver") {
     const mssql = await import("mssql");
     const pool = await new mssql.ConnectionPool({
@@ -402,19 +479,25 @@ export async function fetchFromDatabase(config: DatabaseConfig): Promise<Fetched
       database: config.database,
       user: config.user,
       password: config.password,
-      requestTimeout: FETCH_TIMEOUT_MS,
+      requestTimeout: DATABASE_TIMEOUT_MS,
       options: { encrypt: false, trustServerCertificate: true, readOnlyIntent: true },
     }).connect();
+    // Always rolled back: even if something slipped past the check above, nothing the script did stays in the database.
+    const transaction = new mssql.Transaction(pool);
     try {
-      const result = await pool.request().query(config.query);
-      return rowsToTable(result.recordset, Object.keys(result.recordset.columns ?? {}));
+      await transaction.begin();
+      const result = await new mssql.Request(transaction).query(config.query);
+      const table = lastResultSet((result.recordsets ?? []) as unknown as (Record<string, unknown>[] & { columns?: Record<string, unknown> })[]);
+      if (!table) throw new Error("A consulta não devolveu nenhuma tabela: o script precisa terminar com um SELECT");
+      return rowsToTable(table, Object.keys(table.columns ?? {}));
     } finally {
+      await transaction.rollback().catch(() => undefined);
       await pool.close();
     }
   }
   if (config.dialect === "postgres") {
     const { Client } = await import("pg");
-    const client = new Client({ host: config.host, port: config.port, database: config.database, user: config.user, password: config.password, statement_timeout: FETCH_TIMEOUT_MS });
+    const client = new Client({ host: config.host, port: config.port, database: config.database, user: config.user, password: config.password, statement_timeout: DATABASE_TIMEOUT_MS });
     await client.connect();
     try {
       await client.query("BEGIN TRANSACTION READ ONLY");
@@ -429,7 +512,7 @@ export async function fetchFromDatabase(config: DatabaseConfig): Promise<Fetched
   const connection = await mysql.createConnection({ host: config.host, port: config.port, database: config.database, user: config.user, password: config.password, connectTimeout: FETCH_TIMEOUT_MS });
   try {
     await connection.query("START TRANSACTION READ ONLY");
-    const [rows, fields] = await connection.query({ sql: config.query, timeout: FETCH_TIMEOUT_MS });
+    const [rows, fields] = await connection.query({ sql: config.query, timeout: DATABASE_TIMEOUT_MS });
     await connection.query("ROLLBACK");
     return rowsToTable(rows as Record<string, unknown>[], (fields as { name: string }[]).map((f) => f.name));
   } finally {

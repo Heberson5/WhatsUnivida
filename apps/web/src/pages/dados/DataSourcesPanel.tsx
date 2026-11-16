@@ -488,7 +488,14 @@ export function DataSourcesPanel() {
                   <input type="password" value={draft.secrets.password ?? ""} onChange={(e) => setDraft({ ...draft, secrets: { ...draft.secrets, password: e.target.value } })} className={inputClass} />
                 </Field>
               </div>
-              <Field label="Consulta (um único SELECT)" hint="Use um usuário do banco que só pode ler. A consulta é conferida e nunca altera dados.">
+              <Field
+                label={draft.config.dialect === "sqlserver" ? "Consulta (SELECT ou script de leitura)" : "Consulta (um único SELECT)"}
+                hint={
+                  draft.config.dialect === "sqlserver"
+                    ? "Pode ser o script do ERP, com DECLARE, SET e tabelas temporárias (#...). Ele roda numa transação desfeita no fim e é conferido: nunca altera dados. Use um usuário do banco que só pode ler."
+                    : "Use um usuário do banco que só pode ler. A consulta é conferida e nunca altera dados."
+                }
+              >
                 <textarea rows={5} value={String(draft.config.query ?? "")} onChange={(e) => setConfig("query", e.target.value)} className={clsx(inputClass, "font-mono text-xs")} />
               </Field>
             </>
