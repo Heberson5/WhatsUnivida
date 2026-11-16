@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { MulterError } from "multer";
 import { HttpError } from "../lib/http-error";
 import { logger } from "../lib/logger";
+import { validationMessage } from "../lib/zod-messages";
 
 const MULTER_ERROR_MESSAGE: Record<string, string> = {
   LIMIT_FILE_SIZE: "Arquivo muito grande",
@@ -12,7 +13,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   if (err instanceof ZodError) {
     return res.status(400).json({
       error: "VALIDATION_ERROR",
-      message: "Dados invalidos",
+      // The reason itself ("Preencha o servidor"), not just "Dados inválidos": the screens show this message as is.
+      message: validationMessage(err),
       details: err.flatten(),
     });
   }

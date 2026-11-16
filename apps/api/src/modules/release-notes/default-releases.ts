@@ -11,6 +11,37 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.40.2",
+    date: "16 nov 2026",
+    name: "Erro ao salvar diz o motivo",
+    summary: "Quando um cadastro é recusado ao salvar, a mensagem agora diz o que precisa ser corrigido, em vez de só \"Dados inválidos\". A consulta do banco de dados passa a aceitar até 50.000 caracteres.",
+    notes: [
+      {
+        type: "correcao",
+        area: "dados",
+        title: "Fonte de dados recusada sem dizer o motivo",
+        text: "Ao salvar uma fonte de dados, por exemplo um banco SQL Server, com algum campo faltando ou fora do limite, aparecia só \"Dados invalidos\", sem dizer qual. Agora a mensagem diz o que corrigir, como \"Dados inválidos: Preencha o servidor; Preencha a consulta\". O nome e a consulta também ganharam mensagens próprias, como \"Preencha o nome\".",
+        where: "Dados › Fontes de dados",
+        roles: ["ADMIN", "MANAGER"],
+      },
+      {
+        type: "correcao",
+        area: "geral",
+        title: "O mesmo vale para os outros cadastros",
+        text: "Qualquer tela do sistema que recusar um cadastro ao salvar passa a mostrar o campo e o motivo, em português, em vez de \"Dados invalidos\".",
+        where: "Todas as telas de cadastro",
+      },
+      {
+        type: "melhoria",
+        area: "dados",
+        title: "Consulta do banco de dados com até 50.000 caracteres",
+        text: "O campo Consulta de uma fonte de dados do tipo banco de dados aceitava até 8000 caracteres, pouco para o script de um ERP, cheio de nomes longos de tabelas e colunas. Agora aceita até 50.000. Continua valendo a regra de segurança: a consulta precisa ser um único SELECT (ou WITH … SELECT), que só lê os dados.",
+        where: "Dados › Fontes de dados › Banco de dados",
+        roles: ["ADMIN", "MANAGER"],
+      },
+    ],
+  },
+  {
     version: "2.40.1",
     date: "11 nov 2026",
     name: "Backup com o sistema em uso",
