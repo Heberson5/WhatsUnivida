@@ -167,13 +167,27 @@ async function main() {
     if (agentToolsSweepRunning) return;
     agentToolsSweepRunning = true;
     // Also the Fluxo's clock: menus left unanswered go to Abandonados, and transfers waiting for someone online are handed over.
-    Promise.all([fireDueReminders(), sendDueScheduledMessages(), abandonIdleFlowSessions(), dispatchWaitingTransfers()])
+    Promise.all([fireDueReminders(), abandonIdleFlowSessions(), dispatchWaitingTransfers()])
       .catch((err) => logger.error({ err }, "failed to fire reminders / send scheduled messages"))
       .finally(() => {
         agentToolsSweepRunning = false;
       });
   }, AGENT_TOOLS_SWEEP_INTERVAL_MS);
   agentToolsTimer.unref();
+
+  // "Agendar envio": its own short clock, so the pause between two scheduled sends (Configurações › Fila, e.g. 30–80 s)
+  // is kept within a few seconds — one sweep at a time.
+  let scheduledSendRunning = false;
+  const scheduledSendTimer = setInterval(() => {
+    if (scheduledSendRunning) return;
+    scheduledSendRunning = true;
+    sendDueScheduledMessages()
+      .catch((err) => logger.error({ err }, "failed to send scheduled messages"))
+      .finally(() => {
+        scheduledSendRunning = false;
+      });
+  }, 5_000);
+  scheduledSendTimer.unref();
 
   // Agendamento da apresentação, plus the Pop Up's clock: at midnight the notices of the new day pop up live for whoever
   // is logged in (the day is the company's, UTC-4), and once a day the Lixeira drops what is past its days and the
@@ -225,6 +239,7 @@ async function main() {
     clearInterval(agentToolsTimer);
     clearInterval(reportScheduleTimer);
     clearInterval(nightlyBackupTimer);
+    clearInterval(scheduledSendTimer);
     httpServer.close();
     // Every deploy sends this signal to the outgoing container — ending
     // each WhatsApp connection's socket cleanly here (rather than letting

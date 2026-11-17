@@ -9,7 +9,8 @@ import { realtimeEvents } from "../../realtime/realtime";
 import { createNotification } from "../notifications/notifications.service";
 import { toNotificationDTO } from "../notifications/notifications.mapper";
 import { assertAgentCanAccessConversation, assertCanReplyToConversation, getConversationOrThrow } from "../conversations/conversations.service";
-import { createOutboundMessage } from "../messages/messages.service";
+import { createOutboundMessage, createOutboundMessageAfterClose } from "../messages/messages.service";
+import { getBusinessSettings } from "../settings/settings.service";
 import { firstResponseDiffs, SCHEDULE_SELECT } from "../../lib/conversation-timings";
 import { pauseNoReturnForScheduledMessage, restartNoReturnAfterScheduledMessage } from "../conversations/no-return.service";
 import * as whatsappService from "../whatsapp/whatsapp.service";
@@ -112,9 +113,37 @@ export async function fireDueReminders(now = new Date()) {
   }
 }
 
+/** Configurações › Fila › Mensagens agendadas, with the defaults filled in and the interval always min ≤ max. */
+export async function scheduledMessageSettings() {
+  const s = await getBusinessSettings();
+  const min = Number(s.scheduledIntervalMinSeconds ?? 30);
+  return {
+    sendAfterClose: s.scheduledSendAfterClose === true,
+    intervalMinSeconds: min,
+    intervalMaxSeconds: Math.max(min, Number(s.scheduledIntervalMaxSeconds ?? 80)),
+    maxPerContact: Number(s.scheduledMaxPerContact ?? 2),
+  };
+}
+
+const PENDING = { sentAt: null, canceledAt: null, failedAt: null } as const;
+
 export async function scheduleMessage(userId: string, input: { conversationId: string; body: string; sendAt: Date }) {
   if (input.sendAt.getTime() <= Date.now()) throw Errors.badRequest("Escolha um horário no futuro.");
-  const message = await prisma.scheduledMessage.create({ data: { userId, ...input } });
+  const { maxPerContact } = await scheduledMessageSettings();
+  const { contactId } = await prisma.conversation.findUniqueOrThrow({ where: { id: input.conversationId }, select: { contactId: true } });
+  // Counted and created under a lock on the customer: two clicks (or two attendants) at once never pass the limit.
+  const message = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`scheduled:${contactId}`}))`;
+    const pending = await tx.scheduledMessage.count({ where: { ...PENDING, conversation: { contactId } } });
+    if (pending >= maxPerContact) {
+      throw Errors.badRequest(
+        maxPerContact === 1
+          ? "Este cliente já tem uma mensagem agendada. Cancele o agendamento antes de criar outro."
+          : `Este cliente já tem ${pending} mensagens agendadas — o limite é ${maxPerContact}. Cancele uma antes de agendar outra.`
+      );
+    }
+    return tx.scheduledMessage.create({ data: { userId, ...input } });
+  });
   await pauseNoReturnForScheduledMessage(input.conversationId);
   return toScheduledDTO(message);
 }
@@ -126,27 +155,89 @@ export async function cancelScheduledMessage(userId: string, id: string) {
   await restartNoReturnAfterScheduledMessage(scheduled!.conversationId);
 }
 
+// Pacing of the scheduled sends: when each connection may send the next one. Kept in the database, so a restart never
+// lets two go out back to back.
+const PACING_KEY = "scheduledMessagesPacing";
+
+async function loadPacing(): Promise<Record<string, string>> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: PACING_KEY } });
+  return (row?.value as Record<string, string> | null) ?? {};
+}
+
+async function savePacing(pacing: Record<string, string>) {
+  await prisma.systemSetting.upsert({ where: { key: PACING_KEY }, update: { value: pacing }, create: { key: PACING_KEY, value: pacing } });
+}
+
+const randomSeconds = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
+
 /**
- * Sends each scheduled message whose time came, as its attendant — same path as typing it in Atendimento. One the
- * attendant can no longer send (conversation closed or handed to someone else, connection down) fails and is
- * reported in the bell instead.
+ * Sends each scheduled message whose time came, as its attendant — same path as typing it in Atendimento.
+ *
+ * - One at a time per connection, with a random pause between `intervalMinSeconds` and `intervalMaxSeconds` after
+ *   each one (Configurações › Fila): many messages due at the same minute go out spread, never in a burst. One that
+ *   has to wait stays scheduled and goes on a later sweep, in the order they were due.
+ * - With "enviar mesmo com o atendimento encerrado" on, a message whose conversation was closed goes out anyway,
+ *   recorded in that conversation — unless the customer is already in another conversation (queue, flow, assistant
+ *   or another attendant): then it fails, so nobody is talked over.
+ * - Otherwise one the attendant can no longer send (conversation closed or handed to someone else, connection down)
+ *   fails and is reported in the bell.
  */
 export async function sendDueScheduledMessages(now = new Date()) {
   const due = await prisma.scheduledMessage.findMany({
-    where: { sentAt: null, canceledAt: null, failedAt: null, sendAt: { lte: now } },
+    where: { ...PENDING, sendAt: { lte: now } },
     include: { user: { select: { displayName: true } } },
+    orderBy: [{ sendAt: "asc" }, { createdAt: "asc" }],
     take: 50,
   });
+  if (!due.length) return;
+  const settings = await scheduledMessageSettings();
+  const pacing = await loadPacing();
+  const busy = new Set<string>();
   for (const scheduled of due) {
-    const claimed = await prisma.scheduledMessage.updateMany({ where: { id: scheduled.id, sentAt: null, canceledAt: null, failedAt: null }, data: { sentAt: now } });
-    if (claimed.count === 0) continue;
-    try {
-      const conversation = await getConversationOrThrow(scheduled.conversationId);
-      assertCanReplyToConversation(conversation, scheduled.userId);
-      if (!(OPEN_STATUSES as readonly string[]).includes(conversation.status)) throw Errors.badRequest("A conversa não está mais em atendimento.");
+    const conversation = await getConversationOrThrow(scheduled.conversationId).catch(() => null);
+    const connectionKey = conversation ? ((conversation.channel === "WHATSAPP" ? conversation.whatsappConnectionId : conversation.metaConnectionId) ?? "none") : "none";
+
+    // First: can it go out at all? One that can't fails at once (it never waits for the pause).
+    let problem: string | null = null;
+    let afterClose = false;
+    if (!conversation) {
+      problem = "A conversa não existe mais.";
+    } else if (conversation.status === "CLOSED" && settings.sendAfterClose) {
+      // The customer came back meanwhile: their new conversation is someone's (or the queue's) now.
+      const active = await prisma.conversation.findFirst({
+        where: { contactId: conversation.contactId, id: { not: conversation.id }, status: { notIn: ["CLOSED", "ABANDONED"] }, createdAt: { gt: conversation.createdAt } },
+        select: { id: true },
+      });
+      if (active) problem = "O cliente já está em outro atendimento.";
+      else afterClose = true;
+    } else {
+      try {
+        assertCanReplyToConversation(conversation, scheduled.userId);
+        if (!(OPEN_STATUSES as readonly string[]).includes(conversation.status)) problem = "A conversa não está mais em atendimento.";
+      } catch (err) {
+        problem = err instanceof Error ? err.message : "Não foi possível enviar.";
+      }
+    }
+    if (!problem && conversation) {
       const connectionStatus = conversation.channel === "WHATSAPP" ? conversation.whatsappConnection?.status : conversation.metaConnection?.status;
-      if (connectionStatus !== "CONNECTED") throw Errors.badRequest("A conexão está desconectada.");
-      const message = await createOutboundMessage({ conversationId: conversation.id, agentId: scheduled.userId, type: "TEXT", body: scheduled.body });
+      if (connectionStatus !== "CONNECTED") problem = "A conexão está desconectada.";
+    }
+
+    // Then: it can — but this connection sent one a moment ago. It stays scheduled and goes after the pause, in order.
+    if (!problem && (busy.has(connectionKey) || (pacing[connectionKey] && Date.parse(pacing[connectionKey]) > now.getTime()))) {
+      busy.add(connectionKey);
+      continue;
+    }
+
+    const claimed = await prisma.scheduledMessage.updateMany({ where: { id: scheduled.id, ...PENDING }, data: { sentAt: now } });
+    if (claimed.count === 0) continue;
+    let attempted = false;
+    try {
+      if (problem || !conversation) throw Errors.badRequest(problem ?? "Não foi possível enviar.");
+      const message = afterClose
+        ? await createOutboundMessageAfterClose({ conversationId: conversation.id, agentId: scheduled.userId, body: scheduled.body })
+        : await createOutboundMessage({ conversationId: conversation.id, agentId: scheduled.userId, type: "TEXT", body: scheduled.body });
+      attempted = true;
       if (conversation.channel === "WHATSAPP") {
         await whatsappService.sendOutboundText(conversation.whatsappConnectionId!, message.id, conversation.contact.phone!, scheduled.body, scheduled.user.displayName);
       } else {
@@ -167,6 +258,12 @@ export async function sendDueScheduledMessages(now = new Date()) {
         entityId: scheduled.conversationId,
       });
       realtimeEvents.notificationCreated(scheduled.userId, toNotificationDTO(notification));
+    }
+    // Whatever reached the connection counts for the pause; a message refused before that does not hold the next one.
+    if (attempted) {
+      busy.add(connectionKey);
+      pacing[connectionKey] = new Date(now.getTime() + randomSeconds(settings.intervalMinSeconds, settings.intervalMaxSeconds) * 1000).toISOString();
+      await savePacing(pacing);
     }
     realtimeEvents.agentExtrasChanged(scheduled.userId);
   }

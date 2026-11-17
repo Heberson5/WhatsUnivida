@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import request from "supertest";
 import type { MockWhatsAppProvider } from "@whatsatendende/whatsapp";
 import { createApp } from "../src/app";
@@ -140,6 +140,120 @@ describe("Atendimento: fixar, lembrar de retornar, agendar envio, Meu dia e digi
     expect(row.failedAt).not.toBeNull();
     expect(await prisma.notification.count({ where: { userId: agentId, type: "SCHEDULED_MESSAGE_FAILED", entityId: conversation.id } })).toBe(1);
     expect(await prisma.message.count({ where: { conversationId: conversation.id, body: "Bom dia!" } })).toBe(0);
+  });
+
+  describe("Configurações › Fila › Mensagens agendadas", () => {
+    const setScheduled = (patch: Record<string, unknown>) => request(app).patch("/api/settings/queue").set(as(adminToken)).send(patch);
+    const schedule = (conversationId: string, body: string) =>
+      request(app).post("/api/agent-tools/scheduled-messages").set(as(agentToken)).send({ conversationId, body, sendAt: inAnHour() });
+    const sentTexts = () => provider.sentTexts.map((m) => m.text);
+    const resetPacing = () => prisma.systemSetting.deleteMany({ where: { key: "scheduledMessagesPacing" } });
+
+    beforeEach(async () => {
+      await resetPacing();
+      await setScheduled({ scheduledSendAfterClose: false, scheduledIntervalMinSeconds: 30, scheduledIntervalMaxSeconds: 80, scheduledMaxPerContact: 2 }).expect(200);
+    });
+    afterAll(async () => {
+      await resetPacing();
+      await setScheduled({ scheduledSendAfterClose: false, scheduledIntervalMinSeconds: 30, scheduledIntervalMaxSeconds: 80, scheduledMaxPerContact: 2 });
+    });
+
+    it("só quem edita a Fila muda; o intervalo máximo não pode ser menor que o mínimo", async () => {
+      expect((await request(app).patch("/api/settings/queue").set(as(agentToken)).send({ scheduledSendAfterClose: true })).status).toBe(403);
+      expect((await setScheduled({ scheduledIntervalMinSeconds: 80, scheduledIntervalMaxSeconds: 30 })).status).toBe(400);
+      expect((await setScheduled({ scheduledMaxPerContact: 0 })).status).toBe(400);
+      const business = (await request(app).get("/api/settings/business").set(as(agentToken))).body;
+      expect(business).toMatchObject({ scheduledSendAfterClose: false, scheduledIntervalMinSeconds: 30, scheduledIntervalMaxSeconds: 80, scheduledMaxPerContact: 2 });
+    });
+
+    it("no máximo 2 agendamentos por cliente (contando todas as conversas dele); cancelado ou enviado libera a vaga", async () => {
+      const { conversation, contact } = await acceptedConversation();
+      await schedule(conversation.id, "um").expect(201);
+      const second = await schedule(conversation.id, "dois").expect(201);
+      const third = await schedule(conversation.id, "três");
+      expect(third.status).toBe(400);
+      expect(third.body.message).toMatch(/já tem 2 mensagens agendadas — o limite é 2/);
+      // An older (closed) conversation of the same customer counts too.
+      const older = await prisma.conversation.create({ data: { contactId: contact.id, whatsappConnectionId: connectionId, status: "CLOSED", closedAt: new Date() } });
+      await prisma.scheduledMessage.create({ data: { userId: agentId, conversationId: older.id, body: "antigo", sendAt: new Date(Date.now() + 3600_000) } });
+      await request(app).delete(`/api/agent-tools/scheduled-messages/${second.body.id}`).set(as(agentToken)).expect(204);
+      expect((await schedule(conversation.id, "três")).status).toBe(400);
+      await prisma.scheduledMessage.deleteMany({ where: { conversationId: older.id } });
+      await schedule(conversation.id, "três").expect(201);
+      // Two at once can't both take the last place.
+      await setScheduled({ scheduledMaxPerContact: 3 }).expect(200);
+      const both = await Promise.all([schedule(conversation.id, "quatro"), schedule(conversation.id, "cinco")]);
+      expect(both.map((r) => r.status).sort()).toEqual([201, 400]);
+      await prisma.scheduledMessage.deleteMany({ where: { conversationId: conversation.id } });
+    });
+
+    it("desligado: encerrou, não sai; ligado: sai na hora marcada com a conversa encerrada, que continua encerrada", async () => {
+      const off = await acceptedConversation();
+      await schedule(off.conversation.id, "Retorno combinado (desligado)").expect(201);
+      await request(app).post(`/api/conversations/${off.conversation.id}/close`).set(as(agentToken)).send({}).expect(200);
+      await prisma.scheduledMessage.updateMany({ where: { conversationId: off.conversation.id }, data: { sendAt: past() } });
+      await sendDueScheduledMessages();
+      expect(await prisma.scheduledMessage.findFirst({ where: { conversationId: off.conversation.id } })).toMatchObject({ failedReason: "A conversa não está mais em atendimento." });
+
+      await setScheduled({ scheduledSendAfterClose: true }).expect(200);
+      const on = await acceptedConversation();
+      await schedule(on.conversation.id, "Retorno combinado (ligado)").expect(201);
+      await request(app).post(`/api/conversations/${on.conversation.id}/close`).set(as(agentToken)).send({}).expect(200);
+      await prisma.scheduledMessage.updateMany({ where: { conversationId: on.conversation.id }, data: { sendAt: past() } });
+      await sendDueScheduledMessages();
+      const row = await prisma.scheduledMessage.findFirstOrThrow({ where: { conversationId: on.conversation.id } });
+      expect(row.sentAt).not.toBeNull();
+      expect(row.failedAt).toBeNull();
+      await vi.waitFor(() => expect(sentTexts().some((t) => t.includes("Retorno combinado (ligado)"))).toBe(true));
+      const message = await prisma.message.findFirstOrThrow({ where: { conversationId: on.conversation.id, body: "Retorno combinado (ligado)" } });
+      expect(message.senderAgentId).toBe(agentId);
+      expect((await prisma.conversation.findUniqueOrThrow({ where: { id: on.conversation.id } })).status).toBe("CLOSED");
+    });
+
+    it("ligado, mas o cliente já voltou e está em outro atendimento: não sai e quem agendou é avisado", async () => {
+      await setScheduled({ scheduledSendAfterClose: true }).expect(200);
+      const { conversation, contact } = await acceptedConversation();
+      await schedule(conversation.id, "Não pode atropelar").expect(201);
+      await request(app).post(`/api/conversations/${conversation.id}/close`).set(as(agentToken)).send({}).expect(200);
+      await prisma.conversation.create({ data: { contactId: contact.id, whatsappConnectionId: connectionId, status: "WAITING" } });
+      await prisma.scheduledMessage.updateMany({ where: { conversationId: conversation.id }, data: { sendAt: past() } });
+      await sendDueScheduledMessages();
+      expect(await prisma.scheduledMessage.findFirst({ where: { conversationId: conversation.id } })).toMatchObject({ failedReason: "O cliente já está em outro atendimento." });
+      expect(await prisma.notification.count({ where: { userId: agentId, type: "SCHEDULED_MESSAGE_FAILED", entityId: conversation.id } })).toBe(1);
+      expect(sentTexts().some((t) => t.includes("Não pode atropelar"))).toBe(false);
+    });
+
+    it("mensagens marcadas para a mesma hora saem uma de cada vez, com o intervalo configurado entre elas, na ordem", async () => {
+      await setScheduled({ scheduledIntervalMinSeconds: 30, scheduledIntervalMaxSeconds: 30 }).expect(200);
+      const a = await acceptedConversation();
+      const b = await acceptedConversation();
+      const c = await acceptedConversation();
+      const t0 = new Date(Date.now() - 1000);
+      for (const [i, conv] of [a, b, c].entries()) {
+        await schedule(conv.conversation.id, `Lote ${i + 1}`).expect(201);
+        await prisma.scheduledMessage.updateMany({ where: { conversationId: conv.conversation.id }, data: { sendAt: new Date(t0.getTime() + i) } });
+      }
+      const sent = async () => (await prisma.scheduledMessage.findMany({ where: { body: { startsWith: "Lote " }, sentAt: { not: null } }, select: { body: true }, orderBy: { sendAt: "asc" } })).map((m) => m.body);
+
+      const now = Date.now();
+      await sendDueScheduledMessages(new Date(now));
+      expect(await sent()).toEqual(["Lote 1"]);
+      await sendDueScheduledMessages(new Date(now + 29_000)); // still inside the pause
+      expect(await sent()).toEqual(["Lote 1"]);
+      await sendDueScheduledMessages(new Date(now + 30_000));
+      expect(await sent()).toEqual(["Lote 1", "Lote 2"]);
+      await sendDueScheduledMessages(new Date(now + 45_000));
+      expect(await sent()).toEqual(["Lote 1", "Lote 2"]);
+      await sendDueScheduledMessages(new Date(now + 60_000));
+      expect(await sent()).toEqual(["Lote 1", "Lote 2", "Lote 3"]);
+      // A message that cannot go out (conversation closed, option off) fails at once — it never waits for the pause.
+      const d = await acceptedConversation();
+      await schedule(d.conversation.id, "Lote falho").expect(201);
+      await request(app).post(`/api/conversations/${d.conversation.id}/close`).set(as(agentToken)).send({}).expect(200);
+      await prisma.scheduledMessage.updateMany({ where: { conversationId: d.conversation.id }, data: { sendAt: past() } });
+      await sendDueScheduledMessages(new Date(now + 61_000));
+      expect((await prisma.scheduledMessage.findFirstOrThrow({ where: { conversationId: d.conversation.id } })).failedAt).not.toBeNull();
+    });
   });
 
   it("Meu dia conta os encerrados de hoje e mostra a meta configurada", async () => {

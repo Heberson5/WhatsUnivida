@@ -11,6 +11,37 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.38.1",
+    date: "17 nov 2026",
+    name: "Mensagens agendadas: envio após o encerramento, intervalo e limite por cliente",
+    summary: "Uma mensagem agendada pelo atendente agora pode sair mesmo que o atendimento já tenha sido encerrado (opção em Configurações › Fila). Mensagens marcadas para o mesmo horário saem uma de cada vez, com um intervalo entre elas, e cada cliente pode ter no máximo 2 agendamentos esperando.",
+    notes: [
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Enviar mesmo com o atendimento encerrado",
+        text: "Em Configurações › Fila › Mensagens agendadas, ligue \"Enviar mesmo que o atendimento já tenha sido encerrado\": a mensagem sai na hora marcada, em nome de quem agendou, e fica registrada na conversa, que continua encerrada. Se o cliente já tiver voltado e estiver em outro atendimento (fila, fluxo, assistente ou outro atendente), a mensagem não sai, para ninguém ser atropelado, e quem agendou é avisado no sininho. Desligada (como vinha sendo), encerrar a conversa faz as mensagens agendadas dela não saírem.",
+        where: "Configurações › Fila",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/mensagens-agendadas-fila.webp", caption: "A seção Mensagens agendadas", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "Uma de cada vez, com intervalo entre elas",
+        text: "Mensagens agendadas para o mesmo horário não saem mais todas juntas: cada conexão envia uma e espera um tempo sorteado entre o intervalo mínimo e o máximo (padrão de 30 a 80 segundos) antes da próxima, na ordem em que foram marcadas. Os dois valores podem ser mudados em Configurações › Fila.",
+        where: "Atendimento › Agendar envio",
+      },
+      {
+        type: "melhoria",
+        area: "atendimento",
+        title: "No máximo 2 agendamentos por cliente",
+        text: "Cada cliente pode ter no máximo 2 mensagens agendadas esperando para sair, somando todas as conversas dele. Para agendar uma terceira, cancele uma das que estão esperando. O limite pode ser mudado em Configurações › Fila.",
+        where: "Atendimento › Agendar envio",
+      },
+    ],
+  },
+  {
     version: "2.38.0",
     date: "17 nov 2026",
     name: "Backup no Google Drive e temas do mês",

@@ -452,8 +452,15 @@ const queueSettingsSchema = z
     queueDangerMinutes: z.number().int().min(1).max(240).optional(),
     typingToCustomer: z.boolean().optional(),
     typingFromCustomer: z.boolean().optional(),
+    scheduledSendAfterClose: z.boolean().optional(),
+    scheduledIntervalMinSeconds: z.number().int().min(5).max(3600).optional(),
+    scheduledIntervalMaxSeconds: z.number().int().min(5).max(3600).optional(),
+    scheduledMaxPerContact: z.number().int().min(1).max(20).optional(),
   })
   .strict()
+  .refine((s) => !s.scheduledIntervalMinSeconds || !s.scheduledIntervalMaxSeconds || s.scheduledIntervalMaxSeconds >= s.scheduledIntervalMinSeconds, {
+    message: "O intervalo máximo entre mensagens agendadas precisa ser igual ou maior que o mínimo",
+  })
   .refine((s) => !s.noReplyWarningMinutes || !s.noReplyDangerMinutes || s.noReplyDangerMinutes > s.noReplyWarningMinutes, {
     message: "O alerta vermelho de sem resposta precisa vir depois do amarelo",
   })

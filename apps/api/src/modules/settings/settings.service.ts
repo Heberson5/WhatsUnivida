@@ -236,6 +236,13 @@ const DEFAULT_BUSINESS_SETTINGS = {
   // while the attendant writes or records, and the attendant sees the customer's.
   typingToCustomer: true,
   typingFromCustomer: true,
+  // Mensagens agendadas (Configurações › Fila): whether a message scheduled by an attendant still goes out after they
+  // closed the conversation; the pause between two scheduled sends on the same connection (a random number of seconds
+  // between the two values, so they never go out in a burst); and how many may wait for the same customer.
+  scheduledSendAfterClose: false,
+  scheduledIntervalMinSeconds: 30,
+  scheduledIntervalMaxSeconds: 80,
+  scheduledMaxPerContact: 2,
 };
 
 export async function getNoReturnSettings(): Promise<NoReturnSettingsDTO> {

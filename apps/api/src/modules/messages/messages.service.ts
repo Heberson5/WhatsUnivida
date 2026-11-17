@@ -209,6 +209,24 @@ export async function isMessageRecorded(providerMessageId: string): Promise<bool
   return (await prisma.message.count({ where: { providerMessageId } })) > 0;
 }
 
+/**
+ * A message scheduled by an attendant that goes out after they closed the conversation (Configurações › Fila ›
+ * Mensagens agendadas). Recorded in that closed conversation, in the attendant's name: the conversation stays closed,
+ * and its first-response time and "falta de retorno" countdown are not touched — the customer's reply, if any, opens
+ * a new conversation as usual.
+ */
+export async function createOutboundMessageAfterClose(input: { conversationId: string; agentId: string; body: string }) {
+  const conversation = await prisma.conversation.findUnique({ where: { id: input.conversationId }, select: { status: true } });
+  if (!conversation) throw Errors.notFound("Conversa nao encontrada");
+  if (conversation.status !== "CLOSED") throw Errors.badRequest("A conversa não está encerrada");
+  const message = await prisma.message.create({
+    data: { conversationId: input.conversationId, direction: "OUTBOUND", type: "TEXT", status: "PENDING", body: input.body, senderAgentId: input.agentId },
+    include: messageInclude,
+  });
+  await prisma.conversation.update({ where: { id: input.conversationId }, data: { lastMessageAt: new Date(), lastMessageDirection: "OUTBOUND" } });
+  return message;
+}
+
 export async function createOutboundMessageFromDevice(input: CreateOutboundMessageFromDeviceInput) {
   const existing = await prisma.message.findUnique({ where: { providerMessageId: input.providerMessageId } });
   if (existing) return null;

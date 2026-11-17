@@ -12,6 +12,29 @@ interface BusinessSettings extends Partial<AlertThresholds> {
   queueReminderIntervalMinutes?: number;
   typingToCustomer?: boolean;
   typingFromCustomer?: boolean;
+  scheduledSendAfterClose?: boolean;
+  scheduledIntervalMinSeconds?: number;
+  scheduledIntervalMaxSeconds?: number;
+  scheduledMaxPerContact?: number;
+}
+
+interface ScheduledSettings {
+  scheduledSendAfterClose: boolean;
+  scheduledIntervalMinSeconds: number;
+  scheduledIntervalMaxSeconds: number;
+  scheduledMaxPerContact: number;
+}
+
+const SCHEDULED_LIMITS = { minSeconds: 5, maxSeconds: 3600, maxPerContact: 20 }; // matches the backend's zod schema
+
+function savedScheduled(data?: BusinessSettings): ScheduledSettings {
+  const min = data?.scheduledIntervalMinSeconds ?? 30;
+  return {
+    scheduledSendAfterClose: data?.scheduledSendAfterClose === true,
+    scheduledIntervalMinSeconds: min,
+    scheduledIntervalMaxSeconds: Math.max(min, data?.scheduledIntervalMaxSeconds ?? 80),
+    scheduledMaxPerContact: data?.scheduledMaxPerContact ?? 2,
+  };
 }
 
 interface TypingSettings {
@@ -50,6 +73,20 @@ export function FilaSettingsPanel() {
   useEffect(() => {
     setTyping({ typingToCustomer: data?.typingToCustomer !== false, typingFromCustomer: data?.typingFromCustomer !== false });
   }, [data?.typingToCustomer, data?.typingFromCustomer]);
+  const savedSched = savedScheduled(data);
+  const [scheduled, setScheduled] = useState<ScheduledSettings>(savedSched);
+  useEffect(() => {
+    setScheduled(savedScheduled(data));
+  }, [data]);
+  const scheduledDirty = (Object.keys(savedSched) as (keyof ScheduledSettings)[]).some((k) => scheduled[k] !== savedSched[k]);
+  const intervalOk = (v: number) => Number.isInteger(v) && v >= SCHEDULED_LIMITS.minSeconds && v <= SCHEDULED_LIMITS.maxSeconds;
+  const scheduledValid =
+    intervalOk(scheduled.scheduledIntervalMinSeconds) &&
+    intervalOk(scheduled.scheduledIntervalMaxSeconds) &&
+    scheduled.scheduledIntervalMaxSeconds >= scheduled.scheduledIntervalMinSeconds &&
+    Number.isInteger(scheduled.scheduledMaxPerContact) &&
+    scheduled.scheduledMaxPerContact >= 1 &&
+    scheduled.scheduledMaxPerContact <= SCHEDULED_LIMITS.maxPerContact;
   useEffect(() => {
     if (data?.queueReminderIntervalMinutes) setMinutes(data.queueReminderIntervalMinutes);
     setAlerts(Object.fromEntries(ALERT_FIELDS.map(({ key }) => [key, data?.[key] ?? DEFAULT_ALERT_THRESHOLDS[key]])) as unknown as AlertThresholds);
@@ -59,10 +96,10 @@ export function FilaSettingsPanel() {
     alerts.noReplyDangerMinutes > alerts.noReplyWarningMinutes &&
     alerts.queueDangerMinutes > alerts.queueWarningMinutes;
   const alertsDirty = ALERT_FIELDS.some(({ key }) => alerts[key] !== savedAlerts[key]);
-  const canSave = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES && alertsValid;
+  const canSave = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES && alertsValid && scheduledValid;
 
   const saveMutation = useMutation({
-    mutationFn: () => api.patch("/settings/queue", { queueReminderIntervalMinutes: minutes, ...alerts, ...typing }),
+    mutationFn: () => api.patch("/settings/queue", { queueReminderIntervalMinutes: minutes, ...alerts, ...typing, ...scheduled }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["business-settings"] });
       toast.success("Configurações da fila salvas.");
@@ -147,6 +184,58 @@ export function FilaSettingsPanel() {
         </div>
       </div>
 
+      <div className="border-t border-border pt-5">
+        <h2 className="text-base font-semibold">Mensagens agendadas</h2>
+        <p className="mt-1 text-sm text-muted">Mensagens que o atendente agenda dentro da conversa (“Agendar envio”).</p>
+        <label className="mt-3 flex items-start gap-3 rounded-card border border-border px-3 py-2">
+          <input
+            type="checkbox"
+            checked={scheduled.scheduledSendAfterClose}
+            disabled={!canEditar}
+            onChange={(e) => setScheduled((prev) => ({ ...prev, scheduledSendAfterClose: e.target.checked }))}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+          />
+          <span>
+            <span className="block text-sm font-medium">Enviar mesmo que o atendimento já tenha sido encerrado</span>
+            <span className="block text-xs text-muted">
+              Ligado: a mensagem sai na hora marcada, em nome de quem agendou, mesmo com a conversa encerrada — a não ser que o cliente já esteja em outro atendimento (fila, fluxo, assistente ou outro atendente); aí ela não sai e quem agendou é avisado no sininho.
+              Desligado: ao encerrar, as mensagens agendadas daquela conversa não saem.
+            </span>
+          </span>
+        </label>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {(
+            [
+              ["scheduledIntervalMinSeconds", "Intervalo mínimo entre envios (seg)", SCHEDULED_LIMITS.minSeconds, SCHEDULED_LIMITS.maxSeconds],
+              ["scheduledIntervalMaxSeconds", "Intervalo máximo entre envios (seg)", SCHEDULED_LIMITS.minSeconds, SCHEDULED_LIMITS.maxSeconds],
+              ["scheduledMaxPerContact", "Máximo de agendamentos por cliente", 1, SCHEDULED_LIMITS.maxPerContact],
+            ] as const
+          ).map(([key, label, min, max]) => (
+            <label key={key} className="block">
+              <span className="mb-1 block text-sm font-medium">{label}</span>
+              <input
+                type="number"
+                min={min}
+                max={max}
+                step={1}
+                value={scheduled[key]}
+                disabled={!canEditar}
+                onChange={(e) => setScheduled((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+                className="focus-ring w-full rounded-card border border-border bg-transparent px-3 py-2 text-sm disabled:opacity-60"
+              />
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Entre uma mensagem agendada e a próxima, a mesma conexão espera um tempo sorteado entre o mínimo e o máximo — mensagens marcadas para o mesmo horário saem uma de cada vez, nunca todas juntas. O limite por cliente conta os agendamentos que ainda não saíram.
+        </p>
+        {!scheduledValid && (
+          <p className="mt-2 text-xs text-danger">
+            O intervalo vai de {SCHEDULED_LIMITS.minSeconds} a {SCHEDULED_LIMITS.maxSeconds} segundos, e o máximo precisa ser igual ou maior que o mínimo. O limite por cliente vai de 1 a {SCHEDULED_LIMITS.maxPerContact}.
+          </p>
+        )}
+      </div>
+
       {canEditar && (
         <button
           onClick={() => saveMutation.mutate()}
@@ -160,7 +249,7 @@ export function FilaSettingsPanel() {
       <GoalsPanel />
       {canEditar && data && (
         <UnsavedChangesBar
-          dirty={(data.queueReminderIntervalMinutes !== undefined && minutes !== data.queueReminderIntervalMinutes) || alertsDirty || typingDirty}
+          dirty={(data.queueReminderIntervalMinutes !== undefined && minutes !== data.queueReminderIntervalMinutes) || alertsDirty || typingDirty || scheduledDirty}
           saving={saveMutation.isPending}
           canSave={canSave}
           onSave={() => saveMutation.mutate()}
@@ -168,6 +257,7 @@ export function FilaSettingsPanel() {
             setMinutes(data.queueReminderIntervalMinutes ?? 1);
             setAlerts(savedAlerts);
             setTyping(savedTyping);
+            setScheduled(savedSched);
           }}
         />
       )}
