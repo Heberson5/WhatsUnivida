@@ -177,6 +177,30 @@ conexão nova em **Configurações**. Para rodar o seed sem os dados de exemplo,
 use `SEED_DEMO=false`. Roda uma vez só: se a conexão de demonstração já
 existir, não cria nada de novo.
 
+## Backup no Google Drive (Configurações › Backup)
+
+O backup completo (banco, arquivos e, se marcadas, as sessões do WhatsApp) vai para a sua conta Google, sozinho,
+toda noite a partir de `BACKUP_HOUR` (padrão 3h), protegido pela **senha de backup** (AES-256). Nada fica no
+servidor: o arquivo é montado numa pasta temporária, enviado e apagado. Você escolhe quantos backups manter (padrão
+7); os mais antigos são apagados do Drive. Falhas chegam aos administradores no sininho e por e-mail.
+
+**Conectar (uma vez, na tela):** no Google Cloud (console.cloud.google.com), com a conta que vai guardar os backups,
+crie um projeto, ative a "Google Drive API", configure a tela de consentimento OAuth com público "Externo" e
+**publique** o app (em "Teste" o Google cancela a autorização a cada 7 dias), e crie um "ID do cliente OAuth" do tipo
+"Aplicativo da Web" com o URI de redirecionamento mostrado na tela
+(`<WEB_APP_URL>/api/settings/backup/google-drive/callback`). Cole o ID e a chave secreta, clique em
+"Conectar com o Google" e cadastre a senha de backup. O sistema pede só a permissão `drive.file`: enxerga apenas as
+pastas e arquivos que ele mesmo cria. O mesmo projeto e a mesma conta servem para vários sistemas — cada um tem a
+própria pasta (`Backups — <endereço do sistema>`); cadastre no Google o URI de redirecionamento de cada um.
+
+**Restaurar:** na mesma tela, escolha um backup da lista do Drive (ou envie um arquivo `.wabk`), digite a senha e
+confirme com RESTAURAR. Em outro servidor: mesma versão do sistema e o mesmo `SETTINGS_ENCRYPTION_KEY` no `.env`
+(sem ele, as senhas guardadas — e-mail, Meta, fontes de dados e o próprio Google Drive — não abrem); conecte o
+Google Drive nele também para ver a lista, ou baixe o `.wabk` do Drive e envie pela tela. Arquivo grande demais para
+o navegador: `docker compose exec api node dist/scripts/restore-backup.js /caminho/backup.wabk "<senha>"`.
+
+**Anote a senha de backup** fora do servidor: se a VPS for perdida, é ela que abre os backups do Drive.
+
 ## Backup completo para outro servidor (linha de comando)
 
 Além das opções do gerenciador e de **Configurações › Backup** (um `.tar.gz` baixado

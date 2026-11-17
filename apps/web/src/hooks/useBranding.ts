@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { api } from "../lib/api";
 import { setNotificationIcon } from "./useDesktopNotifications";
 import { applyBrandColors } from "../lib/brand-colors";
+import type { EffectiveBrandColors } from "@whatsatendende/types";
 
 export interface Branding {
   companyName: string;
@@ -20,6 +21,9 @@ export interface Branding {
   // secondaryColor automatically, see styles/index.css's
   // --color-read-receipt fallback.
   readReceiptColor: string | null;
+  // "CUSTOM", "MONTHLY" or one ready-made theme — and the colors in force right now (the theme's, or the company's own).
+  theme: string;
+  effective: EffectiveBrandColors;
 }
 
 export function useBranding() {
@@ -34,9 +38,11 @@ export function useBranding() {
 
   useEffect(() => {
     if (!query.data) return;
-    applyBrandColors(query.data.primaryColor, query.data.secondaryColor);
-    if (query.data.readReceiptColor) {
-      document.documentElement.style.setProperty("--color-read-receipt", query.data.readReceiptColor);
+    // The theme in force (a ready-made one, the month's, or the company's own colors) — the "lida" tick follows it.
+    const colors = query.data.effective ?? query.data;
+    applyBrandColors(colors.primaryColor, colors.secondaryColor);
+    if (colors.readReceiptColor) {
+      document.documentElement.style.setProperty("--color-read-receipt", colors.readReceiptColor);
     } else {
       // No override — falls back to --color-secondary via the CSS rule in styles/index.css.
       document.documentElement.style.removeProperty("--color-read-receipt");

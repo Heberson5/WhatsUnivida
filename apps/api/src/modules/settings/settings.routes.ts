@@ -10,7 +10,7 @@ import rateLimit from "express-rate-limit";
 import { asyncHandler } from "../../lib/async-handler";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { requirePermission } from "../../lib/permissions";
-import { PERMISSION } from "@whatsatendende/types";
+import { PERMISSION, BRAND_THEME_CHOICES, resolveBrandColors } from "@whatsatendende/types";
 import { writeAudit } from "../../lib/audit";
 import { sendMail, sendTemplatedMail, previewTemplatedMail } from "../../lib/mail";
 import { env } from "../../config/env";
@@ -63,7 +63,10 @@ settingsRouter.get(
   "/branding",
   asyncHandler(async (_req, res) => {
     // The version shown in the menu follows Notas de versão by itself — nobody types it after an update.
-    res.json({ ...(await service.getBranding()), appVersion: await currentVersion() });
+    const branding = await service.getBranding();
+    // The month of "Automático pelo mês" is the business day's (BUSINESS_TZ_OFFSET_MINUTES), not the server clock's.
+    const month = new Date(Date.now() - env.BUSINESS_TZ_OFFSET_MINUTES * 60_000).getUTCMonth() + 1;
+    res.json({ ...branding, effective: resolveBrandColors(branding, month), appVersion: await currentVersion() });
   })
 );
 
@@ -178,6 +181,7 @@ const brandingSchema = z.object({
   // icon/name changes to trigger AppUpdateBanner for already-installed
   // users; null/empty clears the notice.
   readReceiptColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+  theme: z.string().refine((value) => BRAND_THEME_CHOICES.includes(value), "Tema desconhecido").optional(),
 });
 
 settingsRouter.patch(

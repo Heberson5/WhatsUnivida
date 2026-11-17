@@ -60,6 +60,10 @@ services:
       # through to the API, so keep it at or below that. The whole file is
       # held in memory while it is sent, so a small VPS wants this modest.
       UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-100}
+      # Configurações › Backup › Google Drive: the nightly backup starts at this local hour (business time zone),
+      # and is skipped (administrators told) with less than BACKUP_MIN_FREE_MB free for its temporary copy.
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_MIN_FREE_MB: ${BACKUP_MIN_FREE_MB:-1024}
     volumes:
       - api_uploads:/data/uploads
       - whatsapp_sessions:/data/whatsapp-sessions

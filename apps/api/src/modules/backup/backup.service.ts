@@ -11,6 +11,7 @@ import { env } from "../../config/env";
 import { Errors } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
 import { finishTar, readTar, writeTarEntry } from "../../lib/tar";
+import { BackupPasswordError, encryptingStream, isEncryptedBackup, openBackup } from "../../lib/backup-crypto";
 import { DEFAULT_RELEASES } from "../release-notes/default-releases";
 
 /**
@@ -21,6 +22,9 @@ import { DEFAULT_RELEASES } from "../release-notes/default-releases";
  * The database goes table by table as JSON lines, read back by Postgres itself (json_populate_recordset), so the
  * file doesn't depend on pg_dump nor on the Postgres version. It is restored on a server running the same version
  * of the system (the same migrations): the restore checks that first and touches nothing otherwise.
+ *
+ * With a password (always, since the Google Drive backups), the .tar.gz is encrypted (lib/backup-crypto.ts) and the
+ * file is a .wabk; a backup made before that (a plain .tar.gz) is still restored as it is.
  */
 
 export const BACKUP_FORMAT = 1;
@@ -99,8 +103,21 @@ async function dumpTable(table: string, file: string): Promise<number> {
   return total;
 }
 
-/** Streams the whole backup (.tar.gz) into `output`. */
-export async function writeBackup(output: Writable, options: BackupOptions, by: { userId: string; name: string }): Promise<void> {
+/** The name a backup file gets: when it was made, and which system (address) it came from. */
+export function backupFileName(encrypted: boolean, at = new Date()): string {
+  const local = new Date(at.getTime() - env.BUSINESS_TZ_OFFSET_MINUTES * 60_000);
+  const stamp = local.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+  let host = "whatsatendende";
+  try {
+    host = new URL(env.WEB_APP_URL).hostname.split(".")[0] || host;
+  } catch {
+    // keep the default
+  }
+  return `backup-${host}-${stamp}.${encrypted ? "wabk" : "tar.gz"}`;
+}
+
+/** Streams the whole backup into `output`: a .tar.gz, encrypted with `password` when there is one. */
+export async function writeBackup(output: Writable, options: BackupOptions, by: { userId: string; name: string }, password?: string): Promise<void> {
   const names = await tables();
   const manifest: BackupManifest = {
     format: BACKUP_FORMAT,
@@ -112,7 +129,7 @@ export async function writeBackup(output: Writable, options: BackupOptions, by: 
     includes: { files: options.files, whatsappSessions: options.whatsappSessions },
   };
   const gzip = createGzip({ level: 6 });
-  const done = pipeline(gzip, output);
+  const done = password ? pipeline(gzip, encryptingStream(password), output) : pipeline(gzip, output);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wa-backup-"));
   try {
     await writeTarEntry(gzip, "manifest.json", Buffer.from(JSON.stringify(manifest, null, 2)));
@@ -161,9 +178,10 @@ function readme(m: BackupManifest): string {
     "1. Instale o WhatsAtendende na MESMA versão (veja acima) e deixe-o subir uma vez.",
     "2. No arquivo .env do servidor novo, use o MESMO SETTINGS_ENCRYPTION_KEY do servidor antigo",
     "   (sem ele, as senhas guardadas — e-mail, Meta, fontes de dados — não podem ser lidas).",
-    "3. Entre como administrador e vá em Configurações › Backup › Restaurar, escolhendo este arquivo.",
+    "3. Entre como administrador e vá em Configurações › Backup › Restaurar, escolhendo este arquivo",
+    "   (ou um backup do Google Drive) e digitando a senha do backup.",
     "   Arquivo muito grande? Copie-o para o servidor e rode:",
-    "   docker compose exec api node dist/scripts/restore-backup.js /caminho/do/arquivo.tar.gz",
+    "   docker compose exec api node dist/scripts/restore-backup.js /caminho/do/arquivo.wabk \"<senha>\"",
     "",
     "Guarde este arquivo em local seguro: ele tem todos os dados dos clientes e das conversas.",
   ].join("\n");
@@ -185,15 +203,44 @@ async function* batches(file: string, size: number): AsyncGenerator<string[]> {
 }
 
 /**
+ * Restores a backup file from disk: a .wabk (encrypted — needs its password) or a plain .tar.gz made before backups
+ * had a password. A wrong password is found at the very end of the file — still before anything is replaced.
+ */
+export async function restoreBackupFile(file: string, password: string | undefined, by: { userId: string; name: string }) {
+  if (isEncryptedBackup(file)) {
+    if (!password) throw Errors.badRequest("Este backup tem senha: digite a senha do backup");
+    try {
+      return await restoreBackup(openBackup(file, password), by, true);
+    } catch (err) {
+      // A wrong password makes the start of the file garbage too: the unzip fails first ("Arquivo inválido").
+      const invalid = err instanceof Error && "status" in err && /^Arquivo inválido/.test(err.message);
+      if (invalid || err instanceof BackupPasswordError || (err instanceof Error && /unable to authenticate|bad decrypt/i.test(err.message))) {
+        throw Errors.badRequest("Senha do backup incorreta (ou o arquivo foi alterado)");
+      }
+      throw err;
+    }
+  }
+  return restoreBackup(fs.createReadStream(file), by);
+}
+
+/**
  * Restores a backup: reads it whole first (into a staging folder), checks it was made by this same version of the
  * system, and only then replaces the database and the files. Anything wrong before that point changes nothing.
+ * `input` is the .tar.gz — or, with `isTar`, the tar itself (already decrypted and unzipped).
  */
-export async function restoreBackup(input: Readable, by: { userId: string; name: string }): Promise<{ manifest: BackupManifest; rows: number; files: number }> {
+export async function restoreBackup(input: Readable, by: { userId: string; name: string }, isTar = false): Promise<{ manifest: BackupManifest; rows: number; files: number }> {
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), "wa-restore-"));
   let manifest: BackupManifest | null = null;
   let files = 0;
   try {
-    await readTar(input.pipe(createGunzip()), async (entry) => {
+    let tar: Readable = input;
+    if (!isTar) {
+      // A failure while unzipping reaches readTar (never an "error" event nobody listens to, which stops the API).
+      const gunzip = createGunzip();
+      input.on("error", (err) => gunzip.destroy(err));
+      tar = input.pipe(gunzip);
+    }
+    await readTar(tar, async (entry) => {
       if (entry.name === "manifest.json") {
         const chunks: Buffer[] = [];
         for await (const c of entry.stream) chunks.push(c as Buffer);
@@ -207,7 +254,7 @@ export async function restoreBackup(input: Readable, by: { userId: string; name:
       await pipeline(entry.stream, fs.createWriteStream(target));
       if (!entry.name.startsWith("database/") && entry.name !== "LEIA-ME.txt") files++;
     }).catch((err) => {
-      if (err instanceof Error && /incorrect header check|unexpected end of file/i.test(err.message)) throw Errors.badRequest("Arquivo inválido: escolha o .tar.gz baixado em Configurações › Backup");
+      if (err instanceof Error && /incorrect header check|unexpected end of file/i.test(err.message)) throw Errors.badRequest("Arquivo inválido: escolha o backup (.wabk ou .tar.gz) baixado em Configurações › Backup");
       throw err;
     });
     const m = manifest as BackupManifest | null;
@@ -260,6 +307,11 @@ export async function restoreBackup(input: Readable, by: { userId: string; name:
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.copyFileSync(path.join(from, rel), target);
       }
+    }
+    // A backup made while a Google Drive backup was being sent carries the "running" mark: it would block the next ones.
+    const drive = await prisma.systemSetting.findUnique({ where: { key: "driveBackup" } });
+    if (drive && (drive.value as { runningSince?: string | null } | null)?.runningSince) {
+      await prisma.systemSetting.update({ where: { key: "driveBackup" }, data: { value: { ...(drive.value as object), runningSince: null } } });
     }
     const at = new Date().toISOString();
     await prisma.systemSetting.upsert({

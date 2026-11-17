@@ -69,6 +69,21 @@ describe("auth", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
   });
+
+  it("um token trocado por uma renovação vale por instantes só enquanto a sessão continua; depois de sair, não vale mais", async () => {
+    await createTestUser({ email: "sair@test.dev", role: "AGENT" });
+    const loginRes = await request(app).post("/api/auth/login").send({ email: "sair@test.dev", password: TEST_PASSWORD });
+    const oldCookie = loginRes.headers["set-cookie"][0];
+    const renewed = await request(app).post("/api/auth/refresh").set("Cookie", oldCookie);
+    expect(renewed.status).toBe(200);
+    // Another tab still holding the old token, a moment later: the session goes on.
+    expect((await request(app).post("/api/auth/refresh").set("Cookie", oldCookie)).status).toBe(200);
+    // Logged out: every token of that login stops working, the old one included.
+    const newCookie = renewed.headers["set-cookie"][0];
+    await prisma.refreshToken.updateMany({ where: { user: { email: "sair@test.dev" } }, data: { revokedAt: new Date() } });
+    expect((await request(app).post("/api/auth/refresh").set("Cookie", oldCookie)).status).toBe(401);
+    expect((await request(app).post("/api/auth/refresh").set("Cookie", newCookie)).status).toBe(401);
+  });
 });
 
 describe("role-based access control", () => {

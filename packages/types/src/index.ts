@@ -4098,3 +4098,60 @@ export const SAUBERLICH_CREDIT = "Desenvolvido por Sauberlich System";
 export function sauberlichCopyright(year: number = new Date().getFullYear()): string {
   return `© ${year} Sauberlich System · Todos os direitos reservados`;
 }
+
+// ---------------------------------------------------------------------------
+// Identidade visual › Tema: twelve ready-made themes, one per month, and "Automático pelo mês"
+// ---------------------------------------------------------------------------
+
+export interface BrandTheme {
+  key: string;
+  /** 1–12: the month it is used in when "Automático pelo mês" is chosen. */
+  month: number;
+  name: string;
+  primaryColor: string;
+  secondaryColor: string;
+  /** The "lida" double tick: a color that stands out on the theme's own message bubble. */
+  readReceiptColor: string;
+}
+
+export const MONTH_THEMES: BrandTheme[] = [
+  { key: "JANEIRO_BRANCO", month: 1, name: "Janeiro Branco", primaryColor: "#475569", secondaryColor: "#E2E8F0", readReceiptColor: "#38BDF8" },
+  { key: "FEVEREIRO_ROXO", month: 2, name: "Fevereiro Roxo", primaryColor: "#7C3AED", secondaryColor: "#DDD6FE", readReceiptColor: "#F59E0B" },
+  { key: "MARCO_LILAS", month: 3, name: "Março Lilás", primaryColor: "#9333EA", secondaryColor: "#E9D5FF", readReceiptColor: "#D946EF" },
+  { key: "ABRIL_AZUL", month: 4, name: "Abril Azul", primaryColor: "#1D4ED8", secondaryColor: "#BFDBFE", readReceiptColor: "#0EA5E9" },
+  { key: "MAIO_AMARELO", month: 5, name: "Maio Amarelo", primaryColor: "#B45309", secondaryColor: "#FDE68A", readReceiptColor: "#F59E0B" },
+  { key: "JUNHO_VERMELHO", month: 6, name: "Junho Vermelho", primaryColor: "#B91C1C", secondaryColor: "#FECACA", readReceiptColor: "#F97316" },
+  { key: "JULHO_AMARELO", month: 7, name: "Julho Amarelo", primaryColor: "#A16207", secondaryColor: "#FEF08A", readReceiptColor: "#EAB308" },
+  { key: "AGOSTO_DOURADO", month: 8, name: "Agosto Dourado", primaryColor: "#92400E", secondaryColor: "#FCD34D", readReceiptColor: "#D97706" },
+  { key: "SETEMBRO_AMARELO", month: 9, name: "Setembro Amarelo", primaryColor: "#854D0E", secondaryColor: "#FDE047", readReceiptColor: "#CA8A04" },
+  { key: "OUTUBRO_ROSA", month: 10, name: "Outubro Rosa", primaryColor: "#DB2777", secondaryColor: "#FBCFE8", readReceiptColor: "#EC4899" },
+  { key: "NOVEMBRO_AZUL", month: 11, name: "Novembro Azul", primaryColor: "#1E40AF", secondaryColor: "#93C5FD", readReceiptColor: "#3B82F6" },
+  { key: "DEZEMBRO_NATAL", month: 12, name: "Dezembro — Natal", primaryColor: "#B91C1C", secondaryColor: "#BBF7D0", readReceiptColor: "#16A34A" },
+];
+
+/** "CUSTOM" = the company's own colors; "MONTHLY" = the theme of the current month, by itself; or one theme's key, fixed. */
+export type BrandThemeChoice = "CUSTOM" | "MONTHLY" | string;
+export const BRAND_THEME_CHOICES: string[] = ["CUSTOM", "MONTHLY", ...MONTH_THEMES.map((t) => t.key)];
+
+export interface EffectiveBrandColors {
+  primaryColor: string;
+  secondaryColor: string;
+  /** Null = follow the secondary color (the system's own default). */
+  readReceiptColor: string | null;
+  /** The ready-made theme in use, if any. */
+  themeName: string | null;
+}
+
+/**
+ * The colors in force: the chosen theme's (or the month's), else the company's own. The "lida" tick follows the
+ * theme by itself — unless a color was picked for it by hand, which always wins. `month` is 1–12 in business time.
+ */
+export function resolveBrandColors(
+  branding: { primaryColor: string; secondaryColor: string; readReceiptColor: string | null; theme?: BrandThemeChoice | null },
+  month: number
+): EffectiveBrandColors {
+  const choice = branding.theme ?? "CUSTOM";
+  const theme = choice === "MONTHLY" ? MONTH_THEMES.find((t) => t.month === month) : MONTH_THEMES.find((t) => t.key === choice);
+  if (!theme) return { primaryColor: branding.primaryColor, secondaryColor: branding.secondaryColor, readReceiptColor: branding.readReceiptColor, themeName: null };
+  return { primaryColor: theme.primaryColor, secondaryColor: theme.secondaryColor, readReceiptColor: branding.readReceiptColor ?? theme.readReceiptColor, themeName: theme.name };
+}

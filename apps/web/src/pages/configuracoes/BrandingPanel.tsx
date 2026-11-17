@@ -6,6 +6,7 @@ import { useAuthStore } from "../../store/auth-store";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useBranding } from "../../hooks/useBranding";
 import { UnsavedChangesBar } from "../../components/common/UnsavedChangesBar";
+import { ThemePicker } from "./ThemePicker";
 
 // Curated primary/secondary combinations — see PROMPT: "Nas configurações
 // precisa ter paletas de cores para alterar quando o administrador desejar."
@@ -128,6 +129,8 @@ export function BrandingPanel() {
           </button>
         </div>
       </div>
+
+      <ThemePicker disabled={!canEditar} />
 
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Nome da empresa</span>

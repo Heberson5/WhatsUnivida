@@ -35,6 +35,9 @@ export interface BrandingSettings {
   // (see PROMPT: "o risquinho que indica que a mensagem foi lida, seja
   // compatível com a paleta de cores").
   readReceiptColor: string | null;
+  // "CUSTOM" (the colors above), "MONTHLY" (the theme of the current month, by itself) or one ready-made theme, fixed —
+  // see MONTH_THEMES / resolveBrandColors in @whatsatendende/types.
+  theme: string;
 }
 
 const DEFAULT_BRANDING: BrandingSettings = {
@@ -47,6 +50,7 @@ const DEFAULT_BRANDING: BrandingSettings = {
   appIconUrl: null,
   appIconMaskableUrl: null,
   readReceiptColor: null,
+  theme: "CUSTOM",
 };
 
 export async function getBranding(): Promise<BrandingSettings> {

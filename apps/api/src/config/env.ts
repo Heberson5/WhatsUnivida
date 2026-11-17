@@ -35,6 +35,17 @@ const schema = z.object({
   UPLOAD_MAX_SIZE_MB: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(300),
+  // Google Drive (Configurações › Backup): Google's addresses — changed only by the automated tests, which talk to a
+  // stand-in for Google running on the same machine.
+  GOOGLE_AUTH_URL: z.string().default("https://accounts.google.com/o/oauth2/v2/auth"),
+  GOOGLE_TOKEN_URL: z.string().default("https://oauth2.googleapis.com/token"),
+  GOOGLE_REVOKE_URL: z.string().default("https://oauth2.googleapis.com/revoke"),
+  GOOGLE_API_URL: z.string().default("https://www.googleapis.com"),
+  // A Drive backup needs at least this much free space for its temporary copy; with less, it is skipped and the
+  // administrators are told (it never fills the disk the system runs on).
+  BACKUP_MIN_FREE_MB: z.coerce.number().default(1024),
+  // Local time (BUSINESS_TZ_OFFSET_MINUTES) from which the nightly backup to the Google Drive runs.
+  BACKUP_HOUR: z.coerce.number().int().min(0).max(23).default(3),
 });
 
 export const env = schema.parse(process.env);

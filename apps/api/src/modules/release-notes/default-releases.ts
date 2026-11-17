@@ -11,6 +11,40 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.38.0",
+    date: "17 nov 2026",
+    name: "Backup no Google Drive e temas do mês",
+    summary: "O backup completo do sistema agora pode ir direto para a sua conta do Google Drive, sozinho, toda noite, protegido por senha. Todo backup baixado também passa a ter senha. E a Identidade visual ganhou doze temas prontos, um para cada mês, com a opção de trocar sozinho no dia 1º.",
+    notes: [
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Backup no Google Drive, todo dia",
+        text: "Em Configurações › Backup, conecte uma conta Google uma única vez e cadastre a senha de backup. A partir daí o sistema faz o backup completo (dados e arquivos; as sessões do WhatsApp, se marcadas) toda noite a partir das 3h, e também quando você clicar em \"Fazer backup no Drive agora\". Os backups ficam numa pasta própria deste sistema no seu Drive; você escolhe quantos manter, e os mais antigos são apagados sozinhos. Nada fica guardado no servidor. Se um backup falhar (Drive desconectado, autorização retirada, pouco espaço no servidor), os administradores são avisados no sininho e por e-mail. O sistema só enxerga as pastas e arquivos que ele mesmo cria no Drive.",
+        where: "Configurações › Backup",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/backup-google-drive.webp", caption: "Conta do Google, senha de backup e backup automático", size: "small" }],
+      },
+      {
+        type: "melhoria",
+        area: "configuracoes",
+        title: "Todo backup com senha, e restauração direto do Drive",
+        text: "O backup baixado pelo navegador agora é protegido por uma senha que você digita na hora (arquivo .wabk): sem ela, ninguém abre o arquivo. Para restaurar, escolha um backup da lista do Google Drive ou envie o arquivo, digite a senha e confirme com RESTAURAR. O arquivo é aberto e conferido inteiro antes de qualquer mudança: com a senha errada, nada é alterado. Os backups antigos, sem senha (.tar.gz), continuam podendo ser restaurados.",
+        where: "Configurações › Backup",
+        roles: ["ADMIN"],
+      },
+      {
+        type: "novo",
+        area: "configuracoes",
+        title: "Temas do mês",
+        text: "Em Identidade visual › Tema, escolha um dos doze temas prontos (Janeiro Branco, Fevereiro Roxo, Março Lilás, Abril Azul, Maio Amarelo, Junho Vermelho, Julho Amarelo, Agosto Dourado, Setembro Amarelo, Outubro Rosa, Novembro Azul e Dezembro — Natal), ou \"Automático pelo mês\", que troca sozinho no dia 1º. A cor do \"lida\" (✓✓) acompanha o tema, a menos que você tenha escolhido uma cor para ela. \"Cores da empresa\" volta para as cores da sua identidade visual. Todos veem a mudança na hora.",
+        where: "Configurações › Identidade visual",
+        roles: ["ADMIN"],
+        images: [{ src: "/notas-de-versao/tema-automatico-mes.webp", caption: "\"Automático pelo mês\" em novembro: Novembro Azul", size: "small" }],
+      },
+    ],
+  },
+  {
     version: "2.37.7",
     date: "13 nov 2026",
     name: "Desenvolvido por Sauberlich System",

@@ -1,5 +1,6 @@
 import http from "node:http";
 import { createApp } from "./app";
+import { runNightlyBackup } from "./modules/backup/drive-backup.service";
 import { createSocketServer } from "./realtime/socket-server";
 import { initWhatsAppConnections, shutdownAllConnections } from "./modules/whatsapp/whatsapp.service";
 import { requeueUnansweredDeviceConversations, revertExpiredTransfers } from "./modules/conversations/conversations.service";
@@ -196,6 +197,12 @@ async function main() {
       });
   }, REPORT_SCHEDULE_SWEEP_INTERVAL_MS);
   reportScheduleTimer.unref();
+
+  // Configurações › Backup: the nightly backup to the Google Drive (from BACKUP_HOUR, when it is turned on).
+  const nightlyBackupTimer = setInterval(() => {
+    runNightlyBackup().catch((err) => logger.error({ err }, "failed to run the nightly backup"));
+  }, 10 * 60 * 1000);
+  nightlyBackupTimer.unref();
   purgeExpiredTrash().catch((err) => logger.error({ err }, "failed to empty the Pop Up trash"));
   refreshNextRuns().catch((err) => logger.error({ err }, "failed to refresh the scheduled presentations"));
 
@@ -217,6 +224,7 @@ async function main() {
     clearInterval(autoMessagesTimer);
     clearInterval(agentToolsTimer);
     clearInterval(reportScheduleTimer);
+    clearInterval(nightlyBackupTimer);
     httpServer.close();
     // Every deploy sends this signal to the outgoing container — ending
     // each WhatsApp connection's socket cleanly here (rather than letting

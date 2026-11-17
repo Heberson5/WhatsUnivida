@@ -199,6 +199,24 @@ export async function endIdleSessions(now = new Date()): Promise<number> {
   return idle.length;
 }
 
+/** How long a token just replaced by a refresh still works — for two tabs (or requests) refreshing at the same time. */
+const ROTATION_GRACE_MS = 10_000;
+
+/**
+ * A revoked refresh token is still accepted for a few seconds when it was revoked by a refresh (its successor of the
+ * same login exists and is still valid): two tabs renewing at once both keep the session, instead of one of them being
+ * logged out. A token revoked by logout, by the inactivity limit or by a forced logout has no valid successor
+ * (all of the login's tokens are revoked), so it is refused at once, as before.
+ */
+async function concurrentRotation(stored: { id: string; loginId: string | null; revokedAt: Date | null }): Promise<boolean> {
+  if (!stored.revokedAt || Date.now() - stored.revokedAt.getTime() > ROTATION_GRACE_MS) return false;
+  const successor = await prisma.refreshToken.findFirst({
+    where: { loginId: stored.loginId ?? stored.id, id: { not: stored.id }, revokedAt: null, createdAt: { gte: new Date(stored.revokedAt.getTime() - 1000) } },
+    select: { id: true },
+  });
+  return Boolean(successor);
+}
+
 export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: string | null = null) {
   let payload: { sub: string };
   try {
@@ -209,7 +227,10 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
 
   const tokenHash = hashToken(refreshToken);
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+  if (!stored || stored.expiresAt < new Date()) {
+    throw Errors.unauthorized("Sessao expirada, faca login novamente");
+  }
+  if (stored.revokedAt && !(await concurrentRotation(stored))) {
     throw Errors.unauthorized("Sessao expirada, faca login novamente");
   }
 
@@ -239,19 +260,22 @@ export async function refresh(refreshToken: string, tzOffsetMinutes = 0, ip: str
     throw err;
   }
 
-  // Rotate refresh token to limit replay window.
-  await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+  // Rotate refresh token to limit replay window. The old one is revoked and its successor created together (one
+  // transaction): a concurrent refresh with the same token always sees both or neither — see concurrentRotation.
   const newRefreshToken = signRefreshToken(user.id);
-  const newRefreshTokenRow = await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashToken(newRefreshToken),
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
-      // A refresh is the browser renewing its token, not the person using the system.
-      lastActivityAt: stored.lastActivityAt,
-      loginId: stored.loginId ?? stored.id,
-    },
-  });
+  const [, newRefreshTokenRow] = await prisma.$transaction([
+    prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: stored.revokedAt ?? new Date() } }),
+    prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
+        // A refresh is the browser renewing its token, not the person using the system.
+        lastActivityAt: stored.lastActivityAt,
+        loginId: stored.loginId ?? stored.id,
+      },
+    }),
+  ]);
 
   const accessToken = signAccessToken({ sub: user.id, role: user.role, displayName: user.displayName, sid: newRefreshTokenRow.id });
   return { accessToken, refreshToken: newRefreshToken, user };
