@@ -2,7 +2,15 @@
 # Deploy automático na VPS — roda NA VPS, enviado pelo GitHub Actions
 # (.github/workflows/deploy.yml) por SSH depois que os testes passaram:
 #
-#   ssh ... "bash -s -- <pasta> <branch> <porta-web> <commit>" < auto-deploy.sh
+#   ssh ... "GH_TOKEN=... REPO_URL=... bash -s -- <pasta> <branch> <porta-web> <commit> [domínio]" < auto-deploy.sh
+#
+# GH_TOKEN (opcional): token temporário do próprio job (vale só enquanto ele roda), usado
+# para buscar o código de um repositório privado sem guardar senha nenhuma na VPS.
+#
+# Primeira instalação: se a pasta ainda não existe, o script clona o repositório
+# (REPO_URL), cria o .env com segredos aleatórios, sobe o sistema, cria o primeiro
+# administrador (login e senha aparecem no log do job e ficam em
+# ~/<pasta>/CREDENCIAIS-INICIAIS.txt) e configura o domínio no proxy da VPS.
 #
 # Faz o mesmo que a opção "Atualizar" do gerenciador-vps.bat, com três
 # proteções a mais:
@@ -17,11 +25,96 @@ set -euo pipefail
 
 # O script chega pela entrada padrão (bash -s); tudo fica dentro de main() e roda com a entrada em /dev/null,
 # senão um "docker compose exec" leria o resto do próprio script e o deploy pararia no meio, sem erro.
+# Primeira instalação: um administrador com senha sorteada (o banco começa vazio, sem nenhum login).
+first_admin() {
+  log "Criando o primeiro administrador"
+  local email="admin@${DOMAIN:-$PROJECT.local}" pass
+  pass="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-16)#7a"
+  if docker compose exec -T -e ADMIN_EMAIL="$email" -e ADMIN_PASSWORD="$pass" api node -e '
+    const { PrismaClient } = require("@prisma/client");
+    const bcrypt = require("bcryptjs");
+    const prisma = new PrismaClient();
+    (async () => {
+      if ((await prisma.user.count()) > 0) { console.log("Já existem usuários — nenhum administrador criado."); return; }
+      await prisma.user.create({ data: { email: process.env.ADMIN_EMAIL, fullName: "Administrador", displayName: "Admin", role: "ADMIN",
+        passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12), status: "ACTIVE" } });
+      console.log("criado");
+    })().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
+  ' | grep -qx criado; then
+    (umask 077; printf 'Endereço: %s\nLogin: %s\nSenha: %s\nTroque a senha no primeiro acesso (Usuários).\n' \
+      "${DOMAIN:+https://$DOMAIN} (ou http://IP-DA-VPS:$PORT)" "$email" "$pass" > "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt")
+  else
+    echo "AVISO: o administrador inicial não foi criado (já havia usuários ou houve erro)."
+  fi
+}
+
+# Proxy da VPS (nginx ou Caddy) para o domínio, com HTTPS. Só cria o que ainda não existe e nunca derruba o deploy:
+# um site que já menciona o domínio não é tocado, e uma configuração que não passa no teste é desfeita.
+configure_domain() {
+  if ! sudo -n true 2>/dev/null; then echo "AVISO: sem sudo sem senha — domínio $DOMAIN não configurado no proxy da VPS."; return 0; fi
+  if [ -f /etc/caddy/Caddyfile ] && command -v caddy >/dev/null; then
+    grep -q "$DOMAIN" /etc/caddy/Caddyfile && { echo "Domínio $DOMAIN já está no Caddy."; return 0; }
+    log "Configurando $DOMAIN no Caddy"
+    sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.antes-$PROJECT
+    printf '\n%s {\n\trequest_body {\n\t\tmax_size 300MB\n\t}\n\treverse_proxy 127.0.0.1:%s\n}\n' "$DOMAIN" "$PORT" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+    if sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+      sudo systemctl reload caddy && echo "Caddy: $DOMAIN -> 127.0.0.1:$PORT (HTTPS automático)."
+    else
+      sudo cp /etc/caddy/Caddyfile.antes-$PROJECT /etc/caddy/Caddyfile
+      echo "AVISO: a configuração do Caddy não passou na validação — desfeita."
+    fi
+    return 0
+  fi
+  if ! command -v nginx >/dev/null; then echo "AVISO: nem nginx nem Caddy na VPS — domínio $DOMAIN não configurado."; return 0; fi
+  if sudo grep -rqs "server_name[^;]*\b$DOMAIN\b" /etc/nginx/; then echo "Domínio $DOMAIN já está no nginx."; return 0; fi
+  log "Configurando $DOMAIN no nginx"
+  local conf
+  if [ -d /etc/nginx/sites-available ]; then conf="/etc/nginx/sites-available/$PROJECT"; else conf="/etc/nginx/conf.d/$PROJECT.conf"; fi
+  sudo tee "$conf" >/dev/null <<NGINX
+# Criado pelo deploy automático ($PROJECT). O HTTPS é adicionado pelo certbot.
+server {
+    listen 80;
+    server_name $DOMAIN;
+    client_max_body_size 300m;
+    location / {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+NGINX
+  [ -d /etc/nginx/sites-enabled ] && sudo ln -sf "$conf" "/etc/nginx/sites-enabled/$PROJECT"
+  if ! sudo nginx -t >/dev/null 2>&1; then
+    sudo rm -f "$conf" "/etc/nginx/sites-enabled/$PROJECT"
+    echo "AVISO: a configuração do nginx não passou no teste — desfeita."
+    return 0
+  fi
+  sudo systemctl reload nginx
+  echo "nginx: $DOMAIN -> 127.0.0.1:$PORT"
+  if command -v certbot >/dev/null; then
+    sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
+      && echo "HTTPS ativo em https://$DOMAIN" \
+      || echo "AVISO: o certificado HTTPS não saiu agora (o DNS de $DOMAIN já aponta para a VPS?). O próximo deploy não tenta de novo; rode: sudo certbot --nginx -d $DOMAIN"
+  else
+    echo "AVISO: certbot não instalado — $DOMAIN responde só em HTTP."
+  fi
+}
+
 main() {
   PROJECT="$1"   # pasta em $HOME: whatsatendende | whatsunivida | whatsimagem
   BRANCH="$2"    # branch que a VPS segue
   PORT="$3"      # porta do container web no host (8080 | 8086 | 8087)
   SHA="$4"       # commit exato que passou nos testes
+  DOMAIN="${5:-}" # domínio público (opcional): configura o proxy HTTPS da VPS se ainda não houver
   KEEP_BACKUPS=7
   HEALTH_TIMEOUT=300
   AI_MODEL="qwen2.5:3b"
@@ -32,15 +125,43 @@ main() {
   log "Aguardando outro deploy terminar (se houver)"
   flock 9
 
-  if [ ! -d "$HOME/$PROJECT/.git" ] || [ ! -f "$HOME/$PROJECT/.env" ]; then
-    echo "A pasta $HOME/$PROJECT (com o clone do repositório e o .env) não existe na VPS — faça o primeiro deploy pelo gerenciador-vps.bat. Nada foi alterado."
+  # git com o token temporário do job (repositório privado); sem token, git normal.
+  git_auth() {
+    if [ -n "${GH_TOKEN:-}" ]; then
+      git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" "$@"
+    else
+      git "$@"
+    fi
+  }
+
+  FIRST_INSTALL=0
+  if [ ! -d "$HOME/$PROJECT" ]; then
+    [ -n "${REPO_URL:-}" ] || { echo "A pasta $HOME/$PROJECT não existe e o REPO_URL não foi informado — nada foi alterado."; exit 1; }
+    log "Primeira instalação de $PROJECT em $HOME/$PROJECT"
+    command -v docker >/dev/null && docker compose version >/dev/null || { echo "Docker/Docker Compose não estão instalados na VPS — nada foi alterado."; exit 1; }
+    git_auth clone --branch "$BRANCH" "$REPO_URL" "$HOME/$PROJECT"
+    FIRST_INSTALL=1
+    (
+      umask 077
+      {
+        echo "# Criado pelo deploy automático na primeira instalação ($(date '+%Y-%m-%d %H:%M')). FAÇA BACKUP DESTE ARQUIVO:"
+        echo "# sem ele os logins caem e as senhas guardadas no sistema não podem ser lidas."
+        echo "JWT_ACCESS_SECRET=$(openssl rand -hex 32)"
+        echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)"
+        echo "SETTINGS_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+        echo "WHATSAPP_PROVIDER=baileys"
+        [ -n "$DOMAIN" ] && echo "WEB_APP_URL=https://$DOMAIN"
+      } > "$HOME/$PROJECT/.env"
+    )
+  elif [ ! -d "$HOME/$PROJECT/.git" ] || [ ! -f "$HOME/$PROJECT/.env" ]; then
+    echo "A pasta $HOME/$PROJECT existe, mas sem o clone do repositório ou sem o .env — confira à mão (um .env novo trocaria os segredos do sistema). Nada foi alterado."
     exit 1
   fi
   cd "$HOME/$PROJECT"
   PREV_SHA=$(git rev-parse HEAD)
   log "Commit em produção antes: $(git log -1 --oneline)"
 
-  git fetch origin "$BRANCH"
+  git_auth fetch origin "$BRANCH"
   if ! git merge-base --is-ancestor "$SHA" "origin/$BRANCH"; then
     echo "O commit $SHA não está na branch $BRANCH — nada foi alterado."
     exit 1
@@ -116,6 +237,9 @@ main() {
     sleep 5
   done
 
+  [ "$FIRST_INSTALL" = 1 ] && first_admin
+  [ -n "$DOMAIN" ] && configure_domain
+
   docker image prune -f >/dev/null
   docker image rm erikvl87/languagetool:latest >/dev/null 2>&1 || true
   # Cache de build com mais de 7 dias (chegou a 64 GB): o build seguinte continua rápido com o cache recente.
@@ -138,6 +262,11 @@ main() {
     else
       echo "AVISO: a IA local não subiu; os sistemas seguem no ar normalmente."
     fi
+  fi
+
+  if [ "$FIRST_INSTALL" = 1 ] && [ -f "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt" ]; then
+    log "PRIMEIRO ACESSO"
+    cat "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt"
   fi
 
   log "Servidor"
