@@ -43,6 +43,7 @@ first_admin() {
   ' | grep -qx criado; then
     (umask 077; printf 'Endereço: %s\nLogin: %s\nSenha: %s\nTroque a senha no primeiro acesso (Usuários).\n' \
       "${DOMAIN:+https://$DOMAIN} (ou http://IP-DA-VPS:$PORT)" "$email" "$pass" > "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt")
+    NEW_ADMIN=1
   else
     echo "AVISO: o administrador inicial não foi criado (já havia usuários ou houve erro)."
   fi
@@ -66,7 +67,15 @@ configure_domain() {
     return 0
   fi
   if ! command -v nginx >/dev/null; then echo "AVISO: nem nginx nem Caddy na VPS — domínio $DOMAIN não configurado."; return 0; fi
-  if sudo grep -rqs "server_name[^;]*\b$DOMAIN\b" /etc/nginx/; then echo "Domínio $DOMAIN já está no nginx."; return 0; fi
+  if sudo grep -rqs "server_name[^;]*\b$DOMAIN\b" /etc/nginx/; then
+    echo "Domínio $DOMAIN já está no nginx."
+    # Site criado aqui e ainda sem certificado (o DNS não apontava para a VPS antes): tenta o HTTPS de novo.
+    if sudo grep -qs "Criado pelo deploy automático" "/etc/nginx/sites-available/$PROJECT" "/etc/nginx/conf.d/$PROJECT.conf" \
+      && ! sudo test -d "/etc/letsencrypt/live/$DOMAIN" && command -v certbot >/dev/null; then
+      issue_certificate
+    fi
+    return 0
+  fi
   log "Configurando $DOMAIN no nginx"
   local conf
   if [ -d /etc/nginx/sites-available ]; then conf="/etc/nginx/sites-available/$PROJECT"; else conf="/etc/nginx/conf.d/$PROJECT.conf"; fi
@@ -100,13 +109,13 @@ NGINX
   fi
   sudo systemctl reload nginx
   echo "nginx: $DOMAIN -> 127.0.0.1:$PORT"
-  if command -v certbot >/dev/null; then
-    sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
-      && echo "HTTPS ativo em https://$DOMAIN" \
-      || echo "AVISO: o certificado HTTPS não saiu agora (o DNS de $DOMAIN já aponta para a VPS?). O próximo deploy não tenta de novo; rode: sudo certbot --nginx -d $DOMAIN"
-  else
-    echo "AVISO: certbot não instalado — $DOMAIN responde só em HTTP."
-  fi
+  if command -v certbot >/dev/null; then issue_certificate; else echo "AVISO: certbot não instalado — $DOMAIN responde só em HTTP."; fi
+}
+
+issue_certificate() {
+  sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
+    && echo "HTTPS ativo em https://$DOMAIN" \
+    || echo "AVISO: o certificado HTTPS não saiu agora (o DNS de $DOMAIN já aponta para a VPS?). O próximo deploy tenta de novo."
 }
 
 main() {
@@ -134,13 +143,11 @@ main() {
     fi
   }
 
-  FIRST_INSTALL=0
   if [ ! -d "$HOME/$PROJECT" ]; then
     [ -n "${REPO_URL:-}" ] || { echo "A pasta $HOME/$PROJECT não existe e o REPO_URL não foi informado — nada foi alterado."; exit 1; }
     log "Primeira instalação de $PROJECT em $HOME/$PROJECT"
     command -v docker >/dev/null && docker compose version >/dev/null || { echo "Docker/Docker Compose não estão instalados na VPS — nada foi alterado."; exit 1; }
     git_auth clone --branch "$BRANCH" "$REPO_URL" "$HOME/$PROJECT"
-    FIRST_INSTALL=1
     (
       umask 077
       {
@@ -223,7 +230,12 @@ main() {
   log "Parando containers para liberar RAM"
   docker compose down
   log "Reconstruindo (o sistema fica fora do ar durante o build)"
-  docker compose build || rollback
+  # O Docker Hub limita downloads (429 Too Many Requests): tenta de novo antes de desistir.
+  for try in 1 2 3; do
+    docker compose build && break
+    [ "$try" = 3 ] && rollback
+    echo "Build falhou (tentativa $try de 3) — nova tentativa em 60 s"; sleep 60
+  done
   docker compose up -d --remove-orphans || rollback
 
   # 5) Saúde: a API responde pelo nginx do container web (as migrações rodam antes da API subir).
@@ -237,7 +249,9 @@ main() {
     sleep 5
   done
 
-  [ "$FIRST_INSTALL" = 1 ] && first_admin
+  # Instalação feita por este script e ainda sem administrador (vale também se a primeira tentativa falhou no meio).
+  NEW_ADMIN=0
+  if grep -q "Criado pelo deploy automático" .env && [ ! -f CREDENCIAIS-INICIAIS.txt ]; then first_admin; fi
   [ -n "$DOMAIN" ] && configure_domain
 
   docker image prune -f >/dev/null
@@ -264,7 +278,7 @@ main() {
     fi
   fi
 
-  if [ "$FIRST_INSTALL" = 1 ] && [ -f "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt" ]; then
+  if [ "$NEW_ADMIN" = 1 ]; then
     log "PRIMEIRO ACESSO"
     cat "$HOME/$PROJECT/CREDENCIAIS-INICIAIS.txt"
   fi

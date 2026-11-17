@@ -22,3 +22,7 @@ apps/api/uploads-test/
 # administra o servidor e guarda dados sensiveis nas primeiras linhas
 # (IP real, caminho da chave SSH, dominio) - nunca deve ir pro repositorio.
 infrastructure/vps/gerenciador-vps.bat
+
+# Login e senha do primeiro administrador, criados pelo deploy automático na VPS.
+CREDENCIAIS-INICIAIS.txt
+.env.antes-da-restauracao-*
