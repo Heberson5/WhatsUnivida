@@ -103,6 +103,8 @@ describe("pesquisa: pergunta do motivo de notas baixas", () => {
     const survey = await surveyOf(conversation.id);
     expect(survey).toMatchObject({ score: 3, reasonText: "O atendente demorou para responder\ne não resolveu meu problema" });
     expect(await prisma.conversation.count({ where: { contactId: conversation.contactId } })).toBe(1); // nothing opened in the queue
+    // The managers' notice is written right after the reason is saved: wait for it instead of racing it (failed now and then on CI).
+    await waitUntil(async () => (await prisma.notification.count({ where: { userId: adminId, type: "SURVEY_LOW_SCORE" } })) > 0);
     const notice = await prisma.notification.findFirstOrThrow({ where: { userId: adminId, type: "SURVEY_LOW_SCORE" } });
     expect(notice.title).toBe("Nota 3 na pesquisa: Joana Cliente");
     // The second message may already have joined the reason when the notice is written.
