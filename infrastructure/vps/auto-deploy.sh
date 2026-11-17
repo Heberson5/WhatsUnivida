@@ -18,9 +18,9 @@ set -euo pipefail
 # O script chega pela entrada padrão (bash -s); tudo fica dentro de main() e roda com a entrada em /dev/null,
 # senão um "docker compose exec" leria o resto do próprio script e o deploy pararia no meio, sem erro.
 main() {
-  PROJECT="$1"   # pasta em $HOME: whatsatendende | whatsunivida
+  PROJECT="$1"   # pasta em $HOME: whatsatendende | whatsunivida | whatsimagem
   BRANCH="$2"    # branch que a VPS segue
-  PORT="$3"      # porta do container web no host (8080 | 8086)
+  PORT="$3"      # porta do container web no host (8080 | 8086 | 8087)
   SHA="$4"       # commit exato que passou nos testes
   KEEP_BACKUPS=7
   HEALTH_TIMEOUT=300
@@ -32,6 +32,10 @@ main() {
   log "Aguardando outro deploy terminar (se houver)"
   flock 9
 
+  if [ ! -d "$HOME/$PROJECT/.git" ] || [ ! -f "$HOME/$PROJECT/.env" ]; then
+    echo "A pasta $HOME/$PROJECT (com o clone do repositório e o .env) não existe na VPS — faça o primeiro deploy pelo gerenciador-vps.bat. Nada foi alterado."
+    exit 1
+  fi
   cd "$HOME/$PROJECT"
   PREV_SHA=$(git rev-parse HEAD)
   log "Commit em produção antes: $(git log -1 --oneline)"

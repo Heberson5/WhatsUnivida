@@ -1,5 +1,5 @@
-# IA local da VPS — Ollama (conversa) e Whisper (áudio), UM de cada, compartilhado pelo WhatsAtendende e pelo
-# WhatsUnivida (os dois repositórios trazem este mesmo arquivo). Sobe como o
+# IA local da VPS — Ollama (conversa) e Whisper (áudio), UM de cada, compartilhado pelo WhatsAtendende, pelo
+# WhatsUnivida e pelo WhatsImagem (os repositórios trazem este mesmo arquivo). Sobe como o
 # projeto "ia-local", independente dos sistemas:
 #
 #   docker compose -p ia-local -f infrastructure/ia-local/docker-compose.yml up -d
