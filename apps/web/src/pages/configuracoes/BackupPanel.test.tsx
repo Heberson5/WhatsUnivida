@@ -85,7 +85,7 @@ describe("Configurações › Backup", () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/settings/backup/drive/files/f1/restore", { confirm: "restaurar" }, { timeout: 0 }));
   });
 
-  it("baixar exige a senha do arquivo (duas vezes, iguais)", async () => {
+  it("baixar exige a senha do arquivo (duas vezes, iguais) e já leva as conexões (sessões do WhatsApp)", async () => {
     mockApi(settings());
     renderPanel();
     const button = await screen.findByRole("button", { name: /Baixar backup/ });
@@ -97,6 +97,6 @@ describe("Configurações › Backup", () => {
     expect(button).toBeEnabled();
     vi.mocked(api.post).mockResolvedValue({ data: { url: "/api/settings/backup/download/abc" } } as never);
     fireEvent.click(button);
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/settings/backup/download-ticket", { files: true, sessions: false, password: "senha-forte-1" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/settings/backup/download-ticket", { files: true, sessions: true, password: "senha-forte-1" }));
   });
 });

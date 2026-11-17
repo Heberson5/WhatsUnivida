@@ -16,8 +16,8 @@
 # proteções a mais:
 #   - uma trava (flock) para dois sistemas nunca construírem ao mesmo tempo:
 #     a VPS tem pouca RAM e o build do front disputa memória;
-#   - backup do banco (pg_dump) + .env + commit antes de mexer em qualquer
-#     coisa, em ~/backups-auto/<pasta>/AAAAMMDD-HHMMSS (ficam os 7 últimos);
+#   - backup do banco (pg_dump) + sessões do WhatsApp (conexões) + .env + commit antes
+#     de mexer em qualquer coisa, em ~/backups-auto/<pasta>/AAAAMMDD-HHMMSS (ficam os 7 últimos);
 #   - verificação de saúde (/api/health pela porta do site) depois de subir.
 #     Se o build falhar ou o sistema não responder, volta sozinho para as
 #     imagens e o commit anteriores e o job termina em erro.
@@ -198,6 +198,16 @@ main() {
       exit 1
     fi
     log "Backup do banco salvo em $BK ($(du -h "$BK/banco.sql.gz" | cut -f1))"
+    # As conexões (sessões do WhatsApp) também: se algo der errado, voltam sem ler o QR Code de novo. Pequeno, e
+    # nunca para o deploy — o banco acima é o que não pode faltar.
+    if docker compose ps --status running --services | grep -qx api \
+      && docker compose exec -T api tar czf - -C /data whatsapp-sessions > "$BK/sessoes-whatsapp.tar.gz" 2>/dev/null \
+      && gzip -t "$BK/sessoes-whatsapp.tar.gz" 2>/dev/null; then
+      echo "Sessões do WhatsApp (conexões) salvas ($(du -h "$BK/sessoes-whatsapp.tar.gz" | cut -f1))"
+    else
+      rm -f "$BK/sessoes-whatsapp.tar.gz"
+      echo "AVISO: não deu para salvar as sessões do WhatsApp agora (a API não está no ar?) — o deploy segue."
+    fi
   else
     echo "Postgres não está rodando — backup do banco pulado (primeiro deploy?)."
   fi

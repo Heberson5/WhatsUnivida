@@ -43,7 +43,8 @@ const DEFAULTS: DriveBackupSettings = {
   autoEnabled: false,
   keep: 7,
   includeFiles: true,
-  includeSessions: false,
+  // The connections (WhatsApp sessions) go too: restored, the QR Code connections come back without a new reading.
+  includeSessions: true,
   lastBackupAt: null,
   lastBackupSize: null,
   lastAttemptAt: null,

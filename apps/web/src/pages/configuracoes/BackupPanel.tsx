@@ -469,7 +469,8 @@ function RestoreDriveDialog({ file, onClose }: { file: DriveFile; onClose: () =>
 
 function DownloadSection({ info, onDone }: { info?: BackupInfo; onDone: () => void }) {
   const [files, setFiles] = useState(true);
-  const [sessions, setSessions] = useState(false);
+  // The connections (WhatsApp sessions) go by default: without them every QR Code connection has to be read again.
+  const [sessions, setSessions] = useState(true);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 

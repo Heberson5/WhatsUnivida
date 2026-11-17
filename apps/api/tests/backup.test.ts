@@ -271,6 +271,11 @@ describe("Configurações › Backup", () => {
     it("backup automático: uma vez por noite a partir da hora marcada; falhas avisam os administradores", async () => {
       adminId = (await prisma.user.findFirstOrThrow({ where: { email: "admin-bk@test.dev" } })).id;
       expect(await runNightlyBackup(new Date("2027-03-10T07:30:00Z"))).toBe("SKIPPED"); // turned off
+      // The connections (WhatsApp sessions) go by default.
+      expect((await settings()).auto.includeSessions).toBe(true);
+      const sessionDir = path.join(env.WHATSAPP_AUTH_DIR, "conexao-backup-teste");
+      fs.mkdirSync(sessionDir, { recursive: true });
+      fs.writeFileSync(path.join(sessionDir, "creds.json"), "{}");
       await request(app).patch("/api/settings/backup/auto").set(auth()).send({ enabled: true, keep: 3, includeFiles: false }).expect(200);
       // BACKUP_HOUR 3h in the business time zone (UTC-4) = 07:00 UTC.
       expect(await runNightlyBackup(new Date("2027-03-10T06:30:00Z"))).toBe("SKIPPED");
@@ -279,6 +284,8 @@ describe("Configurações › Backup", () => {
       const local = path.join(scratch, "noturno.wabk");
       fs.writeFileSync(local, backupsOnDrive().sort((a, b) => b.createdTime.localeCompare(a.createdTime))[0].data);
       expect((await entriesOf(local)).some((n) => n.startsWith("files/"))).toBe(false); // includeFiles: false
+      expect(await entriesOf(local)).toContain("whatsapp-sessions/conexao-backup-teste/creds.json");
+      fs.rmSync(sessionDir, { recursive: true, force: true });
       expect(backupsOnDrive()).toHaveLength(3);
 
       await prisma.notification.deleteMany({ where: { userId: adminId } });
