@@ -1256,6 +1256,8 @@ export const PERMISSION = {
   CONFIGURACOES_VISOES_VISUALIZAR: "configuracoes.visoes.visualizar",
   CONFIGURACOES_VISOES_EDITAR: "configuracoes.visoes.editar",
   AUDITORIA_ACESSAR: "auditoria.acessar",
+  // Acessos ao site (visitas à página pública) — administrador only.
+  ACESSOS_SITE_VER: "acessos_site.ver",
   FONTES_DADOS_VER: "fontes_dados.ver",
   FONTES_DADOS_ADICIONAR: "fontes_dados.adicionar",
   FONTES_DADOS_EDITAR: "fontes_dados.editar",
@@ -1796,6 +1798,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     label: "Chat interno — acompanhar conversas da equipe",
     description:
       "Só o administrador: ler todas as conversas do chat interno em Gestão › Chat interno — inclusive grupos finalizados, mensagens temporárias, apagadas e editadas — sem aviso para quem conversa. Cada leitura fica registrada na auditoria. Use conforme a política interna e a LGPD.",
+    // Administrador only — never offered to Gestor or Atendente.
+    editableRoles: [],
+    defaultAllowed: { AGENT: false, MANAGER: false },
+  },
+  {
+    key: PERMISSION.ACESSOS_SITE_VER,
+    group: "Auditoria",
+    label: "Acessos ao site",
+    description: "Só o administrador: visitas à página pública (tela de entrada e sites com o código de acompanhamento), tempo de permanência, origem e aparelhos.",
     // Administrador only — never offered to Gestor or Atendente.
     editableRoles: [],
     defaultAllowed: { AGENT: false, MANAGER: false },
@@ -4154,4 +4165,60 @@ export function resolveBrandColors(
   const theme = choice === "MONTHLY" ? MONTH_THEMES.find((t) => t.month === month) : MONTH_THEMES.find((t) => t.key === choice);
   if (!theme) return { primaryColor: branding.primaryColor, secondaryColor: branding.secondaryColor, readReceiptColor: branding.readReceiptColor, themeName: null };
   return { primaryColor: theme.primaryColor, secondaryColor: theme.secondaryColor, readReceiptColor: branding.readReceiptColor ?? theme.readReceiptColor, themeName: theme.name };
+}
+
+// ---------------------------------------------------------------------------
+// Acessos ao site (administrador): visits to the public page
+// ---------------------------------------------------------------------------
+
+export interface SiteAnalyticsCount {
+  key: string;
+  visits: number;
+}
+
+export interface SiteAnalyticsSummaryDTO {
+  sites: string[];
+  totals: {
+    visits: number;
+    visitors: number;
+    newVisitors: number;
+    avgDurationSeconds: number;
+    /** Share of visits that left in under 10 seconds (0–1). */
+    bounceRate: number;
+    /** Share of visits to the login page that ended in a login (0–1); null when there was none. */
+    loginRate: number | null;
+  };
+  previous: { visits: number; visitors: number; avgDurationSeconds: number };
+  byDay: { day: string; visits: number; visitors: number }[];
+  byHour: number[];
+  byWeekday: number[];
+  pages: { path: string; visits: number; avgDurationSeconds: number }[];
+  referrers: SiteAnalyticsCount[];
+  campaigns: SiteAnalyticsCount[];
+  devices: SiteAnalyticsCount[];
+  browsers: SiteAnalyticsCount[];
+  systems: SiteAnalyticsCount[];
+  places: SiteAnalyticsCount[];
+}
+
+export interface SiteVisitDTO {
+  id: string;
+  site: string;
+  path: string;
+  referrer: string | null;
+  campaign: string | null;
+  device: string;
+  browser: string | null;
+  os: string | null;
+  place: string | null;
+  startedAt: string;
+  lastSeenAt: string;
+  durationSeconds: number;
+  loggedIn: boolean;
+  returning: boolean;
+}
+
+export interface SiteAnalyticsLiveDTO {
+  now: number;
+  visits: SiteVisitDTO[];
 }

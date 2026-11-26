@@ -2354,3 +2354,41 @@ model ClientDataCorrection {
   @@index([contactId, resolvedAt])
   @@index([cpfKey, resolvedAt])
 }
+
+// Acessos ao site (administrador): one row per visit to a public page — the system's own login page or any site that
+// carries the tracking snippet. Anonymous: a random id per browser (no cookie, no name), the place from the IP but
+// never the IP itself. Removed after Configurações' retention (siteAnalytics.retentionDays).
+model SiteVisit {
+  id              String   @id @default(uuid())
+  seq             Int      @unique @default(autoincrement())
+  // Random per browser (localStorage), to tell new from returning visitors — nothing that identifies the person.
+  visitorId       String
+  // The site (host) the page belongs to, e.g. whatsatendente.sauberlich.com.br
+  site            String
+  path            String
+  title           String?
+  // Where the visitor came from: the other site's host (never this site's own) and the campaign (utm_*).
+  referrer        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  device          String
+  browser         String?
+  os              String?
+  country         String?
+  region          String?
+  city            String?
+  startedAt       DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  // The page said goodbye (tab closed or hidden): no longer "on the site now". Cleared if the tab comes back.
+  endedAt         DateTime?
+  // Time with the page actually in front of the visitor (tab visible), reported by the page itself.
+  durationSeconds Int      @default(0)
+  // The visit ended in someone logging in to the system (login page only).
+  loggedIn        Boolean  @default(false)
+
+  @@index([startedAt])
+  @@index([site, startedAt])
+  @@index([lastSeenAt])
+  @@index([visitorId])
+}

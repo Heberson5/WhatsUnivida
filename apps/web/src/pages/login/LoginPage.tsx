@@ -13,6 +13,7 @@ import { useTheme } from "../../hooks/useTheme";
 import { MaintenanceScreen } from "./MaintenanceScreen";
 import { InstallPromptModal } from "./InstallPromptModal";
 import { InstallAppLink } from "./InstallAppLink";
+import { markSiteVisitLoggedIn, useSiteVisit } from "../../lib/site-visit";
 
 // Glow blobs behind the card — tinted from the active brand colors via
 // color-mix (same technique the global body background already uses in
@@ -37,6 +38,8 @@ export default function LoginPage() {
   const { data: branding } = useBranding();
   const { data: landingPage } = useLandingPageSettings();
   const { data: maintenance, isLoading: maintenanceLoading } = useMaintenanceStatus();
+  // Acessos ao site: the login screen is the system's public page.
+  useSiteVisit(!user);
   // The login screen renders before AppLayout (and its Topbar, the only
   // other place this hook was called) ever mounts, so without this the
   // saved/system theme was never applied here — the background and glass
@@ -95,6 +98,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const res = await api.post("/auth/login", { email, password, tzOffsetMinutes: new Date().getTimezoneOffset() });
+      markSiteVisitLoggedIn();
       setSession(res.data.accessToken, res.data.user, res.data.permissions);
       if (remember) localStorage.setItem("lastEmail", email);
       navigate("/");

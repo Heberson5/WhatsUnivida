@@ -11,6 +11,7 @@ import {
   Users,
   Settings,
   ScrollText,
+  Globe,
   ChevronLeft,
   ChevronRight,
   X,
@@ -68,6 +69,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { to: "/configuracoes", label: "Configurações", icon: Settings, permission: PERMISSION.CONFIGURACOES_GERENCIAR, group: "Administração" },
   { to: "/landing-page", label: "Personalização", icon: MonitorSmartphone, permission: PERMISSION.LANDING_PAGE_VISUALIZAR, group: "Administração" },
   { to: "/auditoria", label: "Auditoria", icon: ScrollText, permission: PERMISSION.AUDITORIA_ACESSAR, group: "Administração" },
+  { to: "/acessos-site", label: "Acessos ao site", icon: Globe, permission: PERMISSION.ACESSOS_SITE_VER, group: "Administração" },
 ];
 
 /**

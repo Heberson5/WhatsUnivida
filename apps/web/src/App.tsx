@@ -25,6 +25,7 @@ const FlowEditorPage = lazy(() => import("./pages/fluxo/FlowEditorPage"));
 const ConfiguracoesPage = lazy(() => import("./pages/configuracoes/ConfiguracoesPage"));
 const DadosPage = lazy(() => import("./pages/dados/DadosPage"));
 const AuditoriaPage = lazy(() => import("./pages/auditoria/AuditoriaPage"));
+const AcessosSitePage = lazy(() => import("./pages/acessos-site/AcessosSitePage"));
 const MeuPerfilPage = lazy(() => import("./pages/perfil/MeuPerfilPage"));
 const LandingPagePage = lazy(() => import("./pages/landing-page/LandingPagePage"));
 const NotasDeVersaoPage = lazy(() => import("./pages/notas-de-versao/NotasDeVersaoPage"));
@@ -127,6 +128,9 @@ export default function App() {
           </Route>
           <Route element={<PermissionRoute permission={PERMISSION.AUDITORIA_ACESSAR} />}>
             <Route path="/auditoria" element={<AuditoriaPage />} />
+          </Route>
+          <Route element={<PermissionRoute permission={PERMISSION.ACESSOS_SITE_VER} />}>
+            <Route path="/acessos-site" element={<AcessosSitePage />} />
           </Route>
         </Route>
       </Route>

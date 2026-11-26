@@ -4,8 +4,10 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { api, getApiErrorMessage } from "../../lib/api";
 import { useBranding } from "../../hooks/useBranding";
+import { useSiteVisit } from "../../lib/site-visit";
 
 export default function ResetPasswordPage() {
+  useSiteVisit();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const navigate = useNavigate();

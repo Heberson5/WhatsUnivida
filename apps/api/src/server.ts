@@ -1,6 +1,7 @@
 import http from "node:http";
 import { createApp } from "./app";
 import { runNightlyBackup } from "./modules/backup/drive-backup.service";
+import { purgeOldVisits } from "./modules/site-analytics/site-analytics.service";
 import { createSocketServer } from "./realtime/socket-server";
 import { initWhatsAppConnections, shutdownAllConnections } from "./modules/whatsapp/whatsapp.service";
 import { requeueUnansweredDeviceConversations, revertExpiredTransfers } from "./modules/conversations/conversations.service";
@@ -217,6 +218,12 @@ async function main() {
     runNightlyBackup().catch((err) => logger.error({ err }, "failed to run the nightly backup"));
   }, 10 * 60 * 1000);
   nightlyBackupTimer.unref();
+
+  // Acessos ao site: visits older than the retention (365 days by default) are deleted, once an hour.
+  const siteVisitsPurgeTimer = setInterval(() => {
+    purgeOldVisits().catch((err) => logger.error({ err }, "failed to delete old site visits"));
+  }, 60 * 60 * 1000);
+  siteVisitsPurgeTimer.unref();
   purgeExpiredTrash().catch((err) => logger.error({ err }, "failed to empty the Pop Up trash"));
   refreshNextRuns().catch((err) => logger.error({ err }, "failed to refresh the scheduled presentations"));
 
@@ -239,6 +246,7 @@ async function main() {
     clearInterval(agentToolsTimer);
     clearInterval(reportScheduleTimer);
     clearInterval(nightlyBackupTimer);
+    clearInterval(siteVisitsPurgeTimer);
     clearInterval(scheduledSendTimer);
     httpServer.close();
     // Every deploy sends this signal to the outgoing container — ending

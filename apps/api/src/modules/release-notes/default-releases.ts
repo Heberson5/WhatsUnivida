@@ -11,6 +11,38 @@ import { PERMISSION, type ReleaseContent } from "@whatsatendende/types";
  */
 export const DEFAULT_RELEASES: ReleaseContent[] = [
   {
+    version: "2.39.0",
+    date: "26 nov 2026",
+    name: "Acessos ao site",
+    summary: "Um painel novo, só para o administrador, mostra as visitas à página pública do sistema: quantas pessoas, quanto tempo ficam, de onde vêm, em que aparelho, quem está no site agora e quantas entram no sistema. Um código de uma linha leva o mesmo acompanhamento para outro site, como o institucional.",
+    notes: [
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Painel de acessos ao site",
+        text: "Em Administração › Acessos ao site: visitas, visitantes (novos e de retorno), tempo médio na página (só o tempo com a aba à vista), quem saiu em menos de 10 segundos e quantos entraram no sistema pela tela de entrada. Gráficos por dia, por hora e por dia da semana; páginas mais visitadas, de onde vieram (Google, Instagram, acesso direto), campanhas com utm, cidades, aparelhos, navegadores e sistemas; a lista de quem está no site agora, atualizada a cada 15 segundos; todas as visitas do período e a exportação em Excel.",
+        where: "Administração › Acessos ao site",
+        roles: ["ADMIN"],
+      },
+      {
+        type: "novo",
+        area: "administracao",
+        title: "Acompanhar outro site",
+        text: "A tela de entrada do sistema já é acompanhada sozinha. Para outro site, copie a linha mostrada no fim do painel e cole no HTML dele: as visitas aparecem no mesmo painel, com o nome do site, e dá para filtrar por site.",
+        where: "Administração › Acessos ao site",
+        roles: ["ADMIN"],
+      },
+      {
+        type: "melhoria",
+        area: "geral",
+        title: "Anônimo e conforme a LGPD",
+        text: "As visitas não guardam nome, cookie nem o endereço IP: só a cidade aproximada, o tipo de aparelho e um número aleatório do navegador para saber se é a primeira visita. Quem usa o navegador com \"Não rastrear\" não é contado, e as visitas são apagadas sozinhas depois do prazo de guarda (365 dias, ajustável).",
+        where: "Administração › Acessos ao site",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     version: "2.38.1",
     date: "17 nov 2026",
     name: "Mensagens agendadas: envio após o encerramento, intervalo e limite por cliente",

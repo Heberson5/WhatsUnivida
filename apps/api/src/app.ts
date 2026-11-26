@@ -30,6 +30,7 @@ import { reportSchedulesRouter } from "./modules/report-schedules/report-schedul
 import { smsRouter } from "./modules/sms/sms.routes";
 import { aiAssistantRouter, aiFeaturesRouter } from "./modules/ai-assistant/ai-assistant.routes";
 import { backupRouter } from "./modules/backup/backup.routes";
+import { publicSiteRouter, siteAnalyticsRouter } from "./modules/site-analytics/site-analytics.routes";
 import { autoMessageTemplatesRouter } from "./modules/auto-message-templates/auto-message-templates.routes";
 import { satisfactionRouter } from "./modules/satisfaction/satisfaction.routes";
 import { workSchedulesRouter } from "./modules/work-schedules/work-schedules.routes";
@@ -62,6 +63,10 @@ export function createApp() {
   // the web container's nginx and, on a VPS, the host's HTTPS proxy. Only hops on private/loopback addresses are
   // trusted, so a client reaching the API directly from the internet still can't fake its IP with that header.
   app.set("trust proxy", "loopback, linklocal, uniquelocal");
+
+  // Acessos ao site: the public page (and other sites, through the snippet) reports its visits — mounted before the
+  // app's own CORS (this one accepts any origin, without credentials) and with its own limits.
+  app.use("/api/public/site", publicSiteRouter);
 
   app.use(
     helmet({
@@ -151,6 +156,7 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/reports", reportsRouter);
   app.use("/api/settings/backup", backupRouter);
+  app.use("/api/site-analytics", siteAnalyticsRouter);
   app.use("/api/settings/sms", smsRouter);
   app.use("/api/settings/ai-assistant", aiAssistantRouter);
   app.use("/api/ai-features", aiFeaturesRouter);
