@@ -24,6 +24,9 @@ interface BackupSettings {
     connectedAt: string | null;
     lastError: string | null;
     redirectUri: string;
+    publicUrl: string | null;
+    defaultUrl: string;
+    addressProblem: string | null;
     folderName: string;
   };
   hasBackupPassword: boolean;
@@ -62,6 +65,32 @@ function size(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("pt-BR")} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`;
   return `${(bytes / 1024 ** 3).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} GB`;
+}
+
+const CALLBACK_PATH = "/api/settings/backup/google-drive/callback";
+
+/** Same rule as the server (lib/google-drive.ts): Google only takes https with a domain — never a bare IP or http. */
+export function addressProblem(base: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return "Informe o endereço completo do site, por exemplo https://whatsatendente.sauberlich.com.br";
+  }
+  const host = url.hostname;
+  if (host === "localhost" || host.endsWith(".localhost")) return null;
+  if (url.protocol !== "https:") return "O Google só aceita endereço com https://";
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":") || host.startsWith("[")) return "O Google não aceita endereço por IP: use o domínio do site";
+  if (!host.includes(".")) return "Use o domínio completo do site";
+  return null;
+}
+
+/** The address to start from: the one saved; else the page's own address when Google would accept it; else WEB_APP_URL. */
+function suggestedAddress(drive: { publicUrl: string | null; defaultUrl: string }): string {
+  if (drive.publicUrl) return drive.publicUrl;
+  const here = typeof window !== "undefined" ? window.location.origin : "";
+  if (here && !addressProblem(here)) return here;
+  return drive.defaultUrl;
 }
 
 const dateTime = (iso: string | null) => (iso ? format(new Date(iso), "dd/MM/yyyy 'às' HH:mm") : "—");
@@ -150,6 +179,9 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
   const drive = settings.drive;
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState("");
+  const [address, setAddress] = useState<string | null>(null);
+  const base = (address ?? suggestedAddress(drive)).trim().replace(/\/$/, "");
+  const baseProblem = addressProblem(base);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [keep, setKeep] = useState<number | null>(null);
@@ -162,7 +194,8 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
   });
 
   const saveCredentials = useMutation({
-    mutationFn: () => api.patch("/settings/backup/drive", { clientId: (clientId ?? drive.clientId ?? "").trim(), ...(clientSecret.trim() ? { clientSecret: clientSecret.trim() } : {}) }),
+    mutationFn: () =>
+      api.patch("/settings/backup/drive", { clientId: (clientId ?? drive.clientId ?? "").trim(), publicUrl: base, ...(clientSecret.trim() ? { clientSecret: clientSecret.trim() } : {}) }),
     onSuccess: () => {
       toast.success("Credenciais do Google salvas");
       setClientSecret("");
@@ -259,14 +292,24 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
             <input className={input} type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={drive.configured ? "Já cadastrada — preencha só para trocar" : ""} autoComplete="new-password" />
           </label>
           <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block font-medium">Endereço do site</span>
+            <input className={input} value={address ?? suggestedAddress(drive)} onChange={(e) => setAddress(e.target.value)} placeholder="https://whatsatendente.sauberlich.com.br" autoComplete="off" inputMode="url" />
+            <span className="mt-1 block text-xs text-muted">O endereço com que todos acessam o sistema (https e o domínio, nunca o IP). Dele sai o URI abaixo.</span>
+          </label>
+          <label className="block text-sm sm:col-span-2">
             <span className="mb-1 block font-medium">URI de redirecionamento (cole no Google Cloud)</span>
-            <input className={`${input} font-mono text-xs`} readOnly value={drive.redirectUri} onFocus={(e) => e.currentTarget.select()} />
+            <input className={`${input} font-mono text-xs`} readOnly value={`${base}${CALLBACK_PATH}`} onFocus={(e) => e.currentTarget.select()} />
+            {baseProblem ? (
+              <span className="mt-1 block text-xs text-danger">{baseProblem}.</span>
+            ) : (
+              base !== (drive.publicUrl ?? drive.defaultUrl) && <span className="mt-1 block text-xs text-warning">Clique em “Salvar credenciais” para usar este endereço.</span>
+            )}
           </label>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="submit" className={ghostButton} disabled={saveCredentials.isPending || !(clientId ?? drive.clientId ?? "").trim()}>
+            <button type="submit" className={ghostButton} disabled={saveCredentials.isPending || !(clientId ?? drive.clientId ?? "").trim() || Boolean(baseProblem)}>
               Salvar credenciais
             </button>
-            <button type="button" className={primaryButton} disabled={!drive.configured || connect.isPending} onClick={() => connect.mutate()}>
+            <button type="button" className={primaryButton} disabled={!drive.configured || Boolean(drive.addressProblem) || connect.isPending} onClick={() => connect.mutate()}>
               {drive.connected ? "Conectar outra vez" : "Conectar com o Google"}
             </button>
             {drive.connected && (

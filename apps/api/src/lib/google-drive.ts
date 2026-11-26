@@ -6,7 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { env } from "../config/env";
 import { decryptSecret, encryptSecret } from "./crypto";
-import { HttpError } from "./http-error";
+import { Errors, HttpError } from "./http-error";
 
 /**
  * The Google Drive the backups go to (the administrator's own Google account).
@@ -15,7 +15,11 @@ import { HttpError } from "./http-error";
  * rest of that Drive stays invisible to it. The authorization is given once, by an administrator, on
  * Configurações › Backup; the client secret and the refresh token are kept encrypted (lib/crypto.ts).
  *
- * Every system that uses the same Google account gets its own folder, named after its address (WEB_APP_URL).
+ * Every system that uses the same Google account gets its own folder, named after its public address.
+ *
+ * The public address (what Google sends the administrator back to) is the one typed on the screen, else WEB_APP_URL.
+ * Google only accepts an https address with a domain — never a bare IP or http, which is what WEB_APP_URL can hold
+ * on a server reached by its IP (e.g. http://163.176.182.42:8080).
  */
 
 const SETTING_KEY = "googleDrive";
@@ -30,9 +34,45 @@ interface StoredDrive {
   rootFolderId: string | null;
   connectedAt: string | null;
   lastError: string | null;
+  /** The site's public address, typed on Configurações › Backup (https://domínio); null = WEB_APP_URL. */
+  publicUrl: string | null;
 }
 
-const EMPTY: StoredDrive = { clientId: null, clientSecret: null, refreshToken: null, accountEmail: null, rootFolderId: null, connectedAt: null, lastError: null };
+const EMPTY: StoredDrive = { clientId: null, clientSecret: null, refreshToken: null, accountEmail: null, rootFolderId: null, connectedAt: null, lastError: null, publicUrl: null };
+
+const CALLBACK_PATH = "/api/settings/backup/google-drive/callback";
+
+/** Why Google would refuse this address as a redirect URI, or null when it is fine. */
+export function addressProblem(base: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return "Informe o endereço completo do site, por exemplo https://whatsatendente.sauberlich.com.br";
+  }
+  const host = url.hostname;
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":") || host.startsWith("[");
+  if (host === "localhost" || host.endsWith(".localhost")) return null; // Google accepts it (development only)
+  if (url.protocol !== "https:") return "O Google só aceita endereço com https://";
+  if (isIp) return "O Google não aceita endereço por IP: use o domínio do site";
+  if (!host.includes(".")) return "Use o domínio completo do site";
+  return null;
+}
+
+/** The site's address as typed (only scheme, host and port), or an error saying what is wrong with it. */
+export function normalizePublicUrl(raw: string): string {
+  const problem = addressProblem(raw.trim());
+  if (problem) throw Errors.badRequest(problem);
+  return new URL(raw.trim()).origin;
+}
+
+const baseUrl = (stored: StoredDrive) => (stored.publicUrl ?? env.WEB_APP_URL).replace(/\/$/, "");
+const redirectUriOf = (stored: StoredDrive) => `${baseUrl(stored)}${CALLBACK_PATH}`;
+
+/** The site's public address in use (where the browser goes back after authorizing). */
+export async function publicBaseUrl(): Promise<string> {
+  return baseUrl(await load());
+}
 
 export class DriveError extends HttpError {
   constructor(message: string, public readonly disconnected = false) {
@@ -55,11 +95,6 @@ async function save(patch: Partial<StoredDrive>): Promise<StoredDrive> {
   return next;
 }
 
-/** Where Google sends the administrator back after authorizing — registered as is in the Google Cloud project. */
-export function redirectUri(): string {
-  return `${env.WEB_APP_URL.replace(/\/$/, "")}/api/settings/backup/google-drive/callback`;
-}
-
 export async function driveStatus() {
   const stored = await load();
   return {
@@ -69,16 +104,21 @@ export async function driveStatus() {
     accountEmail: stored.accountEmail,
     connectedAt: stored.connectedAt,
     lastError: stored.lastError,
-    redirectUri: redirectUri(),
-    folderName: folderName(),
+    // Where Google sends the administrator back after authorizing — registered as is in the Google Cloud project.
+    redirectUri: redirectUriOf(stored),
+    publicUrl: stored.publicUrl,
+    defaultUrl: env.WEB_APP_URL.replace(/\/$/, ""),
+    addressProblem: addressProblem(baseUrl(stored)),
+    folderName: folderName(stored),
   };
 }
 
-export async function setDriveCredentials(clientId: string, clientSecret: string | undefined) {
+export async function setDriveCredentials(clientId: string, clientSecret: string | undefined, publicUrl?: string | null) {
   const stored = await load();
   const changedClient = stored.clientId !== clientId;
   await save({
     clientId,
+    ...(publicUrl !== undefined ? { publicUrl: publicUrl === null || publicUrl === "" ? null : normalizePublicUrl(publicUrl) } : {}),
     ...(clientSecret ? { clientSecret: encryptSecret(clientSecret) } : {}),
     // Another Google Cloud project: the old authorization is no longer valid.
     ...(changedClient ? { refreshToken: null, accountEmail: null, rootFolderId: null, connectedAt: null } : {}),
@@ -94,10 +134,12 @@ function sign(payload: string) {
 export async function authorizationUrl(userId: string): Promise<string> {
   const stored = await load();
   if (!stored.clientId || !stored.clientSecret) throw new DriveError("Informe o ID e a chave secreta do cliente OAuth antes de conectar");
+  const problem = addressProblem(baseUrl(stored));
+  if (problem) throw Errors.badRequest(`Endereço do site: ${problem}. Informe-o em Configurações › Backup e salve.`);
   const payload = Buffer.from(JSON.stringify({ u: userId, exp: Date.now() + 15 * 60_000, n: crypto.randomUUID() })).toString("base64url");
   const params = new URLSearchParams({
     client_id: stored.clientId,
-    redirect_uri: redirectUri(),
+    redirect_uri: redirectUriOf(stored),
     response_type: "code",
     scope: SCOPES.join(" "),
     access_type: "offline",
@@ -127,7 +169,7 @@ export async function completeAuthorization(code: string, state: string): Promis
       code,
       client_id: stored.clientId,
       client_secret: decryptSecret(stored.clientSecret),
-      redirect_uri: redirectUri(),
+      redirect_uri: redirectUriOf(stored),
       grant_type: "authorization_code",
     }),
   });
@@ -218,10 +260,10 @@ async function folderExists(id: string): Promise<boolean> {
 }
 
 /** This system's folder at the top of the Drive: "Backups — <address>", so two systems on one account never mix. */
-export function folderName(): string {
-  let host = env.WEB_APP_URL;
+export function folderName(stored: StoredDrive): string {
+  let host = baseUrl(stored);
   try {
-    host = new URL(env.WEB_APP_URL).host;
+    host = new URL(host).host;
   } catch {
     // Not a URL: the text as it is.
   }
@@ -232,7 +274,7 @@ export function folderName(): string {
 export async function backupsFolder(): Promise<string> {
   const stored = await load();
   if (stored.rootFolderId && (await folderExists(stored.rootFolderId))) return stored.rootFolderId;
-  const id = await ensureFolder(folderName(), "root");
+  const id = await ensureFolder(folderName(stored), "root");
   await save({ rootFolderId: id });
   return id;
 }

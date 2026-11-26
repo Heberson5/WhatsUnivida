@@ -14,7 +14,7 @@ const INFO = { version: "2.37.7", tables: 85, approximateRows: 700, filesBytes: 
 
 function settings(over: Record<string, unknown> = {}) {
   return {
-    drive: { configured: false, connected: false, clientId: null, accountEmail: null, connectedAt: null, lastError: null, redirectUri: "https://whatsimagem.sauberlich.com.br/api/settings/backup/google-drive/callback", folderName: "Backups — whatsimagem.sauberlich.com.br" },
+    drive: { configured: false, connected: false, clientId: null, accountEmail: null, connectedAt: null, lastError: null, redirectUri: "https://whatsimagem.sauberlich.com.br/api/settings/backup/google-drive/callback", publicUrl: null, defaultUrl: "https://whatsimagem.sauberlich.com.br", addressProblem: null, folderName: "Backups — whatsimagem.sauberlich.com.br" },
     hasBackupPassword: false,
     auto: { enabled: false, keep: 7, includeFiles: true, includeSessions: false },
     lastBackupAt: null,
@@ -83,6 +83,29 @@ describe("Configurações › Backup", () => {
     expect(confirmButton).toBeEnabled();
     fireEvent.click(confirmButton);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/settings/backup/drive/files/f1/restore", { confirm: "restaurar" }, { timeout: 0 }));
+  });
+
+  it("endereço do site: IP ou http não serve para o Google; o domínio monta o URI certo e é salvo junto", async () => {
+    mockApi(settings({ drive: { ...settings().drive, publicUrl: null, defaultUrl: "http://163.176.182.42:8080", addressProblem: "O Google só aceita endereço com https://" } }));
+    vi.mocked(api.patch).mockResolvedValue({ data: {} } as never);
+    renderPanel();
+    const address = await screen.findByLabelText(/Endereço do site/);
+    fireEvent.change(address, { target: { value: "http://163.176.182.42:8080" } });
+    expect(screen.getByDisplayValue("http://163.176.182.42:8080/api/settings/backup/google-drive/callback")).toBeInTheDocument();
+    expect(screen.getByText(/O Google só aceita endereço com https/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("000000000000-xxxx.apps.googleusercontent.com"), { target: { value: "cliente-123.apps.googleusercontent.com" } });
+    expect(screen.getByRole("button", { name: "Salvar credenciais" })).toBeDisabled();
+    fireEvent.change(address, { target: { value: "https://163.176.182.42" } });
+    expect(screen.getByText(/não aceita endereço por IP/)).toBeInTheDocument();
+
+    fireEvent.change(address, { target: { value: "https://whatsatendente.sauberlich.com.br/" } });
+    expect(screen.getByDisplayValue("https://whatsatendente.sauberlich.com.br/api/settings/backup/google-drive/callback")).toBeInTheDocument();
+    // Not saved yet: the connection still uses the old address.
+    expect(screen.getByRole("button", { name: "Conectar com o Google" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar credenciais" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/settings/backup/drive", { clientId: "cliente-123.apps.googleusercontent.com", publicUrl: "https://whatsatendente.sauberlich.com.br" })
+    );
   });
 
   it("baixar exige a senha do arquivo (duas vezes, iguais) e já leva as conexões (sessões do WhatsApp)", async () => {

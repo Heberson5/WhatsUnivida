@@ -211,15 +211,31 @@ describe("Configurações › Backup", () => {
       // The client secret is never sent back.
       expect(JSON.stringify(before)).not.toContain("segredo-123");
 
+      // The address Google sends the administrator back to: never an IP or http (Google refuses it), typed on the screen.
+      const ip = await request(app).patch("/api/settings/backup/drive").set(auth()).send({ clientId: "cliente-123.apps.googleusercontent.com", publicUrl: "http://163.176.182.42:8080" });
+      expect(ip.status).toBe(400);
+      expect(ip.body.message).toMatch(/https|IP/);
+      expect((await request(app).patch("/api/settings/backup/drive").set(auth()).send({ clientId: "cliente-123.apps.googleusercontent.com", publicUrl: "https://163.176.182.42" })).body.message).toMatch(/IP/);
+      const saved = await request(app).patch("/api/settings/backup/drive").set(auth()).send({ clientId: "cliente-123.apps.googleusercontent.com", publicUrl: "https://whatsatendente.sauberlich.com.br/" });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({
+        publicUrl: "https://whatsatendente.sauberlich.com.br",
+        redirectUri: "https://whatsatendente.sauberlich.com.br/api/settings/backup/google-drive/callback",
+        addressProblem: null,
+        folderName: "Backups — whatsatendente.sauberlich.com.br",
+        configured: true,
+      });
+
       const { url } = (await request(app).post("/api/settings/backup/drive/connect").set(auth())).body;
       const params = new URL(url).searchParams;
+      expect(params.get("redirect_uri")).toBe("https://whatsatendente.sauberlich.com.br/api/settings/backup/google-drive/callback");
       expect(params.get("scope")).toBe("openid email https://www.googleapis.com/auth/drive.file");
       expect(params.get("access_type")).toBe("offline");
       const forged = await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: "falso.falso" });
       expect(forged.headers.location).toMatch(/secao=backup&drive=erro$/);
       const back = await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: params.get("state") });
       expect(back.status).toBe(302);
-      expect(back.headers.location).toMatch(/\/configuracoes\?secao=backup&drive=conectado$/);
+      expect(back.headers.location).toBe("https://whatsatendente.sauberlich.com.br/configuracoes?secao=backup&drive=conectado");
       expect((await settings()).drive).toMatchObject({ connected: true, accountEmail: "dono@gmail.com" });
       const stored = await prisma.systemSetting.findUniqueOrThrow({ where: { key: "googleDrive" } });
       expect(JSON.stringify(stored.value)).not.toContain("renovacao-1");

@@ -44,7 +44,9 @@ function restartAfterRestore() {
 backupRouter.get(
   "/google-drive/callback",
   asyncHandler(async (req, res) => {
-    const back = (outcome: string) => res.redirect(`${env.WEB_APP_URL.replace(/\/$/, "")}/configuracoes?secao=backup&drive=${outcome}`);
+    // Back to the same address the administrator used (the one registered with Google), not WEB_APP_URL.
+    const base = await drive.publicBaseUrl();
+    const back = (outcome: string) => res.redirect(`${base}/configuracoes?secao=backup&drive=${outcome}`);
     const { code, state, error } = z.object({ code: z.string().optional(), state: z.string().optional(), error: z.string().optional() }).parse(req.query);
     if (error || !code || !state) return back("cancelado");
     try {
@@ -166,8 +168,15 @@ backupRouter.patch(
   "/drive",
   ...admin,
   asyncHandler(async (req, res) => {
-    const input = z.object({ clientId: z.string().trim().min(10).max(300), clientSecret: z.string().trim().min(6).max(300).optional() }).parse(req.body);
-    const status = await drive.setDriveCredentials(input.clientId, input.clientSecret);
+    const input = z
+      .object({
+        clientId: z.string().trim().min(10).max(300),
+        clientSecret: z.string().trim().min(6).max(300).optional(),
+        // The site's public address (https://domínio) — what the redirect URI is built from. "" or null = WEB_APP_URL.
+        publicUrl: z.string().trim().max(300).nullable().optional(),
+      })
+      .parse(req.body);
+    const status = await drive.setDriveCredentials(input.clientId, input.clientSecret, input.publicUrl);
     await writeAudit({ userId: req.auth!.userId, action: "GOOGLE_DRIVE_CREDENTIALS_UPDATED", entity: "SystemSetting", entityId: "googleDrive", ipAddress: req.ip ?? null });
     res.json(status);
   })

@@ -188,7 +188,9 @@ servidor: o arquivo é montado numa pasta temporária, enviado e apagado. Você 
 crie um projeto, ative a "Google Drive API", configure a tela de consentimento OAuth com público "Externo" e
 **publique** o app (em "Teste" o Google cancela a autorização a cada 7 dias), e crie um "ID do cliente OAuth" do tipo
 "Aplicativo da Web" com o URI de redirecionamento mostrado na tela
-(`<WEB_APP_URL>/api/settings/backup/google-drive/callback`). Cole o ID e a chave secreta, clique em
+(`https://<domínio do site>/api/settings/backup/google-drive/callback`). Ele sai do campo **Endereço do site**,
+que já vem com o endereço pelo qual você está acessando; o Google não aceita IP nem http, então use o domínio com
+https (por exemplo `https://whatsatendente.sauberlich.com.br`). Cole o ID e a chave secreta, clique em
 "Conectar com o Google" e cadastre a senha de backup. O sistema pede só a permissão `drive.file`: enxerga apenas as
 pastas e arquivos que ele mesmo cria. O mesmo projeto e a mesma conta servem para vários sistemas — cada um tem a
 própria pasta (`Backups — <endereço do sistema>`); cadastre no Google o URI de redirecionamento de cada um.
