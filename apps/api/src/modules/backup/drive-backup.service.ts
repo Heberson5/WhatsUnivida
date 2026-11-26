@@ -145,8 +145,14 @@ export async function backupToDrive(options: BackupOptions, trigger: "MANUAL" | 
 export async function listDriveBackups() {
   const status = await drive.driveStatus();
   if (!status.connected) return { connected: false, files: [] as drive.DriveFile[] };
-  const folder = await drive.backupsFolder();
-  return { connected: true, files: (await drive.listFiles(folder)).filter((f) => isBackupName(f.name)) };
+  try {
+    const folder = await drive.backupsFolder();
+    return { connected: true, files: (await drive.listFiles(folder)).filter((f) => isBackupName(f.name)) };
+  } catch (err) {
+    // The list is only a view: the reason goes to the screen, instead of a failed request repeated over and over.
+    const message = err instanceof Error ? err.message : "Não foi possível listar os backups do Google Drive";
+    return { connected: (await drive.driveStatus()).connected, files: [] as drive.DriveFile[], error: message };
+  }
 }
 
 /** A backup kept on the Drive, brought down to a temporary file only to be restored (then removed). */

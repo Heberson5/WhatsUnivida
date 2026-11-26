@@ -21,7 +21,9 @@ export function fakeGoogle() {
   const pending = new Map<string, { name: string; parents: string[] }>();
   let next = 1;
   let clock = Date.parse("2027-01-01T00:00:00Z");
-  const state = { revoked: false, authorizedCodes: new Set(["codigo-bom"]), tokenRequests: 0 };
+  // grantedScope: what the administrator left ticked on Google's screen; driveDenied: the Drive answers 403 "insufficient
+  // authentication scopes" (an authorization saved without the Drive permission).
+  const state = { revoked: false, authorizedCodes: new Set(["codigo-bom"]), tokenRequests: 0, grantedScope: "https://www.googleapis.com/auth/drive.file", driveDenied: false };
   const read = (req: http.IncomingMessage) =>
     new Promise<Buffer>((resolve) => {
       const chunks: Buffer[] = [];
@@ -41,14 +43,18 @@ export function fakeGoogle() {
       const form = new URLSearchParams(body.toString());
       if (form.get("grant_type") === "authorization_code") {
         if (!state.authorizedCodes.has(form.get("code") ?? "")) return send(res, 400, { error: "invalid_grant" });
-        const idToken = `x.${Buffer.from(JSON.stringify({ email: "dono@gmail.com" })).toString("base64url")}.y`;
-        return send(res, 200, { access_token: "acesso-1", refresh_token: "renovacao-1", expires_in: 3600, id_token: idToken });
+        // Asked only for drive.file (no openid): no id_token — the e-mail comes from /drive/v3/about.
+        return send(res, 200, { access_token: "acesso-1", refresh_token: "renovacao-1", expires_in: 3600, scope: state.grantedScope });
       }
       if (state.revoked || form.get("refresh_token") !== "renovacao-1") return send(res, 400, { error: "invalid_grant" });
       return send(res, 200, { access_token: "acesso-2", expires_in: 3600 });
     }
     if (url.pathname === "/revoke") return send(res, 200, {});
     if (!/^Bearer acesso-/.test(req.headers.authorization ?? "")) return send(res, 401, { error: "unauthenticated" });
+    if (url.pathname === "/drive/v3/about") return send(res, 200, { user: { emailAddress: "dono@gmail.com" } });
+    if (state.driveDenied) {
+      return send(res, 403, { error: { code: 403, message: "Request had insufficient authentication scopes.", errors: [{ message: "Insufficient Permission", domain: "global", reason: "insufficientPermissions" }], status: "PERMISSION_DENIED" } });
+    }
     if (url.pathname === "/upload/drive/v3/files" && req.method === "POST") {
       const metadata = JSON.parse(body.toString()) as { name: string; parents: string[] };
       const sid = `s${next++}`;

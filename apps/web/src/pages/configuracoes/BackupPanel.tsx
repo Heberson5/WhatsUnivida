@@ -122,6 +122,8 @@ export function BackupPanel() {
     if (!outcome) return;
     if (outcome === "conectado") toast.success("Google Drive conectado");
     else if (outcome === "cancelado") toast.info("Conexão com o Google Drive cancelada");
+    else if (outcome === "sem-permissao")
+      toast.error("O Google não deu acesso ao Google Drive. Clique em “Conectar com o Google” de novo e deixe marcada a permissão do Google Drive.", { duration: 12_000 });
     else toast.error("Não foi possível conectar o Google Drive. Confira o ID, a chave e o endereço de redirecionamento.");
     const next = new URLSearchParams(searchParams);
     next.delete("drive");
@@ -189,7 +191,7 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
 
   const { data: driveFiles } = useQuery({
     queryKey: ["backup-drive-files", settings.lastBackupAt ?? ""],
-    queryFn: async () => (await api.get<{ connected: boolean; files: DriveFile[] }>("/settings/backup/drive/files")).data,
+    queryFn: async () => (await api.get<{ connected: boolean; files: DriveFile[]; error?: string }>("/settings/backup/drive/files")).data,
     enabled: drive.connected,
   });
 
@@ -329,6 +331,7 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
             <li>Em Credenciais (ou Clientes), crie um “ID do cliente OAuth” do tipo “Aplicativo da Web” e cole em “URIs de redirecionamento autorizados” o endereço acima.</li>
             <li>Copie o ID do cliente e a chave secreta para cá, salve e clique em “Conectar com o Google”.</li>
             <li>Se o Google mostrar “app não verificado”, é o seu próprio app: clique em Avançado e continue.</li>
+            <li>Na tela de permissões do Google, deixe marcado o acesso ao Google Drive — sem ele os backups não podem ser enviados.</li>
           </ol>
           <p className="mt-2">
             O sistema só enxerga as pastas e arquivos que ele mesmo cria no Drive; o resto da sua conta fica invisível para ele. Pode usar a mesma conta (e o mesmo projeto do Google Cloud) em outros sistemas: cada um tem a própria pasta — só cadastre o URI de
@@ -453,7 +456,14 @@ function DriveSection({ settings, info, onChange }: { settings: BackupSettings; 
                   </td>
                 </tr>
               ))}
-              {driveFiles?.files.length === 0 && (
+              {driveFiles?.error && (
+                <tr className="border-t border-border">
+                  <td colSpan={3} className="px-3 py-3 text-xs text-danger">
+                    {driveFiles.error}
+                  </td>
+                </tr>
+              )}
+              {driveFiles?.files.length === 0 && !driveFiles.error && (
                 <tr className="border-t border-border">
                   <td colSpan={3} className="px-3 py-3 text-xs text-muted">
                     Nenhum backup no Drive ainda.

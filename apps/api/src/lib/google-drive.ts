@@ -23,7 +23,13 @@ import { Errors, HttpError } from "./http-error";
  */
 
 const SETTING_KEY = "googleDrive";
-const SCOPES = ["openid", "email", "https://www.googleapis.com/auth/drive.file"];
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Only the Drive: with more than one permission Google shows a checkbox for each, and an authorization saved with the
+// Drive one unticked fails every backup with 403 "insufficient authentication scopes". The account's e-mail comes from
+// the Drive itself (about.user).
+const SCOPES = [DRIVE_SCOPE];
+const MISSING_SCOPE_MESSAGE =
+  "A autorização do Google não inclui o Google Drive. Clique em “Conectar com o Google” de novo e, na tela do Google, deixe marcada a permissão de acesso ao Google Drive.";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 interface StoredDrive {
@@ -75,8 +81,8 @@ export async function publicBaseUrl(): Promise<string> {
 }
 
 export class DriveError extends HttpError {
-  constructor(message: string, public readonly disconnected = false) {
-    super(disconnected ? 409 : 502, disconnected ? "DRIVE_DISCONNECTED" : "DRIVE_ERROR", message);
+  constructor(message: string, public readonly disconnected = false, public readonly missingScope = false) {
+    super(disconnected ? 409 : 502, missingScope ? "DRIVE_MISSING_SCOPE" : disconnected ? "DRIVE_DISCONNECTED" : "DRIVE_ERROR", message);
   }
 }
 
@@ -145,7 +151,6 @@ export async function authorizationUrl(userId: string): Promise<string> {
     access_type: "offline",
     // Always shows the consent, so Google always hands back a refresh token (it doesn't on a second authorization).
     prompt: "consent",
-    include_granted_scopes: "true",
     state: `${payload}.${sign(payload)}`,
   });
   return `${env.GOOGLE_AUTH_URL}?${params}`;
@@ -173,13 +178,23 @@ export async function completeAuthorization(code: string, state: string): Promis
       grant_type: "authorization_code",
     }),
   });
-  const body = (await res.json().catch(() => ({}))) as { refresh_token?: string; access_token?: string; expires_in?: number; id_token?: string; error_description?: string };
+  const body = (await res.json().catch(() => ({}))) as { refresh_token?: string; access_token?: string; expires_in?: number; id_token?: string; scope?: string; error_description?: string };
   if (!res.ok || !body.refresh_token) throw new DriveError(`O Google recusou a autorização${body.error_description ? `: ${body.error_description}` : ""}`);
+  // The administrator may have unticked the Drive permission on Google's screen: such an authorization is not kept.
+  if (body.scope !== undefined && !body.scope.split(/\s+/).includes(DRIVE_SCOPE)) {
+    await save({ lastError: MISSING_SCOPE_MESSAGE });
+    throw new DriveError(MISSING_SCOPE_MESSAGE, true, true);
+  }
   let accountEmail: string | null = null;
   try {
     accountEmail = body.id_token ? (JSON.parse(Buffer.from(body.id_token.split(".")[1], "base64url").toString("utf8")) as { email?: string }).email ?? null : null;
   } catch {
     accountEmail = null;
+  }
+  if (!accountEmail && body.access_token) {
+    // Which Google account it is, from the Drive itself (drive.file is enough for about.user).
+    const about = await fetch(`${env.GOOGLE_API_URL}/drive/v3/about?fields=user(emailAddress)`, { headers: { Authorization: `Bearer ${body.access_token}` } }).catch(() => null);
+    if (about?.ok) accountEmail = ((await about.json().catch(() => ({}))) as { user?: { emailAddress?: string } }).user?.emailAddress ?? null;
   }
   tokenCache = body.access_token ? { token: body.access_token, expiresAt: Date.now() + ((body.expires_in ?? 3600) - 60) * 1000 } : null;
   await save({ refreshToken: encryptSecret(body.refresh_token), accountEmail, connectedAt: new Date().toISOString(), lastError: null, rootFolderId: null });
@@ -232,6 +247,13 @@ async function api(pathAndQuery: string, init: RequestInit = {}): Promise<Respon
 async function json<T>(res: Response, what: string): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Connected without the Drive permission (an older authorization, or the box unticked): useless until connected
+    // again — so it is disconnected, with what to do, instead of failing the same way on every backup.
+    if (res.status === 403 && /insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions/i.test(text)) {
+      tokenCache = null;
+      await save({ refreshToken: null, connectedAt: null, lastError: MISSING_SCOPE_MESSAGE });
+      throw new DriveError(MISSING_SCOPE_MESSAGE, true, true);
+    }
     throw new DriveError(`Google Drive: falha ao ${what} (${res.status}${text ? `: ${text.slice(0, 200)}` : ""})`);
   }
   return (await res.json()) as T;

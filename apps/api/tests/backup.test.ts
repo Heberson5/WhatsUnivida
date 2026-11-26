@@ -229,7 +229,8 @@ describe("Configurações › Backup", () => {
       const { url } = (await request(app).post("/api/settings/backup/drive/connect").set(auth())).body;
       const params = new URL(url).searchParams;
       expect(params.get("redirect_uri")).toBe("https://whatsatendente.sauberlich.com.br/api/settings/backup/google-drive/callback");
-      expect(params.get("scope")).toBe("openid email https://www.googleapis.com/auth/drive.file");
+      // Only the Drive: with a single permission Google shows no checkbox that could be left unticked.
+      expect(params.get("scope")).toBe("https://www.googleapis.com/auth/drive.file");
       expect(params.get("access_type")).toBe("offline");
       const forged = await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: "falso.falso" });
       expect(forged.headers.location).toMatch(/secao=backup&drive=erro$/);
@@ -239,6 +240,23 @@ describe("Configurações › Backup", () => {
       expect((await settings()).drive).toMatchObject({ connected: true, accountEmail: "dono@gmail.com" });
       const stored = await prisma.systemSetting.findUniqueOrThrow({ where: { key: "googleDrive" } });
       expect(JSON.stringify(stored.value)).not.toContain("renovacao-1");
+    });
+
+    it("autorização sem a permissão do Google Drive: não conecta e diz o que fazer", async () => {
+      google.state.grantedScope = "openid email";
+      await request(app).post("/api/settings/backup/drive/disconnect").set(auth()).expect(200);
+      const { url } = (await request(app).post("/api/settings/backup/drive/connect").set(auth())).body;
+      const back = await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: new URL(url).searchParams.get("state") });
+      expect(back.headers.location).toMatch(/drive=sem-permissao$/);
+      const s = await settings();
+      expect(s.drive.connected).toBe(false);
+      expect(s.drive.lastError).toMatch(/não inclui o Google Drive/);
+      // Ticked this time: connected, the e-mail read from the Drive itself.
+      google.state.grantedScope = "https://www.googleapis.com/auth/drive.file";
+      const again = (await request(app).post("/api/settings/backup/drive/connect").set(auth())).body.url;
+      const ok = await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: new URL(again).searchParams.get("state") });
+      expect(ok.headers.location).toMatch(/drive=conectado$/);
+      expect((await settings()).drive).toMatchObject({ connected: true, accountEmail: "dono@gmail.com", lastError: null });
     });
 
     it("envia ao Drive com a senha de backup, na pasta deste sistema, e guarda só os mais recentes", async () => {
@@ -268,6 +286,23 @@ describe("Configurações › Backup", () => {
       const listed = (await request(app).get("/api/settings/backup/drive/files").set(auth())).body;
       expect(listed.connected).toBe(true);
       expect(listed.files.map((f: { id: string }) => f.id).sort()).toEqual(kept.map((f) => f.id).sort());
+    });
+
+    it("uma conexão antiga sem a permissão do Drive (403 insufficient scopes): desconecta com o motivo, sem repetir o erro", async () => {
+      google.state.driveDenied = true;
+      __resetDriveTokenForTests();
+      const listed = await request(app).get("/api/settings/backup/drive/files").set(auth());
+      expect(listed.status).toBe(200);
+      expect(listed.body.error).toMatch(/não inclui o Google Drive/);
+      const s = await settings();
+      expect(s.drive.connected).toBe(false);
+      expect(s.drive.lastError).toMatch(/Conectar com o Google/);
+      // A new authorization with the Drive permission brings it back.
+      google.state.driveDenied = false;
+      const { url } = (await request(app).post("/api/settings/backup/drive/connect").set(auth())).body;
+      await request(app).get("/api/settings/backup/google-drive/callback").query({ code: "codigo-bom", state: new URL(url).searchParams.get("state") }).expect(302);
+      expect((await settings()).drive.connected).toBe(true);
+      expect((await request(app).get("/api/settings/backup/drive/files").set(auth())).body.files.length).toBeGreaterThan(0);
     });
 
     it("restaura um backup do Drive (a senha de backup cadastrada abre o arquivo)", async () => {

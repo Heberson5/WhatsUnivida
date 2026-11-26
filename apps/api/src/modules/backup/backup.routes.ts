@@ -55,7 +55,7 @@ backupRouter.get(
       back("conectado");
     } catch (err) {
       logger.warn({ err }, "Google Drive authorization failed");
-      back("erro");
+      back(err instanceof drive.DriveError && err.missingScope ? "sem-permissao" : "erro");
     }
   })
 );
