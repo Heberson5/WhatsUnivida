@@ -79,7 +79,8 @@ export default function AcessosSitePage() {
   const dist = (rows?: { key: string; visits: number }[]) => (rows ?? []).map((r) => ({ name: r.key, value: r.visits }));
 
   return (
-    <div className="space-y-5">
+    // Its own margin and scroll, as the other screens (Dashboard, Auditoria): the layout's <main> does not scroll.
+    <div className="h-full space-y-5 overflow-auto p-3 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">Acessos ao site</h1>
@@ -121,7 +122,7 @@ export default function AcessosSitePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Agora no site" value={live?.now ?? 0} icon={RadioTower} hint="Com a página aberta no último minuto" />
         <StatCard label="Visitas" value={t?.visits ?? 0} icon={Eye} delta={t && summary ? compareWithPrevious(t.visits, summary.previous.visits, false, "período anterior", true) : null} />
         <StatCard label="Visitantes" value={t?.visitors ?? 0} icon={Users} delta={t && summary ? compareWithPrevious(t.visitors, summary.previous.visitors, false, "período anterior", true) : null} />
@@ -154,16 +155,16 @@ export default function AcessosSitePage() {
               { key: "Visitantes", name: "Visitantes", color: secondary },
             ]}
           />
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-3 sm:gap-5 lg:grid-cols-2">
             <SeriesChartCard title="Visitas por hora do dia" data={hours} categoryKey="hora" series={[{ key: "Visitas", name: "Visitas", color: primary }]} />
             <SeriesChartCard title="Visitas por dia da semana" data={weekdays} categoryKey="dia" series={[{ key: "Visitas", name: "Visitas", color: primary }]} />
           </div>
-          <div className="grid gap-5 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-5 lg:grid-cols-3">
             <DistributionChartCard title="Aparelhos" data={dist(summary.devices)} colors={palette} />
             <DistributionChartCard title="Navegadores" data={dist(summary.browsers)} colors={palette} />
             <DistributionChartCard title="Sistemas" data={dist(summary.systems)} colors={[...palette, NEUTRAL_SERIES_COLOR]} />
           </div>
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-3 sm:gap-5 lg:grid-cols-2">
             <RankCard title="Páginas mais visitadas" rows={summary.pages.map((p) => ({ label: p.path, value: p.visits, extra: formatDuration(p.avgDurationSeconds) }))} extraLabel="Tempo médio" />
             <RankCard title="De onde vieram" rows={summary.referrers.map((r) => ({ label: r.key, value: r.visits }))} />
             <RankCard title="Cidades" rows={summary.places.map((r) => ({ label: r.key, value: r.visits }))} />
